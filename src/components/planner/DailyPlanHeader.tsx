@@ -1,0 +1,79 @@
+import React from 'react';
+import { format } from 'date-fns';
+
+interface DailyPlanHeaderProps {
+  date: Date;
+  plannedCount: number;
+  unplannedCount: number;
+  onAutoPlan?: () => void;
+  isPlanning?: boolean;
+}
+
+const SunIcon: React.FC = () => (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <line x1="12" y1="2" x2="12" y2="6" />
+    <line x1="12" y1="18" x2="12" y2="22" />
+    <line x1="4.22" y1="4.22" x2="7.05" y2="7.05" />
+    <line x1="16.95" y1="16.95" x2="19.78" y2="19.78" />
+    <line x1="2" y1="12" x2="6" y2="12" />
+    <line x1="18" y1="12" x2="22" y2="12" />
+    <line x1="4.22" y1="19.78" x2="7.05" y2="16.95" />
+    <line x1="16.95" y1="7.05" x2="19.78" y2="4.22" />
+  </svg>
+);
+
+export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ date, plannedCount, unplannedCount, onAutoPlan, isPlanning }) => {
+  const dayLabel = format(date, 'EEEE');
+  const dateLabel = format(date, 'MMMM d, yyyy');
+
+  return (
+    <div className="flex items-start justify-between pb-4 border-b border-border/50">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10 text-primary">
+          <SunIcon />
+        </div>
+        <div>
+          <h1 className="font-display text-xl font-semibold tracking-tight text-foreground leading-none">
+            {dayLabel}
+          </h1>
+          <p className="text-[12px] text-muted-foreground mt-0.5 font-sans">{dateLabel}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 text-right">
+        {onAutoPlan && (
+          <button
+            type="button"
+            onClick={onAutoPlan}
+            disabled={isPlanning || unplannedCount === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            title={unplannedCount === 0 ? 'No unscheduled tasks' : 'Auto-schedule unscheduled tasks'}
+          >
+            {isPlanning ? (
+              <>
+                <svg className="animate-spin" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Planning…
+              </>
+            ) : (
+              'Plan My Day ✨'
+            )}
+          </button>
+        )}
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="font-display text-2xl font-semibold text-foreground tabular-nums leading-none">{plannedCount}</span>
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">Planned</span>
+        </div>
+        <div className="w-px h-8 bg-border/60" />
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="font-display text-2xl font-semibold text-muted-foreground tabular-nums leading-none">{unplannedCount}</span>
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">Remaining</span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+DailyPlanHeader.displayName = 'DailyPlanHeader';

@@ -1,0 +1,437 @@
+import { create } from 'zustand';
+import {
+  CalendarEvent, ViewType, EventCategory,
+  IntelligenceProfile, SmartInsight,
+  FocusSession, FocusMode,
+} from '../types';
+import { CATEGORIES } from '../constants';
+import { timeToMinutes, formatDateISO } from '../utils/dateUtils';
+import notify from '../utils/notify';
+import { useTaskBoardStore } from './useTaskBoardStore';
+import { useCalendarEventsStore } from './useCalendarEventsStore';
+
+interface UserGoal {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+interface UserProfile {
+  name: string;
+  email: string;
+  role: string;
+  bio: string;
+  avatarUrl?: string;
+  goals: UserGoal[];
+  intelligence: IntelligenceProfile;
+}
+
+const FOCUS_DURATIONS: Record<FocusMode, number> = {
+  classic: 25,
+  deep: 50,
+};
+
+interface CalendarState {
+  activeFilters: EventCategory[];
+  searchQuery: string;
+  timezone: string;
+  customCategories: Array<{ name: string; color: string }>;
+
+  profile: UserProfile;
+  insights: SmartInsight[];
+
+  // ── Ignite Flow (Focus Sessions) ───────────────────────
+  activeFocusSession: FocusSession | null;
+  focusSessions: FocusSession[];
+  isTimerExpanded: boolean;
+  timerPosition: { x: number; y: number } | null;
+
+  currentTab: 'calendar' | 'profile';
+  isFocusMode: boolean;
+  isSidebarCollapsed: boolean;
+  view: ViewType;
+  currentDate: Date;
+
+  isModalOpen: boolean;
+  selectedEventId: string | null;
+  initialDateForNewEvent: string | undefined;
+  /** Pre-fill start time when opening AddEvent from a slot click */
+  initialTimeForNewEvent: string | undefined;
+
+  /** Custom categories */
+  addCustomCategory: (name: string, color: string) => boolean;
+  updateContext: (contextId: string, updates: { name: string; color: string }) => boolean;
+  deleteContext: (contextId: string) => boolean;
+  removeCustomCategory: (name: string) => void;
+
+
+  setView: (view: ViewType) => void;
+  setCurrentDate: (date: Date) => void;
+  setSearchQuery: (searchQuery: string) => void;
+  toggleFilter: (category: EventCategory) => void;
+  setTab: (tab: 'calendar' | 'profile') => void;
+  updateProfile: (profile: Partial<UserProfile>) => void;
+
+  // ── Ignite Flow Actions ────────────────────────────────
+  startFocusSession: (mode: FocusMode) => void;
+  completeFocusSession: () => void;
+  cancelFocusSession: () => void;
+  setTimerExpanded: (expanded: boolean) => void;
+  setTimerPosition: (pos: { x: number; y: number } | null) => void;
+
+  addGoal: (text: string) => void;
+  toggleGoal: (id: string) => void;
+  deleteGoal: (id: string) => void;
+  setFocusMode: (enabled: boolean) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+
+  openModal: (eventId?: string, initialDate?: string, initialTime?: string) => void;
+  closeModal: () => void;
+
+  calculateIntelligence: () => void;
+}
+
+const initialIntelligence: IntelligenceProfile = {
+  focusStreak: 0,
+  schedulingDensity: 0,
+  peakFocusHours: 'Determining...',
+  fragmentationScore: 0,
+  contextSwitchesToday: 0,
+  deepWorkBlocksToday: [],
+  lastAnalyzed: new Date().toISOString(),
+};
+
+const defaultProfile: UserProfile = {
+  name: 'Alexander Sterling',
+  email: 'alex@lumina.io',
+  role: 'Creative Director',
+  bio: 'Minimalist designer focusing on efficiency.',
+  goals: [],
+  intelligence: initialIntelligence
+};
+
+export const useCalendarStore = create<CalendarState>((set, get) => ({
+  activeFilters: [],
+  searchQuery: '',
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  customCategories: (() => {
+    try {
+      const raw = localStorage.getItem('lumina_custom_categories');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })(),
+  profile: (() => {
+    const stored = JSON.parse(localStorage.getItem('lumina_profile') || JSON.stringify(defaultProfile));
+    // Migration guard: ensure all fields have correct shape regardless of stored schema version
+    return {
+      ...defaultProfile,
+      ...stored,
+      goals: Array.isArray(stored.goals) ? stored.goals : [],
+      intelligence: { ...initialIntelligence, ...stored.intelligence },
+    };
+  })(),
+  insights: [],
+  activeFocusSession: JSON.parse(localStorage.getItem('lumina_active_focus_session') || 'null'),
+  focusSessions: [],
+  isTimerExpanded: JSON.parse(localStorage.getItem('lumina_timer_expanded') || 'true'),
+  timerPosition: JSON.parse(localStorage.getItem('lumina_timer_position') || 'null'),
+  currentTab: 'calendar',
+  isFocusMode: false,
+  isSidebarCollapsed: false,
+  view: ViewType.MONTH,
+  currentDate: new Date(),
+
+  isModalOpen: false,
+  selectedEventId: null,
+  initialDateForNewEvent: undefined,
+  initialTimeForNewEvent: undefined,
+
+  addCustomCategory: (name, color) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return false;
+
+    const state = get();
+    const reservedNames = new Set(CATEGORIES.map((category) => category.name.toLowerCase()));
+    const exists = state.customCategories.some(c => c.name.toLowerCase() === trimmedName.toLowerCase())
+      || reservedNames.has(trimmedName.toLowerCase());
+    if (exists) return false;
+
+    const newCategories = [...state.customCategories, { name: trimmedName, color }];
+    localStorage.setItem('lumina_custom_categories', JSON.stringify(newCategories));
+    set({ customCategories: newCategories });
+    return true;
+  },
+
+  updateContext: (contextId, updates) => {
+    const trimmedName = updates.name.trim();
+    if (!trimmedName) return false;
+
+    const state = get();
+    const reservedNames = new Set(CATEGORIES.map((category) => category.name.toLowerCase()));
+    const context = state.customCategories.find((category) => category.name === contextId);
+    if (!context) return false;
+
+    const duplicate = state.customCategories.some((category) =>
+      category.name !== contextId && category.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicate || reservedNames.has(trimmedName.toLowerCase())) return false;
+
+    const newCategories = state.customCategories.map((category) =>
+      category.name === contextId
+        ? { ...category, name: trimmedName, color: updates.color }
+        : category
+    );
+    localStorage.setItem('lumina_custom_categories', JSON.stringify(newCategories));
+
+    const nextFilters = state.activeFilters.map((filter) => filter === contextId ? trimmedName : filter);
+    useTaskBoardStore.getState().renameContextReference(contextId, trimmedName);
+
+    set({ customCategories: newCategories, activeFilters: nextFilters });
+    return true;
+  },
+
+  deleteContext: (contextId) => {
+    const state = get();
+    const exists = state.customCategories.some((category) => category.name === contextId);
+    if (!exists) return false;
+
+    const newCategories = state.customCategories.filter((category) => category.name !== contextId);
+    const nextFilters = state.activeFilters.filter((filter) => filter !== contextId);
+    localStorage.setItem('lumina_custom_categories', JSON.stringify(newCategories));
+    useTaskBoardStore.getState().clearContextReference(contextId);
+    set({ customCategories: newCategories, activeFilters: nextFilters });
+    return true;
+  },
+
+  removeCustomCategory: (name) => {
+    get().deleteContext(name);
+  },
+
+
+  setView: (view) => set({ view }),
+  setCurrentDate: (currentDate) => set({ currentDate }),
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  toggleFilter: (category) => set((state) => ({
+    activeFilters: state.activeFilters.includes(category)
+      ? state.activeFilters.filter(f => f !== category)
+      : [...state.activeFilters, category]
+  })),
+  setTab: (currentTab) => set({ currentTab }),
+  setFocusMode: (isFocusMode) => set({ isFocusMode }),
+  setSidebarCollapsed: (isSidebarCollapsed) => set({ isSidebarCollapsed }),
+
+  updateProfile: (profile) => set((state) => {
+    const next = { ...state.profile, ...profile };
+    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    return { profile: next };
+  }),
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Ignite Flow — Simple focus session launcher
+  // No phases, no gamification, no auto-chaining.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  startFocusSession: (mode: FocusMode) => {
+    const durationMinutes = FOCUS_DURATIONS[mode];
+    const session: FocusSession = {
+      id: Math.random().toString(36).substring(2, 9),
+      mode,
+      startedAt: new Date().toISOString(),
+      durationMinutes,
+      status: 'running',
+    };
+    set({ activeFocusSession: session, isTimerExpanded: true });
+    localStorage.setItem('lumina_active_focus_session', JSON.stringify(session));
+    localStorage.setItem('lumina_timer_expanded', 'true');
+  },
+
+  completeFocusSession: () => {
+    const session = get().activeFocusSession;
+    if (!session) return;
+    const endedAt = new Date().toISOString();
+    const start = new Date(session.startedAt);
+    const end = new Date(endedAt);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const completed: FocusSession = { ...session, status: 'completed', endedAt };
+    // Log as a calendar event
+    useCalendarEventsStore.getState().addEvent({
+      id: Math.random().toString(36).substring(2, 9),
+      title: session.mode === 'classic' ? 'Focus: Quick Session' : 'Focus: Deep Work',
+      description: `${session.durationMinutes}m focus session`,
+      date: formatDateISO(start),
+      startTime: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
+      endTime: `${pad(end.getHours())}:${pad(end.getMinutes())}`,
+      category: 'Focus',
+      color: '#6D59E0',
+      timezone: get().timezone,
+      completed: true,
+    });
+    set((state) => ({
+      activeFocusSession: null,
+      focusSessions: [...state.focusSessions, completed],
+    }));
+    localStorage.removeItem('lumina_active_focus_session');
+    notify('Focus session complete.');
+    get().calculateIntelligence();
+  },
+
+  cancelFocusSession: () => {
+    set({ activeFocusSession: null });
+    localStorage.removeItem('lumina_active_focus_session');
+  },
+
+  setTimerExpanded: (isTimerExpanded) => {
+    set({ isTimerExpanded });
+    localStorage.setItem('lumina_timer_expanded', JSON.stringify(isTimerExpanded));
+  },
+
+  setTimerPosition: (timerPosition) => {
+    set({ timerPosition });
+    localStorage.setItem('lumina_timer_position', JSON.stringify(timerPosition));
+  },
+
+  calculateIntelligence: () => {
+    const events = useCalendarEventsStore.getState().events;
+    const { profile } = get();
+    const todayStr = formatDateISO(new Date());
+    const todayEvents = events
+      .filter(e => e.date === todayStr)
+      .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+    // ── 1. Focus Streak ───────────────────────────────────────────────────────
+    let focusStreak = 0;
+    const streakDate = new Date();
+    while (true) {
+      const ds = formatDateISO(streakDate);
+      if (!events.some(e => e.date === ds && e.category === 'Focus')) break;
+      focusStreak++;
+      streakDate.setDate(streakDate.getDate() - 1);
+    }
+
+    // ── 2. Scheduling Density ─────────────────────────────────────────────────
+    let dayTotalMinutes = 0;
+    todayEvents.forEach(e => {
+      dayTotalMinutes += Math.max(0, timeToMinutes(e.endTime) - timeToMinutes(e.startTime));
+    });
+    const schedulingDensity = Math.min(100, Math.round((dayTotalMinutes / 1440) * 100));
+
+    // ── 3. Peak Focus Hours ───────────────────────────────────────────────────
+    const focusHourMap: Record<number, number> = {};
+    events.filter(e => e.category === 'Focus').forEach(e => {
+      const h = parseInt(e.startTime.split(':')[0], 10);
+      focusHourMap[h] = (focusHourMap[h] || 0) + 1;
+    });
+    const sortedHours = Object.entries(focusHourMap).sort((a, b) => Number(b[1]) - Number(a[1]));
+    let peakFocusHours = 'Determining...';
+    if (sortedHours.length > 0) {
+      const h = parseInt(sortedHours[0][0], 10);
+      peakFocusHours = `${h}:00 – ${h + 2}:00`;
+    }
+
+    // ── 4. Fragmentation Score ────────────────────────────────────────────────
+    // Counts gaps < 30min between consecutive events + category switches (0–100)
+    let smallGaps = 0;
+    let catSwitches = 0;
+    for (let i = 1; i < todayEvents.length; i++) {
+      const gap = timeToMinutes(todayEvents[i].startTime) - timeToMinutes(todayEvents[i - 1].endTime);
+      if (gap >= 0 && gap < 30) smallGaps++;
+      if (todayEvents[i].category !== todayEvents[i - 1].category) catSwitches++;
+    }
+    const fragmentationScore = Math.min(100, smallGaps * 20 + catSwitches * 10);
+
+    // ── 5. Context Switches Today ─────────────────────────────────────────────
+    const contextSwitchesToday = catSwitches;
+
+    // ── 6. Deep Work Blocks (≥60 min Focus, no overlap) ──────────────────────
+    const deepWorkBlocksToday: Array<{ start: string; end: string }> = [];
+    todayEvents.filter(e => e.category === 'Focus').forEach(e => {
+      if (timeToMinutes(e.endTime) - timeToMinutes(e.startTime) >= 60) {
+        deepWorkBlocksToday.push({ start: e.startTime, end: e.endTime });
+      }
+    });
+
+    // ── 7. Best Focus Slot (next 3 days, 8–18, prefer peak hour) ─────────────
+    const peakHour = sortedHours.length > 0 ? parseInt(sortedHours[0][0], 10) : 9;
+    let suggestedFocusSlot: IntelligenceProfile['suggestedFocusSlot'];
+    const pad = (n: number) => String(n).padStart(2, '0');
+    outer: for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
+      const d = new Date();
+      d.setDate(d.getDate() + dayOffset);
+      const dStr = formatDateISO(d);
+      const dayEvs = events.filter(e => e.date === dStr);
+      const startHours = [...Array.from({ length: 10 }, (_, i) => Math.max(8, peakHour - 1) + i)]
+        .filter(h => h <= 16); // latest start for 90min block = 16:00
+      for (const startH of startHours) {
+        const slotStart = startH * 60;
+        const slotEnd = slotStart + 90;
+        const isFree = !dayEvs.some(e => {
+          const eStart = timeToMinutes(e.startTime);
+          const eEnd = timeToMinutes(e.endTime);
+          return eStart < slotEnd && eEnd > slotStart;
+        });
+        if (isFree) {
+          suggestedFocusSlot = {
+            date: dStr,
+            start: `${pad(startH)}:00`,
+            end: `${pad(startH + 1)}:30`,
+          };
+          break outer;
+        }
+      }
+    }
+
+    const nextIntel: IntelligenceProfile = {
+      focusStreak,
+      schedulingDensity,
+      peakFocusHours,
+      fragmentationScore,
+      contextSwitchesToday,
+      deepWorkBlocksToday,
+      suggestedFocusSlot,
+      lastAnalyzed: new Date().toISOString(),
+    };
+
+    const nextProfile = { ...profile, intelligence: nextIntel };
+    set({ profile: nextProfile });
+    localStorage.setItem('lumina_profile', JSON.stringify(nextProfile));
+  },
+
+  addGoal: (text) => set((state) => {
+    const newGoal = { id: Math.random().toString(36).substr(2, 9), text, completed: false };
+    const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
+    const next = { ...state.profile, goals: [...goals, newGoal] };
+    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    return { profile: next };
+  }),
+
+  toggleGoal: (id) => set((state) => {
+    const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
+    const next = { ...state.profile, goals: goals.map(g => g.id === id ? { ...g, completed: !g.completed } : g) };
+    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    return { profile: next };
+  }),
+
+  deleteGoal: (id) => set((state) => {
+    const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
+    const next = { ...state.profile, goals: goals.filter(g => g.id !== id) };
+    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    return { profile: next };
+  }),
+
+  openModal: (eventId, initialDate, initialTime) => set({
+    isModalOpen: true,
+    selectedEventId: eventId || null,
+    initialDateForNewEvent: initialDate,
+    initialTimeForNewEvent: initialTime,
+  }),
+  closeModal: () => set({
+    isModalOpen: false,
+    selectedEventId: null,
+    initialDateForNewEvent: undefined,
+    initialTimeForNewEvent: undefined,
+  }),
+
+}));
