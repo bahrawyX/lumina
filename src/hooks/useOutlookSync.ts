@@ -3,16 +3,22 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
-import { mapOutlookEventToLuminaEvent } from '../lib/outlook/outlookEvents';
+import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
+import * as eventsPersistence from '../lib/persistence/eventsPersistence';
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Periodically calls POST /api/sync/outlook to persist Outlook events to the DB,
+ * then refreshes the main calendar events store from the DB so they appear in
+ * the calendar view alongside Google and local events.
+ */
 export function useOutlookSync() {
   const timezone = useCalendarStore((s) => s.timezone);
   const outlookConnected = usePlannerStore((s) => s.outlookConnected);
-  const setOutlookEvents = usePlannerStore((s) => s.setOutlookEvents);
   const setOutlookSyncing = usePlannerStore((s) => s.setOutlookSyncing);
   const setOutlookConnected = usePlannerStore((s) => s.setOutlookConnected);
+  const setOutlookEvents = usePlannerStore((s) => s.setOutlookEvents);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const runSync = useCallback(async () => {
@@ -24,8 +30,8 @@ export function useOutlookSync() {
         body: JSON.stringify({ timezone }),
       });
 
-      if (res.status === 401 || res.status === 404) {
-        // Token expired or integration not found — mark disconnected
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
+        // Token expired or integration removed — mark disconnected
         setOutlookConnected(false);
         setOutlookEvents([]);
         return;
@@ -36,30 +42,22 @@ export function useOutlookSync() {
         return;
       }
 
-      const data = (await res.json()) as { events?: unknown[] };
-      const rawEvents = Array.isArray(data.events) ? data.events : [];
+      // Events are now in the DB. Refresh the main events store so they appear
+      // in the calendar alongside Google and local events.
+      const freshEvents = await eventsPersistence.fetchAllForCurrentUser();
+      useCalendarEventsStore.setState({
+        events: freshEvents,
+        dbHydrated: true,
+      });
 
-      // Map Microsoft Graph events to Lumina's CalendarEvent shape
-      const mapped = rawEvents
-        .map((e) => {
-          try {
-            return mapOutlookEventToLuminaEvent(
-              e as Parameters<typeof mapOutlookEventToLuminaEvent>[0],
-              timezone,
-            );
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean);
-
-      setOutlookEvents(mapped as ReturnType<typeof mapOutlookEventToLuminaEvent>[]);
+      // Clear in-memory Outlook events — they are now served from the DB
+      setOutlookEvents([]);
     } catch (err) {
       console.error('[useOutlookSync]', err);
     } finally {
       setOutlookSyncing(false);
     }
-  }, [timezone, setOutlookEvents, setOutlookSyncing, setOutlookConnected]);
+  }, [timezone, setOutlookSyncing, setOutlookConnected, setOutlookEvents]);
 
   useEffect(() => {
     if (!outlookConnected) return;

@@ -256,6 +256,10 @@ const AppSidebar: React.FC = () => {
 
   const handleOutlookConnect = React.useCallback(async () => {
     if (outlookConnected) {
+      // Disconnect: remove integration row server-side, clear local state
+      await fetch('/api/integrations/microsoft/disconnect', { method: 'POST' }).catch(
+        () => { /* non-critical, best-effort */ },
+      );
       clearOutlookData();
       setOutlookConnected(false);
       setOutlookEvents([]);
@@ -295,6 +299,10 @@ const AppSidebar: React.FC = () => {
 
   const handleGoogleCalendarConnect = React.useCallback(async () => {
     if (googleCalConnected) {
+      // Disconnect: remove integration row server-side, clear local state
+      await fetch('/api/integrations/google/disconnect', { method: 'POST' }).catch(
+        () => { /* non-critical, best-effort */ },
+      );
       setGoogleCalConnected(false);
       return;
     }

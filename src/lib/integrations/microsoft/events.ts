@@ -2,75 +2,86 @@ import 'server-only';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDatabase } from '@/lib/db';
 import { events } from '@/db/schema';
-import { googleFetch } from './client';
-import { mapGoogleEvent, type GoogleEventsListResponse } from './mapper';
+import { getMicrosoftAccessToken } from './token';
+import { mapMicrosoftEvent, type MicrosoftEvent } from './mapper';
 
 const BATCH_SIZE = 100;
+const GRAPH_API = 'https://graph.microsoft.com/v1.0';
 
-// Initial sync window: 90 days ago → 365 days ahead
-function getSyncWindow(): { timeMin: string; timeMax: string } {
+function getSyncWindow(): { startDateTime: string; endDateTime: string } {
   const now = Date.now();
   return {
-    timeMin: new Date(now - 90 * 86_400_000).toISOString(),
-    timeMax: new Date(now + 365 * 86_400_000).toISOString(),
+    startDateTime: new Date(now - 30 * 86_400_000).toISOString(),
+    endDateTime:   new Date(now + 365 * 86_400_000).toISOString(),
   };
 }
 
 /**
- * Fetch all events from a single Google calendar within the sync window.
- * Handles pagination automatically.
+ * Fetches all events from a single Microsoft calendar using the calendarView
+ * endpoint (handles recurring events correctly). Paginates automatically.
+ *
+ * Prefer: `Prefer: outlook.timezone="UTC"` so all times arrive in UTC.
  */
-async function fetchGoogleEventsForCalendar(
+async function fetchMicrosoftEventsForCalendar(
   userId: string,
-  googleCalendarId: string,
-): Promise<GoogleEventsListResponse['items']> {
-  const { timeMin, timeMax } = getSyncWindow();
-  const allItems: GoogleEventsListResponse['items'] = [];
-  let pageToken: string | undefined;
+  msCalendarId: string,
+): Promise<MicrosoftEvent[]> {
+  const token = await getMicrosoftAccessToken(userId);
+  const { startDateTime, endDateTime } = getSyncWindow();
 
-  do {
-    const params: Record<string, string> = {
-      timeMin,
-      timeMax,
-      singleEvents: 'true',   // expand recurring events into instances
-      orderBy: 'startTime',
-      maxResults: '250',
+  const url = new URL(
+    `${GRAPH_API}/me/calendars/${encodeURIComponent(msCalendarId)}/calendarView`,
+  );
+  url.searchParams.set('startDateTime', startDateTime);
+  url.searchParams.set('endDateTime', endDateTime);
+  url.searchParams.set(
+    '$select',
+    'id,subject,start,end,isAllDay,isCancelled,lastModifiedDateTime,changeKey,location,organizer,onlineMeetingUrl,bodyPreview',
+  );
+  url.searchParams.set('$top', '250');
+
+  const allItems: MicrosoftEvent[] = [];
+  let nextUrl: string | null = url.toString();
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        Prefer: 'outlook.timezone="UTC"',
+      },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(
+        `[microsoft/events] calendarView ${res.status} for calendar ${msCalendarId}: ${text}`,
+      );
+    }
+
+    const page = (await res.json()) as {
+      value?: MicrosoftEvent[];
+      '@odata.nextLink'?: string;
     };
-    if (pageToken) params.pageToken = pageToken;
 
-    const page = await googleFetch<GoogleEventsListResponse>(
-      userId,
-      `/calendars/${encodeURIComponent(googleCalendarId)}/events`,
-      params,
-    );
-
-    allItems.push(...(page.items ?? []));
-    pageToken = page.nextPageToken;
-  } while (pageToken);
+    allItems.push(...(page.value ?? []));
+    nextUrl = page['@odata.nextLink'] ?? null;
+  }
 
   return allItems;
 }
 
-/**
- * Batch upsert events into the DB.
- *
- * Upsert key: (calendarId, externalEventId).
- * The unique partial index `events_calendar_external_event_unique` covers this pair
- * when externalEventId IS NOT NULL — all Google events have non-null IDs.
- *
- * On conflict: update mutable fields (title, description, times, etag, etc.).
- * Immutable fields (userId, calendarId, provider, source) are never overwritten.
- */
-async function batchUpsertEvents(
+async function batchUpsertMicrosoftEvents(
   userId: string,
   calendarId: string,
-  mappedEvents: ReturnType<typeof mapGoogleEvent>[],
+  mapped: ReturnType<typeof mapMicrosoftEvent>[],
 ): Promise<{ inserted: number; updated: number; skipped: number }> {
   const db = getDatabase();
   const now = new Date();
 
-  const valid = mappedEvents.filter((e) => e !== null) as NonNullable<
-    ReturnType<typeof mapGoogleEvent>
+  const valid = mapped.filter((e) => e !== null) as NonNullable<
+    ReturnType<typeof mapMicrosoftEvent>
   >[];
 
   if (valid.length === 0) return { inserted: 0, updated: 0, skipped: 0 };
@@ -83,11 +94,11 @@ async function batchUpsertEvents(
     const batch = valid.slice(i, i + BATCH_SIZE);
     const externalIds = batch.map((e) => e.externalEventId);
 
-    // Fetch etag + sourceUpdatedAt so we can skip truly unchanged events
+    // Fetch existing rows with etag + sourceUpdatedAt for smart skip
     const existing = await db
       .select({
         externalEventId: events.externalEventId,
-        externalEtag:    events.externalEtag,
+        externalEtag: events.externalEtag,
         sourceUpdatedAt: events.sourceUpdatedAt,
       })
       .from(events)
@@ -102,16 +113,16 @@ async function batchUpsertEvents(
       existing.map((r) => [r.externalEventId ?? '', r]),
     );
 
-    const toInsert    = batch.filter((e) => !existingMap.has(e.externalEventId));
-    const maybeUpdate = batch.filter((e) =>  existingMap.has(e.externalEventId));
+    const toInsert = batch.filter((e) => !existingMap.has(e.externalEventId));
+    const maybeUpdate = batch.filter((e) => existingMap.has(e.externalEventId));
 
     if (toInsert.length > 0) {
       await db.insert(events).values(
         toInsert.map((e) => ({
           userId,
           calendarId,
-          provider:   'google' as const,
-          source:     'google' as const,
+          provider:   'outlook' as const,
+          source:     'microsoft' as const,
           syncStatus: 'synced' as const,
           title:           e.title,
           description:     e.description,
@@ -129,7 +140,7 @@ async function batchUpsertEvents(
           lastSyncedAt: now,
           createdAt:    now,
           updatedAt:    now,
-          color:           '#6D59E0',
+          color:           '#0078D4',
           category:        'work',
           isCompleted:     false,
           isTaskGenerated: false,
@@ -141,13 +152,13 @@ async function batchUpsertEvents(
     for (const e of maybeUpdate) {
       const row = existingMap.get(e.externalEventId)!;
 
-      // Skip if Google's etag matches — event is identical
+      // Skip if changeKey matches (most authoritative signal)
       if (e.externalEtag && e.externalEtag === row.externalEtag) {
         skipped++;
         continue;
       }
 
-      // Skip if provider's updated timestamp is not newer
+      // Skip if provider's lastModified is not newer
       if (
         e.sourceUpdatedAt &&
         row.sourceUpdatedAt &&
@@ -188,30 +199,25 @@ async function batchUpsertEvents(
   return { inserted, updated, skipped };
 }
 
-export interface SyncCalendarEventsResult {
+export interface SyncMicrosoftCalendarEventsResult {
   calendarId: string;
-  googleCalendarId: string;
+  msCalendarId: string;
   inserted: number;
   updated: number;
   skipped: number;
 }
 
-/**
- * Sync all events for a single Google calendar into the DB.
- * Returns counts for monitoring.
- */
-export async function syncGoogleCalendarEvents(
+export async function syncMicrosoftCalendarEvents(
   userId: string,
   dbCalendarId: string,
-  googleCalendarId: string,
-): Promise<SyncCalendarEventsResult> {
-  const rawItems = await fetchGoogleEventsForCalendar(userId, googleCalendarId);
-
-  const mapped = rawItems.map(mapGoogleEvent);
+  msCalendarId: string,
+): Promise<SyncMicrosoftCalendarEventsResult> {
+  const rawItems = await fetchMicrosoftEventsForCalendar(userId, msCalendarId);
+  const mapped = rawItems.map(mapMicrosoftEvent);
   const valid = mapped.filter((e) => e !== null);
   const invalidCount = rawItems.length - valid.length;
 
-  const { inserted, updated, skipped } = await batchUpsertEvents(
+  const { inserted, updated, skipped } = await batchUpsertMicrosoftEvents(
     userId,
     dbCalendarId,
     mapped,
@@ -219,24 +225,20 @@ export async function syncGoogleCalendarEvents(
 
   return {
     calendarId: dbCalendarId,
-    googleCalendarId,
+    msCalendarId,
     inserted,
     updated,
     skipped: skipped + invalidCount,
   };
 }
 
-/**
- * Sync events for all Google calendars belonging to the user.
- */
-export async function syncAllGoogleCalendarEvents(
+export async function syncAllMicrosoftCalendarEvents(
   userId: string,
-  googleCalendars: Array<{ id: string; externalId: string }>,
-): Promise<SyncCalendarEventsResult[]> {
-  const results = await Promise.all(
-    googleCalendars.map(({ id, externalId }) =>
-      syncGoogleCalendarEvents(userId, id, externalId),
+  msCalendars: Array<{ id: string; externalId: string }>,
+): Promise<SyncMicrosoftCalendarEventsResult[]> {
+  return Promise.all(
+    msCalendars.map(({ id, externalId }) =>
+      syncMicrosoftCalendarEvents(userId, id, externalId),
     ),
   );
-  return results;
 }

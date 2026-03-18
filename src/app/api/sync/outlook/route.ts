@@ -1,73 +1,42 @@
-import { and, desc, eq, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { integrations } from '@/db/schema';
-import { getDatabase } from '@/lib/db';
+import { runFullMicrosoftSync } from '@/lib/integrations/microsoft/sync';
 
 /**
  * POST /api/sync/outlook
- * Triggers an Outlook calendar sync for the authenticated user.
- * Called by the client-side sync hook or by a background cron job.
+ *
+ * Triggers a full Outlook Calendar sync for the authenticated user.
+ * - Imports calendars from Microsoft Graph into the `calendars` table.
+ * - Fetches events via calendarView (90-day past → 365-day future).
+ * - Upserts events into the `events` table with etag-based smart skip.
+ * - Marks integration lastSyncAt on success.
+ *
+ * Response: { ok, calendarsImported, eventsInserted, eventsUpdated, eventsSkipped }
  */
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const userId = session.user.id;
+    const result = await runFullMicrosoftSync(session.user.id);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Outlook sync failed';
+    console.error('[POST /api/sync/outlook]', message);
 
-    const body = await request.json().catch(() => ({}));
-    const { timezone } = body as { timezone?: string };
-
-    const db = getDatabase();
-    const [integration] = await db
-      .select({
-        accessToken: integrations.accessToken,
-        expiresAt: integrations.expiresAt,
-        status: integrations.status,
-      })
-      .from(integrations)
-      .where(
-        and(
-          eq(integrations.userId, userId),
-          or(eq(integrations.provider, 'outlook'), eq(integrations.provider, 'microsoft'))
-        )
-      )
-      .orderBy(desc(integrations.updatedAt))
-      .limit(1);
-
-    if (!integration?.accessToken) {
-      return NextResponse.json({ error: 'Outlook integration not connected' }, { status: 404 });
+    if (
+      message.includes('No Microsoft integration found') ||
+      message.includes('not active') ||
+      message.includes('refresh token missing')
+    ) {
+      return NextResponse.json({ error: message }, { status: 403 });
     }
 
-    if (integration.status !== 'active') {
-      return NextResponse.json({ error: 'Outlook integration is not active' }, { status: 409 });
-    }
-
-    if (integration.expiresAt <= new Date()) {
-      return NextResponse.json({ error: 'Outlook integration token expired' }, { status: 401 });
-    }
-
-    void timezone;
-
-    // Import dynamically to keep the server bundle smaller
-    const { fetchOutlookEvents } = await import(
-      "@/lib/outlook/outlookEvents"
-    );
-
-    const events = await fetchOutlookEvents(integration.accessToken);
-
-    return NextResponse.json({
-      ok: true,
-      eventCount: events.length,
-      events,
-    });
-  } catch (error: unknown) {
-    console.error("[API /sync/outlook]", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Sync failed' },
-      { status: 500 }
+      { error: 'Outlook Calendar sync failed' },
+      { status: 500 },
     );
   }
 }
