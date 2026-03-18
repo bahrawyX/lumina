@@ -3,6 +3,20 @@
 import { useState } from "react";
 import { useLuminaAuthClient } from "@/components/AuthProvider";
 
+type SocialProvider = "google" | "microsoft";
+
+type SocialSignInResult = {
+  error?: { message?: string };
+  data?: { url?: string };
+  url?: string;
+};
+
+type AuthClientWithSocial = {
+  signIn: {
+    social?: (input: { provider: SocialProvider; callbackURL?: string }) => Promise<SocialSignInResult>;
+  };
+};
+
 type MicrosoftLoginButtonProps = {
   callbackURL?: string;
   className?: string;
@@ -23,7 +37,8 @@ export default function MicrosoftLoginButton({
     setIsLoading(true);
 
     try {
-      const socialSignIn = (authClient.signIn as any)?.social;
+      const typedClient = authClient as unknown as AuthClientWithSocial;
+      const socialSignIn = typedClient.signIn?.social;
       if (typeof socialSignIn !== "function") {
         setError("Microsoft sign-in is unavailable in this client build.");
         return;
