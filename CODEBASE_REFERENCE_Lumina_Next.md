@@ -1,330 +1,1009 @@
-# LUMINA NEXT — FULL CODEBASE REFERENCE
-> Intended for LLM and engineering consumption.
+    # LUMINA NEXT - FULL AUDIT REFERENCE
+> Intended for engineering and LLM consumption.
 >
-> This document mirrors the structure and intent of `CODEBASE_REFERENCE.md`, but targets the **Lumina Next.js architecture** (App Router + BetterAuth + Drizzle + Neon + provider-based sync).
+> This is a code-verified audit of the current repository state, including runtime route contracts, database schema, client/store contracts, and concrete database improvements.
 >
-> **Last updated:** March 14, 2026
+> Last updated: 2026-03-18
 
 ---
 
-## CHANGELOG (Next Migration Reference)
+## 0b. Auth vs Integration Separation Addendum (2026-03-18)
 
-| # | Area | Change |
-|---|------|--------|
-| 1 | Runtime model | Introduced Next.js App Router model (`app/` layouts/routes) while preserving existing feature modules. |
-| 2 | Auth | BetterAuth server route standardized at `app/api/auth/[...all]/route.ts`. |
-| 3 | Data layer | Drizzle + Neon wiring documented under `lib/db.ts` and `db/schema/*`. |
-| 4 | State model | Zustand remains the interactive source for UI state, drag lifecycle, planner/task/focus UX. |
-| 5 | Calendar providers | Provider abstraction documented: Local / Outlook / Google contract. |
-| 6 | Sync architecture | Background/API sync flow documented for Outlook/Google routes. |
-| 7 | Routing model | React Router paths mapped to App Router target paths. |
-| 8 | Core engine safety | Calendar overlap, slot, drag, scheduling engines preserved as immutable core logic. |
+This addendum captures the full auth/integration architecture split completed in this pass.
+
+### 0b.1 Auth-vs-integration separation
+
+**Auth flow (identity-only):**
+- Google login: `openid`, `email`, `profile` only. Calendar scopes removed from `auth.ts`.
+- Microsoft login: identity only. No calendar scopes.
+- Both providers are registered in `src/lib/auth.ts` without any calendar scopes.
+
+**Integration flow (explicit user action):**
+- User must explicitly click "Connect Google Calendar" or "Connect Outlook Calendar".
+- This triggers a **separate** OAuth popup that is NOT the BetterAuth sign-in flow.
+- Each integration popup is bound to the authenticated user's session (server verifies session on connect + callback).
+- Tokens are stored in the `integrations` table, keyed by `(userId, provider)`.
+
+### 0b.2 New API routes
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/integrations/google/connect` | GET | Initiates Google Calendar OAuth (calendar.readonly + offline + consent). Redirects to Google. |
+| `/api/integrations/google/callback` | GET | Receives Google code, exchanges for tokens, upserts into `integrations`, redirects to popup-complete. |
+| `/api/integrations/microsoft/connect` | GET | Initiates Microsoft Calendar OAuth (Calendars.Read + select_account). Redirects to Microsoft. |
+| `/api/integrations/microsoft/callback` | GET | Receives Microsoft code, exchanges for tokens, upserts into `integrations`, redirects to popup-complete. |
+| `/api/integrations/status` | GET | Returns `{ google: { connected }, microsoft: { connected } }` for the authenticated user. Never exposes tokens. |
+
+### 0b.3 CSRF state protection
+
+Each connect endpoint sets an httpOnly cookie (`lumina_google_connect_state` / `lumina_microsoft_connect_state`) with a random nonce. The callback verifies the URL `state` parameter matches the cookie before processing the OAuth code. Cookie expires after 10 minutes.
+
+### 0b.4 Token storage rule
+
+- Google tokens: stored in `integrations` with `provider='google'`, upserted on `(userId, provider)` unique index.
+- Microsoft tokens: stored in `integrations` with `provider='microsoft'`, upserted on `(userId, provider)` unique index.
+- If Google does not return a `refresh_token` (user already consented), the existing `refresh_token` from DB is preserved.
+- `refreshToken` is NEVER returned to the client.
+
+### 0b.5 Redirect URI manual prerequisites
+
+The following redirect URIs must be registered in external OAuth consoles before the integration flow works:
+
+- **Google Cloud Console**: `{BETTER_AUTH_URL}/api/integrations/google/callback`
+- **Azure AD App Registration**: `{BETTER_AUTH_URL}/api/integrations/microsoft/callback`
+
+The existing BetterAuth login redirect URIs (`/api/auth/callback/google`, `/api/auth/callback/microsoft`) remain registered and unchanged.
+
+### 0b.6 UI changes
+
+**Sidebar (`src/components/Sidebar.tsx`):**
+- `startSocialSignInPopup` removed. Replaced by `openIntegrationPopup(provider)` which opens `/api/integrations/{provider}/connect` directly in a popup.
+- `handleGoogleCalendarConnect` and `handleOutlookConnect` now use `openIntegrationPopup`.
+- `seedDemoOutlookEvent` usage removed.
+- `useEffect` on mount calls `/api/integrations/status` to restore connected state after page reload.
+
+**OnboardingFlow (`src/components/OnboardingFlow.tsx`):**
+- `seedDemoOutlookEvent` import removed.
+- `handleOutlookConnect` (provider='outlook') now uses `openIntegrationPopup('microsoft')` instead of BetterAuth social sign-in popup.
+- `startSocialSignInPopup('google')` for the Google LOGIN step remains correct and unchanged (login-only scopes).
+
+### 0b.7 Outlook sync fix
+
+**`src/hooks/useOutlookSync.ts`:**
+- Previously called `syncOutlookCalendar(timezone)` which was a dead stub returning localStorage events.
+- Now calls `POST /api/sync/outlook` (the real server endpoint that reads from `integrations` and calls Microsoft Graph).
+- Maps raw Graph API events using `mapOutlookEventToLuminaEvent` from `src/lib/outlook/outlookEvents.ts`.
+- Auto-disconnects (`setOutlookConnected(false)`) if the server responds 401 (token expired) or 404 (integration not connected).
+
+### 0b.8 MSAL status
+
+No MSAL library code exists in this codebase. Zero live usages of `PublicClientApplication`, `loginPopup`, `acquireTokenSilent`, `@azure/msal-*`. All references were already removed in a prior migration.
+
+### 0b.9 Microsoft: prompt=select_account
+
+`/api/integrations/microsoft/connect` includes `prompt=select_account` in the OAuth URL. This forces Microsoft to always present the account picker, preventing silent reuse of a cached developer account across different users.
+
+### 0b.10 Scope guardrails
+
+- No Zustand stores were modified in this pass.
+- No drag/layout/density/virtualization engine logic was modified.
+- Existing local event CRUD is unchanged.
+- BetterAuth login flows are unchanged.
 
 ---
 
-## TABLE OF CONTENTS
-1. [Project Overview](#1-project-overview)
-2. [Target Tech Stack](#2-target-tech-stack)
-3. [Routing Model (React Router → App Router)](#3-routing-model-react-router--app-router)
-4. [Directory Structure (Lumina Next)](#4-directory-structure-lumina-next)
-5. [Core Domain Modules (Unchanged)](#5-core-domain-modules-unchanged)
-6. [State Management (Zustand Stores)](#6-state-management-zustand-stores)
-7. [Auth Layer (BetterAuth)](#7-auth-layer-betterauth)
-8. [Database Layer (Drizzle + Neon)](#8-database-layer-drizzle--neon)
-9. [Calendar Provider System](#9-calendar-provider-system)
-10. [Sync + Background Workflows](#10-sync--background-workflows)
-11. [Key Pages / Feature Surfaces](#11-key-pages--feature-surfaces)
-12. [Hooks Map](#12-hooks-map)
-13. [Environment Variables](#13-environment-variables)
-14. [Performance Guarantees and Constraints](#14-performance-guarantees-and-constraints)
-15. [Migration Notes & Gotchas](#15-migration-notes--gotchas)
+## 0. Final Tightening Addendum (2026-03-18)
+
+This addendum captures the final strict DB-contract tightening pass completed after the baseline audit.
+
+### 0.1 Task status contract
+
+- Canonical DB and API write status remains: `todo | in_progress | done | archived`.
+- Legacy UI write value `doing` is still accepted and normalized to `in_progress`.
+- `archived` is no longer collapsed into `done`.
+- Default board query now excludes archived tasks explicitly, while allowing opt-in via `includeArchived=true|1`.
+
+### 0.2 Event provider and source vocabulary
+
+- Canonical provider at API and DB boundary: `local | google | outlook`.
+- Canonical source at API and DB boundary: `manual | google | microsoft | scheduler`.
+- Legacy values are normalized once at boundary:
+   - provider: `microsoft` -> `outlook`, `lumina/manual/local` -> `local`
+   - source: `lumina/local` -> `manual`, `outlook` -> `microsoft`
+- API event reads now return canonical source/provider from DB.
+- UI-facing persistence adapter maps canonical values to existing UI source vocabulary (`lumina | outlook`) without changing store contracts.
+
+### 0.3 Migration backfill explicit mapping
+
+- Migration `drizzle/0002_pink_komodo.sql` now includes explicit documented legacy source -> canonical provider mapping rules:
+   - `lumina/local/manual/scheduler` -> `local`
+   - `outlook/microsoft` -> `outlook`
+   - `google` -> `google`
+   - fallback -> `local`
+
+### 0.4 Sync security tightening
+
+- `/api/sync/outlook` is session-bound.
+- Provider token is loaded only from DB integration rows owned by `session.user.id`.
+- Client-supplied access tokens are not trusted.
+- Missing integration, non-active integration, and expired token all fail safely.
+
+### 0.5 Scope guardrails honored
+
+- No Zustand stores were modified in this tightening pass.
+- No drag/layout/density/virtualization engine logic was modified in this tightening pass.
+- Existing schema hardening constraints remain intact.
 
 ---
 
-## 1. PROJECT OVERVIEW
+## 1. Audit Scope
 
-**App Name:** Lumina  
-**Goal:** High-performance planner and calendar SaaS with:
-- Month / Week / Day timeline rendering
-- Dense overlap compaction and virtualization
-- Drag lifecycle isolation (pointer-safe)
-- Task board + daily planner timeline
-- Focus sessions and performance analytics
-- Outlook + Google provider sync model
-- BetterAuth sessions and Neon-backed persistence
+This document reflects the current behavior of:
 
-**Core rule:** migrate framework wiring only; keep domain engines and interaction systems intact.
+- Next.js App Router pages and API routes
+- BetterAuth server and client wiring
+- Drizzle schema definitions under `src/db/schema`
+- Zustand store contracts and persistence adapters
+- Calendar/task/focus data flow from UI -> API -> DB
 
----
+Primary audited files include:
 
-## 2. TARGET TECH STACK
-
-| Layer | Stack |
-|------|-------|
-| Frontend framework | Next.js (App Router) |
-| Language | TypeScript |
-| State | Zustand (client-side interaction state) |
-| Auth | BetterAuth |
-| ORM | Drizzle ORM |
-| Database | Neon Postgres |
-| UI | shadcn/ui + Tailwind |
-| Motion | Framer Motion |
-| External calendars | Microsoft Graph + Google Calendar |
-| Deployment target | Vercel |
+- `src/app/api/auth/[...all]/route.ts`
+- `src/app/api/events/route.ts`
+- `src/app/api/events/[id]/route.ts`
+- `src/app/api/tasks/route.ts`
+- `src/app/api/tasks/[id]/route.ts`
+- `src/app/api/focus-sessions/route.ts`
+- `src/app/api/focus-sessions/[id]/route.ts`
+- `src/app/api/sync/outlook/route.ts`
+- `src/app/api/sync/google/route.ts`
+- `src/lib/auth.ts`
+- `src/lib/auth-client.ts`
+- `src/lib/db.ts`
+- `src/db/schema/*.ts`
+- `src/store/*.ts`
+- `src/lib/persistence/*.ts`
 
 ---
 
-## 3. ROUTING MODEL (REACT ROUTER → APP ROUTER)
+## 2. System Architecture Summary
 
-| Legacy Path | App Router Target |
-|------------|-------------------|
-| `/` | `/app/(app)/page.tsx` |
-| `/onboarding` | `/app/onboarding/page.tsx` |
-| `/tasks` | `/app/(app)/tasks/page.tsx` |
-| `/plan` | `/app/(app)/plan/page.tsx` |
-| `/performance` | `/app/(app)/performance/page.tsx` |
-| `/intelligence` | `/app/(app)/intelligence/page.tsx` |
-| `/focus` | `/app/(app)/focus/page.tsx` |
-| `/focus/done` | `/app/(app)/focus/done/page.tsx` |
-| Auth API | `/app/api/auth/[...all]/route.ts` |
-| Sync APIs | `/app/api/sync/outlook/route.ts`, `/app/api/sync/google/route.ts` |
+### 2.1 Runtime layers
 
-**Navigation API target:** `next/navigation` (`useRouter`, `usePathname`) replacing `react-router-dom`.
+1. UI and interaction state
+   - Zustand stores handle local interaction speed, undo/redo, drag state, modal state, and ephemeral timer data.
+2. Persistence adapters
+   - Thin fetch wrappers under `src/lib/persistence` call API routes.
+3. API boundary
+   - Route handlers in `src/app/api/*` validate session and transform payloads.
+4. DB access
+   - Drizzle ORM + Neon client via `src/lib/db.ts`.
+5. Auth boundary
+   - BetterAuth configured in `src/lib/auth.ts` and exposed via catch-all auth route.
+
+### 2.2 Canonical source-of-truth status
+
+- Events: DB-backed (with dev-only localStorage fallback on hydration failure).
+- Tasks: DB-backed (with dev-only localStorage fallback on hydration failure).
+- Focus session history: DB-backed (active running timer state remains localStorage by design).
+- Daily planner items: localStorage-only today (DB table exists but runtime API is intentionally deferred).
 
 ---
 
-## 4. DIRECTORY STRUCTURE (LUMINA NEXT)
+## 3. Routing Inventory
 
-```txt
-/
-├── app/
-│   ├── layout.tsx
-│   └── api/
-│       └── auth/
-│           └── [...all]/
-│               └── route.ts
-│
-├── components/
-│   ├── calendar/
-│   ├── focus/
-│   ├── planner/
-│   ├── tasks/
-│   ├── performance/
-│   └── ui/
-│
-├── engine/
-│   ├── dragEngine.ts
-│   ├── overlapEngine.ts
-│   └── slotEngine.ts
-│
-├── hooks/
-├── lib/
-│   ├── auth.ts
-│   ├── auth-client.ts
-│   ├── db.ts
-│   └── outlook/
-│
-├── db/
-│   └── schema/
-│       ├── index.ts
-│       └── users.ts
-│
-├── store/
-├── utils/
-└── styles/
+### 3.1 App pages
+
+- `/` -> app shell main calendar
+- `/onboarding` -> onboarding flow
+- `/tasks` -> task board
+- `/plan` -> daily planning view
+- `/focus` -> focus view
+- `/performance` -> performance dashboard
+- `/intelligence` -> intelligence/profile view
+
+### 3.2 API routes
+
+- `/api/auth/[...all]`
+- `/api/events`
+- `/api/events/[id]`
+- `/api/tasks`
+- `/api/tasks/[id]`
+- `/api/focus-sessions`
+- `/api/focus-sessions/[id]`
+- `/api/sync/outlook` — POST, session-bound, reads token from `integrations` table
+- `/api/sync/google` — POST, delegates to `runFullGoogleSync`
+- `/api/integrations/google/connect` — GET, initiates Google Calendar OAuth popup
+- `/api/integrations/google/callback` — GET, handles Google Calendar OAuth callback
+- `/api/integrations/google/calendars` — GET/POST, list/import Google calendars
+- `/api/integrations/google/events/sync` — POST, sync Google events into DB
+- `/api/integrations/microsoft/connect` — GET, initiates Microsoft Calendar OAuth popup
+- `/api/integrations/microsoft/callback` — GET, handles Microsoft Calendar OAuth callback
+- `/api/integrations/status` — GET, returns connection status for both providers (no tokens)
+
+---
+
+## 4. Auth Layer (BetterAuth)
+
+### 4.1 Server config
+
+Location: `src/lib/auth.ts`
+
+- Auth engine: BetterAuth + Drizzle adapter (`provider: 'pg'`, `usePlural: true`).
+- Session DB requirement: throws hard error if DB client unavailable.
+- Email/password login enabled.
+- Social providers are conditionally registered:
+  - Google only if both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` exist.
+  - Microsoft only if both `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET` exist.
+
+### 4.2 Auth route adapters and aliases
+
+Location: `src/app/api/auth/[...all]/route.ts`
+
+- Alias 1: `/session` is normalized to `/get-session`.
+- Alias 2: `/sign-in/microsoft` is converted to `/sign-in/social` POST body with:
+  - `provider: "microsoft"`
+  - `callbackURL` from query or origin root fallback
+
+This alias protects compatibility with UI calls that still hit provider-specific sign-in path formats.
+
+### 4.3 Client auth
+
+Location: `src/lib/auth-client.ts`, `src/components/AuthProvider.tsx`, `src/hooks/useUser.ts`
+
+- Client base URL resolves to `${origin}/api/auth` when no public env override exists.
+- `useUser` exposes `{ user, session, isAuthenticated, isLoading, refetch }`.
+
+### 4.4 OAuth popup completion
+
+Location: `src/app/auth/popup-complete/page.tsx`
+
+- Popup page posts `lumina:oauth-complete` to opener on same origin and closes window.
+- Used by onboarding and sidebar popup social sign-in flows.
+
+---
+
+## 5. API Contracts (Current Behavior)
+
+All domain routes below require authenticated session except sync routes (see notes).
+
+### 5.1 Events API
+
+#### GET `/api/events`
+
+Response: `200` array of mapped event objects:
+
+```json
+[
+  {
+    "id": "uuid",
+    "title": "string",
+    "date": "YYYY-MM-DD",
+    "startTime": "HH:mm",
+    "endTime": "HH:mm",
+    "description": "string | undefined",
+    "location": "string | undefined",
+    "isAllDay": false,
+    "completed": false,
+    "category": "work",
+    "linkedTaskId": null
+  }
+]
 ```
 
----
+Notes:
 
-## 5. CORE DOMAIN MODULES (UNCHANGED)
+- `completed`, `category`, `linkedTaskId` are currently synthesized defaults, not loaded from DB columns.
 
-These systems are treated as stable domain logic and should not be rewritten during framework migration:
+#### POST `/api/events`
 
-1. **Calendar overlap engine** (`engine/overlapEngine.ts`, `utils/dateUtils.ts`)
-2. **Drag lifecycle** (`store/useDragStore.ts`, `engine/dragEngine.ts`, grid handlers in Day/Week views)
-3. **Timeline slot engine** (`engine/slotEngine.ts`)
-4. **Scheduling pipeline** (`utils/scheduling/*`)
-5. **Task board mechanics** (`components/tasks/*`, `store/useTaskBoardStore.ts`)
-6. **Planner timeline mechanics** (`components/planner/*`, `store/useDailyPlanStore.ts`)
-7. **Dense event compaction + virtualization** (`components/calendar/virtualization/*`)
+Request body accepted (minimum required):
 
----
-
-## 6. STATE MANAGEMENT (ZUSTAND STORES)
-
-| Store | Responsibility |
-|------|----------------|
-| `useCalendarStore` | App-wide calendar UI state, profile, modal, filters, focus mode toggles |
-| `useCalendarEventsStore` | Event CRUD + undo/redo history |
-| `useDragStore` | Pointer drag source-of-truth for event move lifecycle |
-| `useTaskBoardStore` | Task board columns, task updates, linked event association |
-| `useDailyPlanStore` | Planned timeline items per date |
-| `useFocusStore` | Active focus session/timer state and session history |
-| `usePlannerStore` | Outlook connection + synced external events |
-| `useOnboardingStore` | Onboarding completion/preferences |
-| `useToastStore` | Local toast queue |
-
-**State design principle:** server persists canonical records; Zustand handles fast client interaction state.
-
----
-
-## 7. AUTH LAYER (BETTERAUTH)
-
-### Server
-- `lib/auth.ts` defines BetterAuth instance.
-- `app/api/auth/[...all]/route.ts` proxies `GET` and `POST` to `auth.handler(request)`.
-
-### Client
-- `lib/auth-client.ts` creates auth client.
-- `components/AuthProvider.tsx` exposes auth context.
-- `hooks/useUser.ts` provides user/session convenience state.
-
-### Supported auth modes (target)
-- Email/password
-- Google OAuth
-- Microsoft OAuth
-
----
-
-## 8. DATABASE LAYER (DRIZZLE + NEON)
-
-### Current schema baseline
-- `db/schema/users.ts` (`users` table)
-- `db/schema/index.ts` exports schema
-
-### Target tables
-- `users`
-- `events`
-- `tasks`
-- `planner_items`
-- `focus_sessions`
-- `calendars`
-
-### DB access
-- `lib/db.ts` initializes Neon + Drizzle client.
-
----
-
-## 9. CALENDAR PROVIDER SYSTEM
-
-Provider contract (target):
-- `fetchEvents(userId, rangeStart, rangeEnd)`
-- `createEvent(userId, event)`
-- `updateEvent(userId, eventId, updates)`
-- `deleteEvent(userId, eventId)`
-
-Provider types:
-1. `local` (internal Lumina calendar)
-2. `google`
-3. `outlook`
-
-Current Outlook plumbing lives in:
-- `lib/outlook/outlookAuth.ts`
-- `lib/outlook/outlookEvents.ts`
-- `services/outlookSyncService.ts`
-- `hooks/useOutlookSync.ts`
-
----
-
-## 10. SYNC + BACKGROUND WORKFLOWS
-
-### Outlook
-1. Acquire token via MSAL.
-2. Fetch external events from Microsoft Graph.
-3. Normalize to Lumina event shape.
-4. Merge into planner/calendar store.
-5. Poll every 5 minutes (current hook pattern).
-
-### Google (target)
-1. OAuth token acquisition/storage.
-2. Provider fetch + diff.
-3. Upsert into user calendar records.
-4. Triggered by API route/cron.
-
-### Background execution target
-- API routes callable by Vercel Cron or worker queue.
-
----
-
-## 11. KEY PAGES / FEATURE SURFACES
-
-| Surface | Primary files |
-|--------|----------------|
-| Calendar shell | `pages/CalendarPage.tsx`, `components/MonthView.tsx`, `WeekView.tsx`, `DayView.tsx` |
-| Event modal | `components/EventModal.tsx` |
-| Sidebar/workspace navigation | `components/Sidebar.tsx` |
-| Tasks | `pages/TasksPage.tsx`, `components/tasks/*` |
-| Plan day | `pages/DailyPlanPage.tsx`, `components/planner/*` |
-| Focus mode | `pages/FocusPage.tsx`, `components/focus/*` |
-| Performance | `pages/PerformancePage.tsx`, `components/performance/*` |
-| Onboarding | `pages/OnboardingPage.tsx`, `components/OnboardingFlow.tsx` |
-
----
-
-## 12. HOOKS MAP
-
-| Hook | Role |
-|-----|------|
-| `useCalendar` | Computes visible event instances and filters |
-| `useOutlookSync` | Poll-based Outlook synchronization lifecycle |
-| `useUser` | BetterAuth session state for UI |
-| `useContributionYear` | Performance contribution data transforms |
-| `useVirtualWindow` | Generic list virtualization utility |
-| `useToast` | Toast convenience helper |
-
-Calendar virtualization-specific hooks are in `components/calendar/virtualization/*`.
-
----
-
-## 13. ENVIRONMENT VARIABLES
-
-Required / target env vars:
-
-```env
-DATABASE_URL=
-BETTER_AUTH_SECRET=
-BETTER_AUTH_URL=
-NEXT_PUBLIC_BETTER_AUTH_URL=
-GEMINI_API_KEY=
+```json
+{
+  "title": "required string",
+  "date": "required YYYY-MM-DD",
+  "startTime": "optional HH:mm",
+  "endTime": "optional HH:mm",
+  "description": "optional string",
+  "location": "optional string",
+  "isAllDay": "optional boolean"
+}
 ```
 
-Optional provider env vars (target):
+Behavior:
 
-```env
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-MICROSOFT_CLIENT_ID=
-MICROSOFT_CLIENT_SECRET=
+- Creates or reuses a primary local calendar (`provider=local`, `isPrimary=true`) per user.
+- Builds UTC timestamps from date/time.
+- Inserts event with `source='manual'`.
+
+Response:
+
+```json
+{ "id": "uuid" }
 ```
 
+#### PATCH `/api/events/[id]`
+
+Patchable fields:
+
+- `title`
+- `description`
+- `location`
+- `isAllDay`
+- `date` + `startTime` (rebuild `startTime` timestamp)
+- `date` + `endTime` (rebuild `endTime` timestamp)
+
+Ownership check:
+
+- Update where `events.id = :id AND events.userId = :sessionUserId`.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+#### DELETE `/api/events/[id]`
+
+Ownership check same as PATCH.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+### 5.2 Tasks API
+
+#### GET `/api/tasks`
+
+Response: mapped task array:
+
+```json
+[
+  {
+    "id": "uuid",
+    "title": "string",
+    "description": "string | undefined",
+    "status": "todo | in_progress | done",
+    "priority": "low | medium | high",
+    "dueDate": "YYYY-MM-DD | null",
+    "durationMinutes": 30,
+    "order": 0,
+    "context": null,
+    "linkedEventId": null,
+    "createdAt": "ISO",
+    "updatedAt": "ISO"
+  }
+]
+```
+
+Important mismatch:
+
+- API emits `in_progress` while client type system and board logic primarily use `doing`.
+
+#### POST `/api/tasks`
+
+Request body accepted:
+
+```json
+{
+  "title": "required string",
+  "description": "optional string",
+  "status": "optional todo|in_progress|done",
+  "priority": "optional low|medium|high",
+  "dueDate": "optional ISO/date string or null",
+  "durationMinutes": "optional number"
+}
+```
+
+Response:
+
+```json
+{ "id": "uuid" }
+```
+
+#### PATCH `/api/tasks/[id]`
+
+Patchable fields:
+
+- `title`
+- `description`
+- `status` (`todo|in_progress|done`)
+- `priority`
+- `durationMinutes` -> mapped to `estimatedMinutes`
+- `dueDate` (`null` clears)
+
+Ownership check:
+
+- Update where `tasks.id = :id AND tasks.userId = :sessionUserId`.
+
+#### DELETE `/api/tasks/[id]`
+
+Ownership check same as PATCH.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+### 5.3 Focus Sessions API
+
+#### GET `/api/focus-sessions`
+
+Response shape:
+
+```json
+[
+  {
+    "id": "uuid",
+    "taskId": "uuid | ''",
+    "taskTitle": "",
+    "startTime": "ISO",
+    "endTime": "ISO",
+    "duration": 1500,
+    "completed": true
+  }
+]
+```
+
+Notes:
+
+- `taskTitle` is not persisted in DB and is returned as empty string.
+- `duration` is returned in seconds but DB stores `durationMinutes`.
+
+#### POST `/api/focus-sessions`
+
+Request body accepted:
+
+```json
+{
+  "startTime": "required ISO",
+  "endTime": "required ISO",
+  "duration": "required number (seconds)",
+  "taskId": "optional uuid"
+}
+```
+
+Behavior:
+
+- Validates timestamps and end > start.
+- Converts seconds to rounded minutes (minimum 1).
+
+Response:
+
+```json
+{ "id": "uuid" }
+```
+
+#### DELETE `/api/focus-sessions/[id]`
+
+Ownership check:
+
+- Delete where `focus_sessions.id = :id AND focus_sessions.userId = :sessionUserId`.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+### 5.4 Sync API
+
+#### POST `/api/sync/outlook`
+
+Request body accepted:
+
+```json
+{
+  "timezone": "optional string"
+}
+```
+
+Behavior:
+
+- Requires authenticated session (`401` if missing).
+- Loads the user's Microsoft integration token from `integrations` table (session-bound).
+- Returns `404` if integration not connected, `409` if status is not active, `401` if token is expired.
+- Calls `fetchOutlookEvents(accessToken)` via Microsoft Graph.
+- Returns `{ ok, eventCount, events }` where events are raw Graph API shapes.
+- Client (`useOutlookSync`) maps events using `mapOutlookEventToLuminaEvent`.
+- Client auto-disconnects on `401`/`404` responses.
+
+Security: client-supplied tokens are never used. Token is always loaded from DB by `session.user.id`.
+
+#### POST `/api/sync/google`
+
+Behavior:
+
+- Requires authenticated session.
+- Delegates to `runFullGoogleSync(userId)`.
+- Returns sync result including imported calendar/event counts.
+
 ---
 
-## 14. PERFORMANCE GUARANTEES AND CONSTRAINTS
+## 6. Database Schema (Current)
 
-Must remain true post-migration:
-- No global rerender regressions in timeline views.
-- Drag remains pointer-smooth and isolated from unrelated state.
-- Virtualization and dense compaction stay active in heavy calendars.
-- Scheduler utilities keep deterministic outcomes.
-- Client interactions do not block on unnecessary server round-trips.
+### 6.1 Auth tables
+
+#### `users`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| email | varchar(255) | no | - | unique |
+| name | text | yes | null | display name |
+| email_verified | boolean | no | false | |
+| image | text | yes | null | |
+| avatar | text | yes | null | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes:
+
+- `users_email_idx` on `email`
+
+#### `accounts`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| account_id | text | no | - | provider account id |
+| provider_id | text | no | - | provider key |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| access_token | text | yes | null | |
+| refresh_token | text | yes | null | |
+| id_token | text | yes | null | |
+| access_token_expires_at | timestamptz | yes | null | |
+| refresh_token_expires_at | timestamptz | yes | null | |
+| scope | text | yes | null | |
+| password | text | yes | null | for password auth mode |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes and uniques:
+
+- `accounts_user_id_idx` on `user_id`
+- `accounts_provider_id_idx` on `provider_id`
+- unique `accounts_provider_account_unique` on (`provider_id`, `account_id`)
+
+#### `sessions`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| expires_at | timestamptz | no | - | |
+| token | text | no | - | unique token |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+| ip_address | text | yes | null | |
+| user_agent | text | yes | null | |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+
+Indexes and uniques:
+
+- unique `sessions_token_unique` on `token`
+- `sessions_user_id_idx` on `user_id`
+
+#### `verifications`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| identifier | text | no | - | |
+| value | text | no | - | |
+| expires_at | timestamptz | no | - | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Index:
+
+- `verifications_identifier_idx` on `identifier`
+
+### 6.2 Product/domain tables
+
+#### Enum: `calendar_provider`
+
+- `google`
+- `microsoft`
+- `local`
+
+#### `calendars`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| provider | calendar_provider | no | - | google/microsoft/local |
+| external_id | varchar(255) | yes | null | external calendar id |
+| name | varchar(255) | no | - | |
+| color | varchar(32) | no | '#6D59E0' | |
+| is_primary | boolean | no | false | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes:
+
+- `calendars_user_id_idx` on `user_id`
+- `calendars_provider_idx` on `provider`
+
+#### Enum: `event_source`
+
+- `manual`
+- `google`
+- `microsoft`
+- `scheduler`
+
+#### `events`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| calendar_id | uuid | no | - | FK -> calendars(id) cascade delete |
+| title | varchar(512) | no | - | |
+| description | text | yes | null | |
+| start_time | timestamptz | no | - | |
+| end_time | timestamptz | no | - | must be > start_time |
+| is_all_day | boolean | no | false | |
+| location | varchar(512) | yes | null | |
+| is_task_generated | boolean | no | false | |
+| source | event_source | no | manual | |
+| external_id | varchar(255) | yes | null | external provider event id |
+| last_synced_at | timestamptz | yes | null | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes and checks:
+
+- `events_user_start_time_idx` on (`user_id`, `start_time`)
+- `events_user_end_time_idx` on (`user_id`, `end_time`)
+- `events_calendar_id_idx` on `calendar_id`
+- `events_external_id_idx` on `external_id`
+- check `events_time_range_check`: `end_time > start_time`
+
+#### Enum: `task_status`
+
+- `todo`
+- `in_progress`
+- `done`
+
+#### Enum: `task_priority`
+
+- `low`
+- `medium`
+- `high`
+
+#### `tasks`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| title | varchar(512) | no | - | |
+| description | text | yes | null | |
+| status | task_status | no | todo | |
+| priority | task_priority | no | medium | |
+| estimated_minutes | integer | no | 30 | |
+| due_date | timestamptz | yes | null | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes:
+
+- `tasks_user_id_idx` on `user_id`
+- `tasks_status_idx` on `status`
+
+#### `planner_items`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| task_id | uuid | no | - | FK -> tasks(id) cascade delete |
+| start_time | timestamptz | no | - | |
+| end_time | timestamptz | no | - | must be > start_time |
+| is_auto_scheduled | boolean | no | false | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes and checks:
+
+- `planner_items_user_start_time_idx` on (`user_id`, `start_time`)
+- check `planner_items_time_range_check`: `end_time > start_time`
+
+#### `focus_sessions`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| task_id | uuid | yes | null | FK -> tasks(id), on delete set null |
+| start_time | timestamptz | no | - | |
+| end_time | timestamptz | no | - | |
+| duration_minutes | integer | no | - | must be > 0 |
+| created_at | timestamptz | no | now() | |
+
+Indexes and checks:
+
+- `focus_sessions_user_id_idx` on `user_id`
+- check `focus_sessions_duration_check`: `duration_minutes > 0`
+- check `focus_sessions_time_range_check`: `end_time > start_time`
+
+#### Enum: `integration_provider`
+
+- `google`
+- `microsoft`
+
+#### `integrations`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | gen random | PK |
+| user_id | uuid | no | - | FK -> users(id) cascade delete |
+| provider | integration_provider | no | - | google/microsoft |
+| access_token | text | no | - | |
+| refresh_token | text | no | - | |
+| expires_at | timestamptz | no | - | |
+| scope | text | yes | null | |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | |
+
+Indexes and uniques:
+
+- `integrations_user_provider_idx` on (`user_id`, `provider`)
+- unique `integrations_user_provider_unique` on (`user_id`, `provider`)
 
 ---
 
-## 15. MIGRATION NOTES & GOTCHAS
+## 7. Contract Matrix: User and Calendar Event
 
-1. Existing codebase is a Vite/React Router app with partial Next footprint (`app/layout.tsx`, auth API route).
-2. During migration, page logic should be reused as client components; avoid rewriting domain logic.
-3. Replace route/navigation adapters only (`react-router-dom` → `next/navigation`).
-4. Keep store shape stable to avoid regressions in drag/task/planner/focus UI.
-5. Move persistence source from localStorage to DB gradually via hydration boundaries, not full rewrite.
-6. Provider sync should be abstracted first, then connected to DB-backed per-user calendars.
+This section answers: "what a user should have" and "what a calendar event takes".
+
+### 7.1 User contract (current)
+
+#### DB user row (`users`)
+
+Required:
+
+- `id`
+- `email`
+- `email_verified`
+- `created_at`
+- `updated_at`
+
+Optional:
+
+- `name`
+- `image`
+- `avatar`
+
+#### Runtime session user (from BetterAuth)
+
+Typical fields consumed in app:
+
+- `user.id`
+- `user.email`
+- `user.name`
+- `user.image` (if present)
+- plus a `session` object with token/session metadata
+
+#### Recommended user profile extensions (if you want DB-first onboarding)
+
+Current onboarding values are local/persist-store only. If you want them in DB, add profile columns/table for:
+
+- `display_name`
+- `role`
+- `timezone`
+- `work_start_time`
+- `work_end_time`
+- `focus_preference`
+- `focus_session_length`
+- `focus_goals` (jsonb/text[])
+
+### 7.2 Calendar event contract (current)
+
+#### Client-side type (`CalendarEvent`)
+
+Current UI model includes many fields:
+
+- `id`, `title`, `description`, `date`, `startTime`, `endTime`, `timezone`
+- `location`, `category`, `color`
+- optional recurrence/exceptions/meetingLink
+- optional `completed`, `source`, `editable`, `outlookId`, `organizer`, `linkedTaskId`
+
+#### API create contract (`POST /api/events`)
+
+Required today:
+
+- `title`
+- `date`
+
+Optional today:
+
+- `startTime`, `endTime`, `description`, `location`, `isAllDay`
+
+Ignored today even if sent:
+
+- `timezone`, `category`, `color`, `completed`, `linkedTaskId`, recurrence fields, meeting link fields
+
+#### DB event row (`events`)
+
+Persisted today:
+
+- `user_id`, `calendar_id`, `title`, `description`, `start_time`, `end_time`, `is_all_day`, `location`, `source`, `external_id`, `last_synced_at`, `is_task_generated`
+
+Not persisted as first-class columns today:
+
+- `category`, `color`, `timezone`, `completed`, `linked_task_id`, recurrence rules, meeting link, organizer
 
 ---
 
-## APPENDIX — QUICK SYMBOL INDEX
+## 8. Store and Persistence Behavior
 
-- Auth: `auth`, `authClient`, `LuminaAuthProvider`, `useUser`
-- Calendar: `useCalendar`, `calculateOverlaps`, `buildHourOccupancyMap`, `calculateDragCollision`
-- Stores: `useCalendarStore`, `useCalendarEventsStore`, `useDragStore`, `useTaskBoardStore`, `useDailyPlanStore`, `useFocusStore`
-- Sync: `connectOutlook`, `acquireToken`, `fetchOutlookEvents`, `syncOutlookCalendar`
+### 8.1 Hydration
 
+`src/components/PersistenceBootstrap.tsx`:
+
+- Runs once in app shell.
+- Fetches events, tasks, focus history in parallel.
+- Calls each store hydrate method even for empty arrays, setting `dbHydrated=true`.
+- Dev-only fallback: if fetch fails, hydrate from localStorage.
+
+### 8.2 Persistence adapters
+
+`src/lib/persistence/eventsPersistence.ts`
+
+- fetch/create/update/delete wrappers for `/api/events`
+
+`src/lib/persistence/tasksPersistence.ts`
+
+- fetch/create/update/delete wrappers for `/api/tasks`
+
+`src/lib/persistence/focusPersistence.ts`
+
+- fetch/create/delete wrappers for `/api/focus-sessions`
+
+`src/lib/persistence/plannerPersistence.ts`
+
+- Explicit no-op stub by design until planner DB workflow is enabled.
+
+---
+
+## 9. Critical Gaps and Risks
+
+Severity uses: High, Medium, Low.
+
+1. High - task status enum mismatch across layers.
+   - DB/API use `in_progress`.
+   - Client task type and helpers use `doing`.
+   - Risk: column filtering/reordering logic divergence and inconsistent UI state.
+
+2. High - event contract mismatch (UI richer than persisted model).
+   - UI carries `category/color/timezone/linkedTaskId/completed`, but API/DB largely drop or synthesize these.
+   - Risk: silent data loss and non-deterministic behavior after reload.
+
+3. ~~High - sync routes are not session-guarded.~~ **RESOLVED (2026-03-18)**
+   - `/api/sync/outlook` is now fully session-bound.
+   - Token is loaded from `integrations` by `session.user.id`, never from request body.
+
+4. Medium - planner table exists but planner runtime is local-only.
+   - DB schema suggests persistence, app behavior does not use it.
+   - Risk: schema drift and false assumptions during analytics/reporting.
+
+5. ~~Medium - integrations table not wired into active sync path.~~ **RESOLVED (2026-03-18)**
+   - Integration connect flow writes tokens into `integrations` via dedicated OAuth callback endpoints.
+   - `/api/sync/outlook` reads tokens from `integrations` by `session.user.id`.
+   - Google Calendar sync reads from `integrations` via `getGoogleAccessToken()` in `src/lib/integrations/google/token.ts`.
+   - Integration status endpoint (`/api/integrations/status`) exposes connected state to UI without tokens.
+
+6. Medium - no unique DB guarantee for one primary local calendar per user.
+   - App logic creates or reuses one, but DB does not enforce uniqueness.
+
+7. Low - source vocabulary mismatch.
+   - DB event source enum: `manual/google/microsoft/scheduler`.
+   - Client event source type: `lumina/outlook`.
+
+---
+
+## 10. Recommended DB Improvement Plan
+
+### 10.1 P0 (must fix first)
+
+1. Unify task status vocabulary.
+   - Choose one canonical set and apply end-to-end.
+   - Recommended: use `todo/doing/done` everywhere in UI + API + DB, or keep `in_progress` everywhere and map once at UI boundary.
+
+2. Decide canonical event domain contract.
+   - If product needs category/color/linking/completion, add real DB columns and API support.
+
+3. Session-protect sync endpoints.
+   - Require auth session and bind provider operations to `session.user.id`.
+
+4. Define integration token ownership lifecycle.
+   - Persist OAuth tokens in `integrations` with refresh handling and expiry refresh job.
+
+### 10.2 P1 (strongly recommended)
+
+1. Enforce one primary local calendar per user.
+   - Add unique partial index on `(user_id)` where `provider='local' AND is_primary=true`.
+
+2. Strengthen external sync dedupe.
+   - Add unique index for provider event identity (for example `(calendar_id, external_id)` where external_id is not null).
+
+3. Add validation checks.
+   - `tasks.estimated_minutes > 0`.
+   - Optional stricter constraints around all-day event time handling.
+
+4. Decide planner persistence rollout.
+   - Either wire `planner_items` with API routes, or postpone schema to avoid dead tables.
+
+### 10.3 P2 (quality)
+
+1. Move onboarding profile fields into DB if cross-device consistency is required.
+2. Normalize due-date semantics to `date` (instead of timestamp) if time-of-day is not meaningful.
+3. Add audit columns/versioning strategy for conflict resolution if multi-device edits increase.
+
+---
+
+## 11. Suggested Target Contract (User + Event)
+
+This is a practical target if your objective is "make DB better" with minimal product breakage.
+
+### 11.1 Suggested `user_profiles` table
+
+Keep `users` for auth identity and add profile table:
+
+- `user_id` (pk/fk -> users.id)
+- `display_name` text
+- `role` text
+- `timezone` text not null
+- `work_start_time` time
+- `work_end_time` time
+- `focus_preference` enum (`morning|midday|evening|none`)
+- `focus_session_length` enum or integer minutes
+- `focus_goals` jsonb
+- `created_at`, `updated_at`
+
+### 11.2 Suggested event columns to close current gaps
+
+Add to `events` if they are product requirements:
+
+- `timezone` text not null default 'UTC'
+- `category` varchar(64)
+- `color` varchar(32)
+- `completed` boolean not null default false
+- `linked_task_id` uuid null references tasks(id) on delete set null
+- `organizer` text
+- `meeting_url` text
+- `recurrence_rule` jsonb
+- `recurrence_parent_id` uuid null references events(id)
+
+Then update GET/POST/PATCH route mappings to preserve these fields end-to-end.
+
+---
+
+## 12. Immediate Action Checklist
+
+1. Pick canonical task status enum and migrate one layer to match.
+2. Finalize event canonical schema (what must persist vs what can remain derived).
+3. Patch `/api/events` and `/api/events/[id]` to persist chosen event fields.
+4. Add auth checks to `/api/sync/outlook` and future Google sync route.
+5. Add DB uniqueness constraints for local primary calendar and external event identity.
+6. Decide planner persistence timeline and either implement routes or defer schema.
+
+---
+
+## 13. Quick Reality Check
+
+Today, the system is functional for core event/task/focus persistence and auth, but it is not yet schema-consistent across all layers.
+
+The highest-value database work is:
+
+- normalize contracts across UI/API/DB,
+- remove enum mismatches,
+- and persist the fields the UI already treats as first-class.
+
+That will eliminate silent data loss and make analytics/sync improvements much safer.

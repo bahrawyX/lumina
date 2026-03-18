@@ -1,13 +1,32 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import { runFullGoogleSync } from '@/lib/integrations/google/sync';
 
 /**
  * POST /api/sync/google
- * Triggers a Google Calendar sync for the authenticated user.
- * Placeholder — implement once Google OAuth tokens are stored.
+ * Convenience alias for a full Google Calendar sync.
+ * Delegates to /api/integrations/google/events/sync (full mode).
  */
-export async function POST(_request: Request) {
-  return NextResponse.json(
-    { error: "Google Calendar sync not yet implemented" },
-    { status: 501 }
-  );
+export async function POST(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const result = await runFullGoogleSync(session.user.id);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[POST /api/sync/google]', message);
+
+    if (
+      message.includes('No Google account linked') ||
+      message.includes('tokens are missing')
+    ) {
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
+
+    return NextResponse.json({ error: 'Google Calendar sync failed' }, { status: 500 });
+  }
 }

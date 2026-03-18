@@ -1,10 +1,9 @@
 import type { CalendarProvider, CalendarProviderEvent } from "./types";
-import { fetchOutlookEvents, mapOutlookEventToLuminaEvent } from "@/lib/outlook/outlookEvents";
-import { acquireToken } from "@/lib/outlook/outlookAuth";
 
 /**
  * OutlookCalendarProvider — syncs events via Microsoft Graph API.
- * Requires MSAL authentication on the client side.
+ * Uses access tokens supplied by the server-side integration OAuth flow
+ * (/api/integrations/microsoft/connect → callback → integrations table).
  */
 export class OutlookCalendarProvider implements CalendarProvider {
   readonly name = "outlook" as const;
@@ -14,24 +13,9 @@ export class OutlookCalendarProvider implements CalendarProvider {
     _rangeStart: Date,
     _rangeEnd: Date
   ): Promise<CalendarProviderEvent[]> {
-    const token = await acquireToken();
-    if (!token) return [];
-
-    const outlookEvents = await fetchOutlookEvents(token);
-    return outlookEvents.map((ev) => {
-      const mapped = mapOutlookEventToLuminaEvent(ev, "UTC");
-      return {
-        id: mapped.id,
-        title: mapped.title,
-        description: mapped.description,
-        start: `${mapped.date}T${mapped.startTime}`,
-        end: `${mapped.date}T${mapped.endTime}`,
-        location: mapped.location,
-        meetingLink: mapped.meetingLink?.url ?? mapped.meetingLink as any as string,
-        organizer: mapped.organizer,
-        providerEventId: ev.id,
-      };
-    });
+    // Server-side token retrieval is handled by /api/sync/outlook.
+    // This client-side provider is a no-op; callers should use the API route.
+    return [];
   }
 
   async createEvent(

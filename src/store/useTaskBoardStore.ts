@@ -7,25 +7,49 @@ import {
   normalizePersistedTasks,
 } from '../utils/taskBoard';
 import { useDailyPlanStore } from './useDailyPlanStore';
+import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 
-const STORAGE_KEY = 'lumina_tasks';
+const canUseStorage = typeof window !== 'undefined';
+const isDev = process.env.NODE_ENV === 'development';
 
-function saveTasks(tasks: Task[]): void {
+/** Returns null when userId is unknown in production — callers must guard on null. */
+function storageKey(userId: string | null): string | null {
+  if (userId) return `lumina_tasks_${userId}`;
+  return isDev ? 'lumina_tasks' : null;
+}
+
+function getStorageItem(key: string | null): string | null {
+  if (!key || !canUseStorage) return null;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    return localStorage.getItem(key);
   } catch {
-    // storage quota — fail silently
+    return null;
   }
 }
 
-function loadTasks(): Task[] {
+function setStorageItem(key: string | null, value: string): void {
+  if (!key || !canUseStorage) return;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+function saveTasks(tasks: Task[], userId: string | null): void {
+  setStorageItem(storageKey(userId), JSON.stringify(tasks));
+}
+
+function loadTasks(userId: string | null): Task[] {
+  try {
+    const key = storageKey(userId);
+    if (!key) return [];
+    const raw = getStorageItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     const normalized = normalizePersistedTasks(parsed);
     if (JSON.stringify(normalized) !== raw) {
-      saveTasks(normalized);
+      saveTasks(normalized, userId);
     }
     return normalized;
   } catch {
@@ -41,29 +65,45 @@ function uid(): string {
 
 interface TaskBoardState {
   tasks: Task[];
+  dbHydrated: boolean;
+  userId: string | null;
 
+  hydrateFromDb: (tasks: Task[]) => void;
+  hydrateFromDbFailed: () => void;
+  setUserId: (userId: string) => void;
   addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; dueDate?: string | null; durationMinutes?: number }) => void;
   updateTask: (id: string, patch: Partial<Omit<Task, 'id' | 'createdAt'>>) => void;
   deleteTask: (id: string) => void;
   unlinkEvent: (eventId: string) => void;
   renameContextReference: (fromContext: string, toContext: string) => void;
   clearContextReference: (context: string) => void;
-
-  /**
-   * Move a task to a new status column and optionally insert it at a specific
-   * index within that column's ordered list.
-   */
   moveTask: (id: string, toStatus: TaskStatus, toIndex?: number) => void;
-
-  /**
-   * Reorder tasks within the same column after a drag-and-drop completes.
-   * `orderedIds` is the new ordered array of task ids for that column.
-   */
   reorderColumn: (status: TaskStatus, orderedIds: string[]) => void;
 }
 
 export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
-  tasks: loadTasks(),
+  // DB is the source of truth — start empty, never read localStorage on init.
+  tasks: [],
+  dbHydrated: false,
+  userId: null,
+
+  setUserId: (userId) => {
+    set({ userId });
+  },
+
+  hydrateFromDb: (dbTasks) => {
+    if (get().dbHydrated) return;
+    set({ dbHydrated: true, tasks: dbTasks });
+  },
+
+  hydrateFromDbFailed: () => {
+    if (get().dbHydrated) return;
+    if (isDev) {
+      const fallback = loadTasks(get().userId);
+      set({ dbHydrated: true, tasks: fallback });
+    }
+  },
+
 
   addTask: ({ title, description, status, priority = 'medium', dueDate, durationMinutes }) => {
     const trimmed = title.trim();
@@ -95,9 +135,11 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
 
     set((state) => {
       const next = [...state.tasks, task];
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
+    // Fire-and-forget DB persistence
+    tasksPersistence.createOne(task);
   },
 
   updateTask: (id, patch) => {
@@ -144,7 +186,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
             : task
         );
 
-        saveTasks(next);
+        saveTasks(next, state.userId);
         return { tasks: next };
       }
 
@@ -174,20 +216,24 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       const otherTasks = remainingTasks.filter(task => task.status !== existing.status);
       const next = [...otherTasks, ...reindexedSourceTasks, updatedTask];
 
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
+    // Fire-and-forget DB persistence after updateTask resolves
+    tasksPersistence.updateOne(id, { ...patch });
   },
 
   deleteTask: (id) => {
     const task = get().tasks.find(t => t.id === id);
     set((state) => {
       const next = state.tasks.filter(t => t.id !== id);
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
     // Clean up any planner items referencing this task across all dates
     useDailyPlanStore.getState().removeAllByTaskId(id);
+    // Fire-and-forget DB persistence
+    tasksPersistence.deleteOne(id);
     // Clean up linked calendar event (lazy import to avoid circular dep)
     if (task?.linkedEventId) {
       import('./useCalendarEventsStore').then(({ useCalendarEventsStore }) =>
@@ -203,7 +249,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
           ? { ...task, linkedEventId: null, updatedAt: new Date().toISOString() }
           : task
       );
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
   },
@@ -216,7 +262,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
           ? { ...task, context: toContext, updatedAt: now }
           : task
       );
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
   },
@@ -229,7 +275,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
           ? { ...task, context: null, updatedAt: now }
           : task
       );
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
   },
@@ -281,9 +327,12 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
         ];
       }
 
-      saveTasks(finalTasks);
+      saveTasks(finalTasks, state.userId);
       return { tasks: finalTasks };
     });
+    // Fire-and-forget DB persistence for the moved task — commit-time only
+    const movedTask = get().tasks.find(t => t.id === id);
+    if (movedTask) tasksPersistence.updateOne(id, { status: toStatus, order: movedTask.order });
   },
 
   reorderColumn: (status, orderedIds) => {
@@ -299,9 +348,12 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
         .map((t, i) => ({ ...t!, status, order: i, updatedAt: now }));
 
       const next = [...otherTasks, ...reordered];
-      saveTasks(next);
+      saveTasks(next, state.userId);
       return { tasks: next };
     });
+    // Fire-and-forget DB persistence for reordered tasks — commit-time only
+    const updated = get().tasks.filter(t => t.status === status);
+    updated.forEach(t => tasksPersistence.updateOne(t.id, { order: t.order }));
   },
 }));
 

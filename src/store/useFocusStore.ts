@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as focusPersistence from '@/lib/persistence/focusPersistence';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,9 +31,14 @@ interface FocusState {
   activeSession: ActiveSession | null;
   timerState: TimerState;
   sessionHistory: FocusSession[];
+  dbHydrated: boolean;
+  userId: string | null;
 }
 
 interface FocusActions {
+  hydrateFromDb: (sessions: FocusSession[]) => void;
+  hydrateFromDbFailed: () => void;
+  setUserId: (userId: string) => void;
   startSession: (taskId: string, taskTitle: string, durationSecs?: number) => void;
   pauseSession: () => void;
   resumeSession: () => void;
@@ -44,8 +50,15 @@ interface FocusActions {
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'lumina_focus_sessions';
+const isDev = process.env.NODE_ENV === 'development';
+
 const ACTIVE_SESSION_KEY = 'lumina_focus_active_session';
+
+/** Returns null when userId is unknown in production — callers must guard on null. */
+function historyKey(userId: string | null): string | null {
+  if (userId) return `lumina_focus_sessions_${userId}`;
+  return isDev ? 'lumina_focus_sessions' : null;
+}
 
 type PersistedActiveSession = Omit<ActiveSession, 'runStartedAt'> & { wallClockStart: number; timerState: TimerState };
 
@@ -88,9 +101,11 @@ function loadActiveSession(): { session: ActiveSession; timerState: TimerState }
   }
 }
 
-function loadHistory(): FocusSession[] {
+function loadHistory(userId: string | null): FocusSession[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const key = historyKey(userId);
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -100,11 +115,13 @@ function loadHistory(): FocusSession[] {
   }
 }
 
-function saveHistory(sessions: FocusSession[]): void {
+function saveHistory(sessions: FocusSession[], userId: string | null): void {
   try {
+    const key = historyKey(userId);
+    if (!key) return;
     // Cap history at 500 entries to prevent unbounded storage growth
     const capped = sessions.slice(0, 500);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(capped));
+    localStorage.setItem(key, JSON.stringify(capped));
   } catch { /* quota errors — swallow */ }
 }
 
@@ -115,6 +132,7 @@ function genId(): string {
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
+  // Active session is ephemeral timer state — safe to restore from localStorage for page-reload resume.
   ...(() => {
     const restored = loadActiveSession();
     return {
@@ -122,7 +140,28 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
       timerState: (restored?.timerState ?? 'idle') as TimerState,
     };
   })(),
-  sessionHistory: loadHistory(),
+  // DB is the source of truth for session history — start empty, never read localStorage on init.
+  sessionHistory: [],
+  dbHydrated: false,
+  userId: null,
+
+  setUserId: (userId) => {
+    set({ userId });
+  },
+
+  hydrateFromDb(sessions) {
+    if (get().dbHydrated) return;
+    set({ dbHydrated: true, sessionHistory: sessions });
+  },
+
+  hydrateFromDbFailed() {
+    if (get().dbHydrated) return;
+    if (isDev) {
+      const fallback = loadHistory(get().userId);
+      set({ dbHydrated: true, sessionHistory: fallback });
+    }
+  },
+
 
   startSession(taskId, taskTitle, durationSecs = 25 * 60) {
     // Guard: if a session is already running, do nothing to prevent accidental loss
@@ -182,9 +221,11 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
       completed: true,
     };
     const history = [record, ...get().sessionHistory];
-    saveHistory(history);
+    saveHistory(history, get().userId);
     set({ activeSession: null, timerState: 'idle', sessionHistory: history });
     saveActiveSession(null, 'idle');
+    // Fire-and-forget DB persistence
+    focusPersistence.createOne(record);
   },
 
   cancelSession() {
@@ -203,9 +244,11 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
         completed: false,
       };
       const history = [record, ...get().sessionHistory];
-      saveHistory(history);
+      saveHistory(history, get().userId);
       set({ activeSession: null, timerState: 'idle', sessionHistory: history });
       saveActiveSession(null, 'idle');
+      // Fire-and-forget DB persistence
+      focusPersistence.createOne(record);
     } else {
       set({ activeSession: null, timerState: 'idle' });
       saveActiveSession(null, 'idle');

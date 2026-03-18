@@ -57,15 +57,18 @@ const TimerCallout: React.FC = () => {
   const w = isTimerExpanded ? EXPANDED_W : COLLAPSED_W;
   const h = isTimerExpanded ? EXPANDED_H : COLLAPSED_H;
 
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : EXPANDED_W + PAD * 2;
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : EXPANDED_H + PAD * 2;
+
   const defaultCoords = useMemo(() => ({
-    x: window.innerWidth - EXPANDED_W - PAD,
+    x: viewportWidth - EXPANDED_W - PAD,
     y: 80,
-  }), []);
+  }), [viewportWidth]);
 
   const rawX = timerPosition?.x ?? defaultCoords.x;
   const rawY = timerPosition?.y ?? defaultCoords.y;
-  const currentX = clamp(rawX, PAD, window.innerWidth - w - PAD);
-  const currentY = clamp(rawY, PAD, window.innerHeight - h - PAD);
+  const currentX = clamp(rawX, PAD, viewportWidth - w - PAD);
+  const currentY = clamp(rawY, PAD, viewportHeight - h - PAD);
 
   // Re-clamp when widget resizes
   useEffect(() => {

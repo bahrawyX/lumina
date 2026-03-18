@@ -110,21 +110,55 @@ const defaultProfile: UserProfile = {
   intelligence: initialIntelligence
 };
 
+const canUseStorage = typeof window !== 'undefined';
+
+function getStorageItem(key: string): string | null {
+  if (!canUseStorage) return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setStorageItem(key: string, value: string): void {
+  if (!canUseStorage) return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (private mode/quota) to keep UI functional.
+  }
+}
+
+function removeStorageItem(key: string): void {
+  if (!canUseStorage) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage remove failures.
+  }
+}
+
+function readStorageJSON<T>(key: string, fallback: T): T {
+  const raw = getStorageItem(key);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   activeFilters: [],
   searchQuery: '',
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   customCategories: (() => {
-    try {
-      const raw = localStorage.getItem('lumina_custom_categories');
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    const parsed = readStorageJSON<unknown>('lumina_custom_categories', []);
+    return Array.isArray(parsed) ? parsed : [];
   })(),
   profile: (() => {
-    const stored = JSON.parse(localStorage.getItem('lumina_profile') || JSON.stringify(defaultProfile));
+    const stored = readStorageJSON<Partial<UserProfile>>('lumina_profile', defaultProfile);
     // Migration guard: ensure all fields have correct shape regardless of stored schema version
     return {
       ...defaultProfile,
@@ -134,10 +168,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     };
   })(),
   insights: [],
-  activeFocusSession: JSON.parse(localStorage.getItem('lumina_active_focus_session') || 'null'),
+  activeFocusSession: readStorageJSON<FocusSession | null>('lumina_active_focus_session', null),
   focusSessions: [],
-  isTimerExpanded: JSON.parse(localStorage.getItem('lumina_timer_expanded') || 'true'),
-  timerPosition: JSON.parse(localStorage.getItem('lumina_timer_position') || 'null'),
+  isTimerExpanded: readStorageJSON<boolean>('lumina_timer_expanded', true),
+  timerPosition: readStorageJSON<{ x: number; y: number } | null>('lumina_timer_position', null),
   currentTab: 'calendar',
   isFocusMode: false,
   isSidebarCollapsed: false,
@@ -160,7 +194,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     if (exists) return false;
 
     const newCategories = [...state.customCategories, { name: trimmedName, color }];
-    localStorage.setItem('lumina_custom_categories', JSON.stringify(newCategories));
+    setStorageItem('lumina_custom_categories', JSON.stringify(newCategories));
     set({ customCategories: newCategories });
     return true;
   },
@@ -184,7 +218,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
         ? { ...category, name: trimmedName, color: updates.color }
         : category
     );
-    localStorage.setItem('lumina_custom_categories', JSON.stringify(newCategories));
+    setStorageItem('lumina_custom_categories', JSON.stringify(newCategories));
 
     const nextFilters = state.activeFilters.map((filter) => filter === contextId ? trimmedName : filter);
     useTaskBoardStore.getState().renameContextReference(contextId, trimmedName);
@@ -200,7 +234,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
     const newCategories = state.customCategories.filter((category) => category.name !== contextId);
     const nextFilters = state.activeFilters.filter((filter) => filter !== contextId);
-    localStorage.setItem('lumina_custom_categories', JSON.stringify(newCategories));
+    setStorageItem('lumina_custom_categories', JSON.stringify(newCategories));
     useTaskBoardStore.getState().clearContextReference(contextId);
     set({ customCategories: newCategories, activeFilters: nextFilters });
     return true;
@@ -225,7 +259,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
   updateProfile: (profile) => set((state) => {
     const next = { ...state.profile, ...profile };
-    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
@@ -244,8 +278,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       status: 'running',
     };
     set({ activeFocusSession: session, isTimerExpanded: true });
-    localStorage.setItem('lumina_active_focus_session', JSON.stringify(session));
-    localStorage.setItem('lumina_timer_expanded', 'true');
+    setStorageItem('lumina_active_focus_session', JSON.stringify(session));
+    setStorageItem('lumina_timer_expanded', 'true');
   },
 
   completeFocusSession: () => {
@@ -273,24 +307,24 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       activeFocusSession: null,
       focusSessions: [...state.focusSessions, completed],
     }));
-    localStorage.removeItem('lumina_active_focus_session');
+    removeStorageItem('lumina_active_focus_session');
     notify('Focus session complete.');
     get().calculateIntelligence();
   },
 
   cancelFocusSession: () => {
     set({ activeFocusSession: null });
-    localStorage.removeItem('lumina_active_focus_session');
+    removeStorageItem('lumina_active_focus_session');
   },
 
   setTimerExpanded: (isTimerExpanded) => {
     set({ isTimerExpanded });
-    localStorage.setItem('lumina_timer_expanded', JSON.stringify(isTimerExpanded));
+    setStorageItem('lumina_timer_expanded', JSON.stringify(isTimerExpanded));
   },
 
   setTimerPosition: (timerPosition) => {
     set({ timerPosition });
-    localStorage.setItem('lumina_timer_position', JSON.stringify(timerPosition));
+    setStorageItem('lumina_timer_position', JSON.stringify(timerPosition));
   },
 
   calculateIntelligence: () => {
@@ -396,28 +430,28 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
     const nextProfile = { ...profile, intelligence: nextIntel };
     set({ profile: nextProfile });
-    localStorage.setItem('lumina_profile', JSON.stringify(nextProfile));
+    setStorageItem('lumina_profile', JSON.stringify(nextProfile));
   },
 
   addGoal: (text) => set((state) => {
     const newGoal = { id: Math.random().toString(36).substr(2, 9), text, completed: false };
     const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
     const next = { ...state.profile, goals: [...goals, newGoal] };
-    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
   toggleGoal: (id) => set((state) => {
     const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
     const next = { ...state.profile, goals: goals.map(g => g.id === id ? { ...g, completed: !g.completed } : g) };
-    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
   deleteGoal: (id) => set((state) => {
     const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
     const next = { ...state.profile, goals: goals.filter(g => g.id !== id) };
-    localStorage.setItem('lumina_profile', JSON.stringify(next));
+    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 

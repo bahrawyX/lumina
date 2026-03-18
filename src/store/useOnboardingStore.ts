@@ -30,8 +30,9 @@ export interface OnboardingState {
   customFocusMinutes: number;
   customBreakMinutes: number;
 
-  // Step 5 — Calendar Sync
-  calendarConnected: 'outlook' | 'google' | null;
+  // Step 5 — Calendar Sync (independent per-provider booleans)
+  googleConnected: boolean;
+  microsoftConnected: boolean;
 
   // Step 6 — Goals
   focusGoals: FocusGoal[];
@@ -42,7 +43,8 @@ export interface OnboardingState {
   setFocusPreference: (pref: FocusPreference) => void;
   setFocusSessionLength: (len: FocusSessionLength, customMin?: number, customBreak?: number) => void;
   setUserInfo: (name: string, role: string) => void;
-  setCalendarConnected: (provider: 'outlook' | 'google' | null) => void;
+  setGoogleConnected: (connected: boolean) => void;
+  setMicrosoftConnected: (connected: boolean) => void;
   toggleFocusGoal: (goal: FocusGoal) => void;
   complete: () => void;
   reset: () => void;
@@ -64,7 +66,8 @@ export const useOnboardingStore = create<OnboardingState>()(
       focusSessionLength: '50/10',
       customFocusMinutes: 60,
       customBreakMinutes: 15,
-      calendarConnected: null,
+      googleConnected: false,
+      microsoftConnected: false,
       focusGoals: [],
 
       setStep: (step) => set({ step }),
@@ -78,7 +81,8 @@ export const useOnboardingStore = create<OnboardingState>()(
           ...(customMin !== undefined ? { customFocusMinutes: customMin } : {}),
           ...(customBreak !== undefined ? { customBreakMinutes: customBreak } : {}),
         }),
-      setCalendarConnected: (provider) => set({ calendarConnected: provider }),
+      setGoogleConnected: (connected) => set({ googleConnected: connected }),
+      setMicrosoftConnected: (connected) => set({ microsoftConnected: connected }),
       toggleFocusGoal: (goal) => {
         const current = get().focusGoals;
         set({
@@ -101,7 +105,8 @@ export const useOnboardingStore = create<OnboardingState>()(
           focusSessionLength: '50/10',
           customFocusMinutes: 60,
           customBreakMinutes: 15,
-          calendarConnected: null,
+          googleConnected: false,
+          microsoftConnected: false,
           focusGoals: [],
         }),
     }),

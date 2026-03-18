@@ -8,8 +8,6 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { cn } from '../lib/utils';
 import TimePicker from './TimePicker';
-import { connectOutlook } from '../lib/outlook/outlookAuth';
-import { syncOutlookCalendar } from '../services/outlookSyncService';
 import { useLuminaAuthClient } from './AuthProvider';
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
@@ -46,23 +44,18 @@ const OptionButton = memo<{
     className={cn(
       'relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium border transition-all duration-150 text-left cursor-pointer w-full',
       selected
-        ? 'border-primary/50 bg-primary/10 dark:bg-primary/8 text-primary'
-        : 'border-border bg-background text-foreground hover:bg-muted/60 dark:hover:bg-muted/40 hover:border-border',
+        ? 'border-primary/40 bg-primary/[0.08] dark:bg-primary/[0.07] text-foreground'
+        : 'border-border/70 bg-background text-foreground hover:bg-muted/50 dark:hover:bg-muted/30 hover:border-border',
       className
     )}
   >
+    {/* Single selection signal: background tint is enough — no redundant filled circle */}
     <span
       className={cn(
-        'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-150',
-        selected ? 'border-primary bg-primary' : 'border-gray-300 dark:border-border/60'
+        'flex-shrink-0 w-3.5 h-3.5 rounded-full border-[1.5px] transition-all duration-150',
+        selected ? 'border-primary bg-primary' : 'border-border/60'
       )}
-    >
-      {selected && (
-        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-      )}
-    </span>
+    />
     {children}
   </button>
 ));
@@ -96,14 +89,14 @@ const StepShell = memo<{
   description: string;
   children: React.ReactNode;
 }>(({ title, description, children }) => (
-  <div className="space-y-7">
-    <div className="space-y-1.5">
+  <div className="space-y-6">
+    <div className="space-y-2">
       <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
         {title}
       </h1>
       <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
     </div>
-    <div className="space-y-3">{children}</div>
+    <div className="space-y-2">{children}</div>
   </div>
 ));
 StepShell.displayName = 'StepShell';
@@ -112,7 +105,7 @@ StepShell.displayName = 'StepShell';
    STEP 0 — Welcome
 ══════════════════════════════════════════════════════════════════════════════ */
 const StepWelcome = memo(() => (
-  <div className="space-y-8">
+  <div className="space-y-6">
     <div className="space-y-4">
       <span className="font-logo text-4xl font-semibold tracking-tight text-primary select-none">
         Lumina
@@ -128,15 +121,15 @@ const StepWelcome = memo(() => (
       </div>
     </div>
 
-    <div className="grid grid-cols-1 gap-2.5">
+    <div className="grid grid-cols-1 gap-2">
       {[
-        { icon: '📊', text: 'Track your focus patterns' },
-        { icon: '⏰', text: 'Suggest optimal work windows' },
-        { icon: '⚡', text: 'Power your flow sessions' },
-      ].map(({ icon, text }) => (
-        <div key={text} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/50 dark:bg-muted/30 border border-border dark:border-border/40">
-          <span className="text-base select-none">{icon}</span>
-          <span className="text-sm text-foreground/70 dark:text-muted-foreground">{text}</span>
+        { text: 'Track your focus patterns' },
+        { text: 'Suggest optimal work windows' },
+        { text: 'Power your flow sessions' },
+      ].map(({ text }) => (
+        <div key={text} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border/60">
+          <div className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
+          <span className="text-sm text-muted-foreground">{text}</span>
         </div>
       ))}
     </div>
@@ -152,7 +145,7 @@ const StepAuth = memo<{
   authUserEmail: string | null;
   authEmail: string;
   authPassword: string;
-  authBusy: 'signup' | 'signin' | 'google' | 'signout' | null;
+  authBusy: 'signup' | 'signin' | 'google' | 'signout' | 'microsoft' | null;
   authMessage: string | null;
   onAuthEmailChange: (value: string) => void;
   onAuthPasswordChange: (value: string) => void;
@@ -165,93 +158,99 @@ const StepAuth = memo<{
     title="Secure your workspace"
     description="Sign in once and your settings follow you across sessions and devices."
   >
-    <div className="rounded-2xl border border-border/80 bg-gradient-to-br from-background via-background to-muted/40 p-4 md:p-5 shadow-sm space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground/80">Account</p>
-        <span className="text-xs text-muted-foreground">
-          Session: {authStatus}
-        </span>
-      </div>
-
-      {authStatus === 'logged in' ? (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-3">
-            <p className="text-xs text-muted-foreground mb-1">Connected account</p>
-            <p className="text-sm font-medium text-foreground break-all">{authUserEmail ?? 'user'}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onSignOut}
-            disabled={Boolean(authBusy)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/60 disabled:opacity-60"
-          >
-            {authBusy === 'signout' ? 'Signing out...' : 'Sign Out'}
-          </button>
+    {authStatus === 'logged in' ? (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3.5">
+          <p className="text-xs text-muted-foreground mb-1">Connected account</p>
+          <p className="text-sm font-medium text-foreground break-all">{authUserEmail ?? 'user'}</p>
         </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-2.5">
-            <input
-              type="email"
-              name="onboarding-auth-email"
-              value={authEmail}
-              onChange={(e) => onAuthEmailChange(e.target.value)}
-              placeholder="Email"
-              autoComplete="email"
-              className="w-full px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-muted/40 border border-gray-200 dark:border-border/60 text-sm text-foreground outline-none focus:border-primary/50 dark:focus:border-primary/40"
-            />
-            <input
-              type="password"
-              name="onboarding-auth-password"
-              value={authPassword}
-              onChange={(e) => onAuthPasswordChange(e.target.value)}
-              placeholder="Password"
-              autoComplete="current-password"
-              className="w-full px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-muted/40 border border-gray-200 dark:border-border/60 text-sm text-foreground outline-none focus:border-primary/50 dark:focus:border-primary/40"
-            />
-          </div>
+        <button
+          type="button"
+          onClick={onSignOut}
+          disabled={Boolean(authBusy)}
+          className="w-full rounded-lg border border-border/70 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
+        >
+          {authBusy === 'signout' ? 'Signing out…' : 'Sign out'}
+        </button>
+      </div>
+    ) : (
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <input
+            type="email"
+            name="onboarding-auth-email"
+            value={authEmail}
+            onChange={(e) => onAuthEmailChange(e.target.value)}
+            placeholder="Email"
+            autoComplete="email"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
+          />
+          <input
+            type="password"
+            name="onboarding-auth-password"
+            value={authPassword}
+            onChange={(e) => onAuthPasswordChange(e.target.value)}
+            placeholder="Password"
+            autoComplete="current-password"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
+          />
+        </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onSignUp}
-              disabled={Boolean(authBusy) || !authEmail.trim() || !authPassword}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/60 disabled:opacity-60"
-            >
-              {authBusy === 'signup' ? 'Signing up...' : 'Sign Up'}
-            </button>
-            <button
-              type="button"
-              onClick={onSignIn}
-              disabled={Boolean(authBusy) || !authEmail.trim() || !authPassword}
-              className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/15 disabled:opacity-60"
-            >
-              {authBusy === 'signin' ? 'Signing in...' : 'Sign In'}
-            </button>
-          </div>
+        {/* Primary action: Sign In — full width */}
+        <button
+          type="button"
+          onClick={onSignIn}
+          disabled={Boolean(authBusy) || !authEmail.trim() || !authPassword}
+          className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {authBusy === 'signin' ? 'Signing in…' : 'Sign In'}
+        </button>
 
-          <div className="relative py-1">
-            <div className="h-px bg-border" />
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground bg-background">
-              or
-            </span>
-          </div>
+        <div className="relative py-0.5">
+          <div className="h-px bg-border/60" />
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60 bg-card">
+            or
+          </span>
+        </div>
 
+        {/* Secondary actions */}
+        <div className="space-y-2">
           <button
             type="button"
             onClick={onGoogleSignIn}
             disabled={Boolean(authBusy)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/60 disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-2.5 rounded-lg border border-border/70 px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
           >
-            {authBusy === 'google' ? 'Redirecting to Google...' : 'Continue with Google'}
+            {authBusy === 'google' ? (
+              'Redirecting…'
+            ) : (
+              <>
+                {/* Google brand icon */}
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.591 4.418 1.582l3.491-3.49A11.932 11.932 0 0 0 12 0C7.27 0 3.198 2.698 1.24 6.65l4.026 3.115z" />
+                  <path fill="#34A853" d="M16.041 18.013A7.072 7.072 0 0 1 12 19.09c-2.973 0-5.535-1.853-6.6-4.487l-4.04 3.066C3.193 21.294 7.265 24 12 24c2.933 0 5.735-1.043 7.834-3.001l-3.793-2.986z" />
+                  <path fill="#4A90E2" d="M19.834 20.999C22.029 18.952 23.455 15.904 23.455 12c0-.71-.091-1.418-.273-2.09H12v4.545h6.436a5.463 5.463 0 0 1-1.638 2.902l3.036 2.642z" />
+                  <path fill="#FBBC05" d="M5.4 14.603A7.15 7.15 0 0 1 4.909 12c0-.56.076-1.104.214-1.624L1.24 7.26A11.981 11.981 0 0 0 0 12c0 1.92.444 3.73 1.237 5.335L5.4 14.603z" />
+                </svg>
+                Continue with Google
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onSignUp}
+            disabled={Boolean(authBusy)}
+            className="w-full rounded-lg border border-border/50 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            {authBusy === 'signup' ? 'Signing up…' : 'Create account'}
           </button>
         </div>
-      )}
+      </div>
+    )}
 
-      {authMessage && (
-        <p className="text-xs text-muted-foreground">{authMessage}</p>
-      )}
-    </div>
+    {authMessage && (
+      <p className="text-xs text-muted-foreground/80 pt-1">{authMessage}</p>
+    )}
   </StepShell>
 ));
 StepAuth.displayName = 'StepAuth';
@@ -268,7 +267,7 @@ const StepAboutYou = memo<{
     title="First, introduce yourself."
     description="Lumina personalises your experience and addresses you by name."
   >
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-medium text-muted-foreground">Your name</label>
         <input
@@ -277,19 +276,19 @@ const StepAboutYou = memo<{
           placeholder="e.g. Sarah Chen"
           value={name}
           onChange={(e) => onChange(e.target.value, role)}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-muted/40 border border-gray-200 dark:border-border/60 text-sm text-foreground outline-none focus:border-primary/50 dark:focus:border-primary/40 placeholder:text-gray-400 dark:placeholder:text-muted-foreground/50 transition-colors duration-150"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50 transition-colors duration-150"
         />
       </div>
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          Job title <span className="text-gray-400 dark:text-muted-foreground/40">(optional)</span>
+          Job title <span className="text-muted-foreground/40">(optional)</span>
         </label>
         <input
           type="text"
           placeholder="e.g. Product Designer"
           value={role}
           onChange={(e) => onChange(name, e.target.value)}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-muted/40 border border-gray-200 dark:border-border/60 text-sm text-foreground outline-none focus:border-primary/50 dark:focus:border-primary/40 placeholder:text-gray-400 dark:placeholder:text-muted-foreground/50 transition-colors duration-150"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50 transition-colors duration-150"
         />
       </div>
     </div>
@@ -367,11 +366,11 @@ const SESSION_OPTIONS: {
   desc: string;
   icon: string;
 }[] = [
-  { value: '25/5', label: '25 / 5', detail: 'Classic Pomodoro', desc: 'Short sprints, frequent breaks', icon: '⏱️' },
-  { value: '50/10', label: '50 / 10', detail: 'Deep Work', desc: 'Sustained focus with longer resets', icon: '🧠' },
-  { value: '90/20', label: '90 / 20', detail: 'Ultra Focus', desc: 'Maximum output, one session blocks', icon: '⚡' },
-  { value: 'custom', label: 'Custom', detail: 'Set your own', desc: 'Define your own durations', icon: '⚙️' },
-];
+    { value: '25/5', label: '25 / 5', detail: 'Classic Pomodoro', desc: 'Short sprints, frequent breaks', icon: '⏱️' },
+    { value: '50/10', label: '50 / 10', detail: 'Deep Work', desc: 'Sustained focus with longer resets', icon: '🧠' },
+    { value: '90/20', label: '90 / 20', detail: 'Ultra Focus', desc: 'Maximum output, one session blocks', icon: '⚡' },
+    { value: 'custom', label: 'Custom', detail: 'Set your own', desc: 'Define your own durations', icon: '⚙️' },
+  ];
 
 const StepSessionLength = memo<{
   value: FocusSessionLength;
@@ -440,93 +439,120 @@ StepSessionLength.displayName = 'StepSessionLength';
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    STEP 5 — Calendar Sync
+   Both providers are independent — connecting one never affects the other.
 ══════════════════════════════════════════════════════════════════════════════ */
+
+const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+  </svg>
+);
+
 const StepCalendarSync = memo<{
-  connected: 'outlook' | 'google' | null;
-  onConnect: (provider: 'outlook' | 'google' | null) => void;
+  googleConnected: boolean;
+  microsoftConnected: boolean;
+  googleLoading?: boolean;
   outlookLoading?: boolean;
+  onConnectGoogle: () => void;
+  onConnectMicrosoft: () => void;
   onSkip: () => void;
-}>(({ connected, onConnect, outlookLoading, onSkip }) => (
-  <StepShell
-    title="Sync your calendar"
-    description="Lumina detects existing meetings and suggests optimal focus windows around them."
-  >
-    <div className="grid grid-cols-1 gap-3">
-      <button
-        type="button"
-        onClick={() => onConnect(connected === 'outlook' ? null : 'outlook')}
-        disabled={outlookLoading}
-        className={cn(
-          'flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-colors duration-150 text-left cursor-pointer',
-          connected === 'outlook'
-            ? 'border-blue-400 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/8'
-            : 'border-border bg-background hover:bg-muted/60 dark:hover:bg-muted/40',
-          outlookLoading && 'opacity-60 cursor-wait'
-        )}
-      >
-        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 flex items-center justify-center">
-          <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.32.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V12z"/>
-          </svg>
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-medium text-foreground">
-            {outlookLoading ? 'Connecting...' : connected === 'outlook' ? 'Outlook Connected' : 'Connect Outlook'}
-          </p>
-          <p className="text-xs text-muted-foreground">Microsoft 365 / Outlook.com</p>
-        </div>
-        {connected === 'outlook' && (
-          <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+}>(({ googleConnected, microsoftConnected, googleLoading, outlookLoading, onConnectGoogle, onConnectMicrosoft, onSkip }) => {
+  const connectedCount = (googleConnected ? 1 : 0) + (microsoftConnected ? 1 : 0);
+  const statusText =
+    connectedCount === 2
+      ? 'Both calendars connected. Events from Google and Outlook will appear in Lumina.'
+      : googleConnected
+        ? 'Google Calendar connected. You can also connect Outlook.'
+        : microsoftConnected
+          ? 'Outlook connected. You can also connect Google Calendar.'
+          : 'Connect one or both calendars to see meetings alongside your Lumina events.';
+
+  return (
+    <StepShell
+      title="Sync your calendar"
+      description="Lumina detects existing meetings and suggests optimal focus windows around them."
+    >
+      <div className="grid grid-cols-1 gap-3">
+        {/* ── Microsoft Outlook ─────────────────────────────────────────── */}
+        <button
+          type="button"
+          onClick={onConnectMicrosoft}
+          disabled={outlookLoading}
+          className={cn(
+            'flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-colors duration-150 text-left cursor-pointer',
+            microsoftConnected
+              ? 'border-blue-400/80 dark:border-blue-400/50 bg-blue-50 dark:bg-blue-500/[0.16]'
+              : 'border-border bg-background hover:bg-muted/60 dark:hover:bg-muted/40',
+            outlookLoading && 'opacity-60 cursor-wait'
+          )}
+        >
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#0277bd" d="M28.093 33H40c2.209 0 4-1.791 4-4V19c0-2.209-1.791-4-4-4H28.093v18z"/>
+              <path fill="#03a9f4" d="M16 15L28.093 15 28.093 33 16 33z"/>
+              <path fill="#4fc3f7" d="M28.093 20L38 20 38 28 28.093 28z"/>
+              <path fill="#0288d1" d="M21 11H6c-2.209 0-4 1.791-4 4v18c0 2.209 1.791 4 4 4h15V11z"/>
+              <path fill="#fff" d="M12.915 26.687c-2.31 0-3.921-1.666-3.921-4.062s1.583-4.103 3.935-4.103c2.31 0 3.894 1.638 3.894 4.075S15.225 26.687 12.915 26.687zM12.929 20.081c-1.391 0-2.233 1.055-2.233 2.544 0 1.502.828 2.502 2.219 2.502 1.405 0 2.219-1.027 2.219-2.516C15.134 21.08 14.334 20.081 12.929 20.081z"/>
             </svg>
           </div>
-        )}
-      </button>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-foreground">
+              {outlookLoading ? 'Connecting...' : microsoftConnected ? 'Outlook Connected' : 'Connect Outlook'}
+            </p>
+            <p className="text-xs text-muted-foreground">Microsoft 365 / Outlook.com</p>
+          </div>
+          {microsoftConnected && (
+            <CheckIcon className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+          )}
+        </button>
+
+        {/* ── Google Calendar ───────────────────────────────────────────── */}
+        <button
+          type="button"
+          onClick={onConnectGoogle}
+          disabled={googleLoading}
+          className={cn(
+            'flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-colors duration-150 text-left cursor-pointer',
+            googleConnected
+              ? 'border-red-400/80 dark:border-red-400/50 bg-red-50 dark:bg-red-500/[0.12]'
+              : 'border-border bg-background hover:bg-muted/60 dark:hover:bg-muted/40',
+            googleLoading && 'opacity-60 cursor-wait'
+          )}
+        >
+          <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#EA4335" d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 1.23999023,6.65002441 L5.26620003,9.76452941 Z" />
+              <path fill="#34A853" d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z" />
+              <path fill="#4A90E2" d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663 23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5818182 23.1818182,9.90909091 L12,9.90909091 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626 17.2662994,17.2212117 16.0407269,18.0125889 L19.834192,20.9995801 Z" />
+              <path fill="#FBBC05" d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-foreground">
+              {googleLoading ? 'Connecting...' : googleConnected ? 'Google Calendar Connected' : 'Connect Google Calendar'}
+            </p>
+            <p className="text-xs text-muted-foreground">Google Calendar</p>
+          </div>
+          {googleConnected && (
+            <CheckIcon className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+          )}
+        </button>
+      </div>
+
+      <p className="text-xs text-gray-400 dark:text-muted-foreground/60 pt-1">
+        {statusText}
+      </p>
 
       <button
         type="button"
-        onClick={() => onConnect(connected === 'google' ? null : 'google')}
-        className={cn(
-          'flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-colors duration-150 text-left cursor-pointer',
-          connected === 'google'
-            ? 'border-primary/50 bg-primary/10 dark:bg-primary/8'
-            : 'border-border bg-background hover:bg-muted/60 dark:hover:bg-muted/40'
-        )}
+        onClick={onSkip}
+        className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors py-1 cursor-pointer"
       >
-        <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 flex items-center justify-center">
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path fill="#EA4335" d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 1.23999023,6.65002441 L5.26620003,9.76452941 Z"/>
-            <path fill="#34A853" d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z"/>
-            <path fill="#4A90E2" d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663 23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5818182 23.1818182,9.90909091 L12,9.90909091 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626 17.2662994,17.2212117 16.0407269,18.0125889 L19.834192,20.9995801 Z"/>
-            <path fill="#FBBC05" d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z"/>
-          </svg>
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-medium text-foreground">Connect Google</p>
-          <p className="text-xs text-muted-foreground">Google Calendar — coming soon</p>
-        </div>
-        {connected === 'google' && (
-          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-        )}
+        Skip — I don't use a calendar right now
       </button>
-    </div>
-
-    <p className="text-xs text-gray-400 dark:text-muted-foreground/60 pt-1">
-      {connected === 'outlook'
-        ? 'Outlook calendar events will appear in your Lumina calendar.'
-        : 'Connect your Outlook calendar to see meetings alongside your Lumina events.'}
-    </p>
-
-    <button
-      type="button"
-      onClick={onSkip}
-      className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors py-1 cursor-pointer"
-    >
-      Skip — I don't use a calendar right now
-    </button>
-  </StepShell>
-));
+    </StepShell>
+  );
+});
 StepCalendarSync.displayName = 'StepCalendarSync';
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -572,48 +598,25 @@ StepFocusGoals.displayName = 'StepFocusGoals';
 ══════════════════════════════════════════════════════════════════════════════ */
 const StepCompletion = memo<{ name?: string }>(({ name }) => (
   <div className="space-y-6">
-    <div className="space-y-3">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.1, duration: 0.4, ease: [0.34, 1.2, 0.64, 1] }}
-        className="w-12 h-12 rounded-xl border border-primary/30 bg-primary/10 dark:bg-primary/8 flex items-center justify-center"
-      >
-        <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-        </svg>
-      </motion.div>
-
-      <div className="space-y-1.5">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
-          You're ready{name ? `, ${name.split(' ')[0]}` : ''}.
-        </h1>
-        <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
-          Lumina is now configured for your workflow.
-          Your focus intelligence engine is active.
-        </p>
-      </div>
-    </div>
-
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.25, duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-      className="flex flex-col gap-2 text-xs text-gray-500 dark:text-muted-foreground/70 pt-2"
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ delay: 0.1, duration: 0.4, ease: [0.34, 1.2, 0.64, 1] }}
+      className="w-12 h-12 rounded-xl border border-primary/30 bg-primary/[0.08] flex items-center justify-center"
     >
-      <div className="flex items-center gap-2">
-        <div className="w-1 h-1 rounded-full bg-primary/50" />
-        Focus schedule configured
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-1 h-1 rounded-full bg-primary/50" />
-        Deep work engine ready
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-1 h-1 rounded-full bg-primary/50" />
-        Intelligence insights active
-      </div>
+      <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+      </svg>
     </motion.div>
+
+    <div className="space-y-2">
+      <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+        You're ready{name ? `, ${name.split(' ')[0]}` : ''}.
+      </h1>
+      <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
+        Open your calendar, add your first event, and start your first focus session.
+      </p>
+    </div>
   </div>
 ));
 StepCompletion.displayName = 'StepCompletion';
@@ -636,9 +639,10 @@ const OnboardingFlow: React.FC = () => {
   const [direction, setDirection] = useState<number>(1);
   const [step, setStep] = useState<number>(0);
   const [outlookLoading, setOutlookLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authBusy, setAuthBusy] = useState<'signup' | 'signin' | 'google' | 'signout' | null>(null);
+  const [authBusy, setAuthBusy] = useState<'signup' | 'signin' | 'google' | 'microsoft' | 'signout' | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
 
   const authUser = authData?.user ?? null;
@@ -652,6 +656,90 @@ const OnboardingFlow: React.FC = () => {
   const clearAuthMessage = useCallback(() => {
     setAuthMessage(null);
   }, []);
+
+  const startSocialSignInPopup = useCallback(async (provider: 'google' | 'microsoft'): Promise<boolean> => {
+    const socialSignIn = (authClient.signIn as any)?.social;
+    if (typeof socialSignIn !== 'function') {
+      const label = provider === 'google' ? 'Google' : 'Microsoft';
+      throw new Error(`${label} sign-in is unavailable in the current auth client.`);
+    }
+
+    const result = await socialSignIn({
+      provider,
+      callbackURL: `/auth/popup-complete?provider=${provider}`,
+      disableRedirect: true,
+    });
+
+    if (result?.error) {
+      throw new Error(result.error.message ?? `${provider} sign-in failed.`);
+    }
+
+    const popupUrl = result?.data?.url ?? result?.url;
+    if (!popupUrl || typeof popupUrl !== 'string') {
+      throw new Error('Could not start OAuth sign-in.');
+    }
+
+    const width = 520;
+    const height = 700;
+    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+
+    const popup = window.open(
+      popupUrl,
+      `lumina-oauth-${provider}`,
+      `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`
+    );
+
+    if (!popup) {
+      throw new Error('Popup blocked. Please allow popups and try again.');
+    }
+
+    popup.focus();
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+
+      const cleanup = () => {
+        window.removeEventListener('message', onMessage);
+        window.clearInterval(pollId);
+        window.clearTimeout(timeoutId);
+      };
+
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
+        if ((data as { provider?: string }).provider !== provider) return;
+
+        settled = true;
+        cleanup();
+        resolve(true);
+      };
+
+      const pollId = window.setInterval(() => {
+        if (!settled && popup.closed) {
+          settled = true;
+          cleanup();
+          resolve(false);
+        }
+      }, 350);
+
+      const timeoutId = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        try {
+          popup.close();
+        } catch {
+          // noop
+        }
+        resolve(false);
+      }, 3 * 60 * 1000);
+
+      window.addEventListener('message', onMessage);
+    });
+  }, [authClient]);
 
   const handleAuthSignUp = useCallback(async () => {
     clearAuthMessage();
@@ -700,22 +788,20 @@ const OnboardingFlow: React.FC = () => {
     clearAuthMessage();
     setAuthBusy('google');
     try {
-      const socialSignIn = (authClient.signIn as any)?.social;
-      if (typeof socialSignIn !== 'function') {
-        setAuthMessage('Google sign-in is unavailable in the current auth client.');
+      const completed = await startSocialSignInPopup('google');
+      if (!completed) {
+        setAuthMessage('Google sign-in was cancelled.');
         return;
       }
-      const result = await socialSignIn({
-        provider: 'google',
-        callbackURL: '/onboarding',
-      });
-      if (result?.error) {
-        setAuthMessage(result.error.message ?? 'Google sign-in failed.');
-      }
+
+      await refetchAuthSession();
+      setAuthMessage('Signed in with Google.');
+    } catch (err: any) {
+      setAuthMessage(err?.message ?? 'Google sign-in failed.');
     } finally {
       setAuthBusy(null);
     }
-  }, [authClient, clearAuthMessage]);
+  }, [clearAuthMessage, refetchAuthSession, startSocialSignInPopup]);
 
   const handleAuthSignOut = useCallback(async () => {
     clearAuthMessage();
@@ -733,34 +819,122 @@ const OnboardingFlow: React.FC = () => {
     }
   }, [authClient, clearAuthMessage, refetchAuthSession]);
 
-  const handleOutlookConnect = useCallback(async (provider: 'outlook' | 'google' | null) => {
-    if (provider === 'google') {
-      store.setCalendarConnected(store.calendarConnected === 'google' ? null : 'google');
-      return;
-    }
-    if (provider === null) {
-      store.setCalendarConnected(null);
+  /**
+   * Opens the integration OAuth popup for a given provider.
+   * Navigates to our connect endpoint which redirects to the provider's
+   * OAuth screen with the appropriate calendar scopes, then stores tokens
+   * in the DB before handing off to /auth/popup-complete.
+   */
+  const openIntegrationPopup = useCallback(
+    async (provider: 'google' | 'microsoft'): Promise<boolean> => {
+      const url = `/api/integrations/${provider}/connect`;
+      const width = 520;
+      const height = 700;
+      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+
+      const popup = window.open(
+        url,
+        `lumina-integration-${provider}`,
+        `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`,
+      );
+
+      if (!popup) throw new Error('Popup blocked. Please allow popups and try again.');
+      popup.focus();
+
+      return new Promise<boolean>((resolve) => {
+        let settled = false;
+        const cleanup = () => {
+          window.removeEventListener('message', onMessage);
+          window.clearInterval(pollId);
+          window.clearTimeout(timeoutId);
+        };
+        const onMessage = (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) return;
+          const data = event.data;
+          if (!data || typeof data !== 'object') return;
+          if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
+          if ((data as { provider?: string }).provider !== provider) return;
+          settled = true;
+          cleanup();
+          resolve(true);
+        };
+        const pollId = window.setInterval(() => {
+          if (!settled && popup.closed) { settled = true; cleanup(); resolve(false); }
+        }, 350);
+        const timeoutId = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          try { popup.close(); } catch { /* noop */ }
+          resolve(false);
+        }, 3 * 60 * 1000);
+        window.addEventListener('message', onMessage);
+      });
+    },
+    [],
+  );
+
+  // ── Outlook / Microsoft connect (independent of Google) ─────────────────
+  const handleOnboardingMicrosoftConnect = useCallback(async () => {
+    if (store.microsoftConnected) {
+      store.setMicrosoftConnected(false);
       plannerStore.setOutlookConnected(false);
+      plannerStore.setOutlookEvents([]);
       return;
     }
-    if (store.calendarConnected === 'outlook') {
-      store.setCalendarConnected(null);
-      plannerStore.setOutlookConnected(false);
-      return;
-    }
+
+    clearAuthMessage();
     setOutlookLoading(true);
+    setAuthBusy('microsoft');
     try {
-      await connectOutlook();
-      store.setCalendarConnected('outlook');
+      const completed = await openIntegrationPopup('microsoft');
+      if (!completed) {
+        setAuthMessage('Outlook connection was cancelled.');
+        return;
+      }
+      store.setMicrosoftConnected(true);
       plannerStore.setOutlookConnected(true);
-      const events = await syncOutlookCalendar(calStore.timezone);
-      plannerStore.setOutlookEvents(events);
-    } catch (err: any) {
+      setAuthMessage('Outlook calendar connected.');
+    } catch (err: unknown) {
       console.error('[Onboarding Outlook]', err);
+      store.setMicrosoftConnected(false);
+      plannerStore.setOutlookConnected(false);
+      plannerStore.setOutlookEvents([]);
+      setAuthMessage(err instanceof Error ? err.message : 'Outlook connection failed.');
     } finally {
+      setAuthBusy(null);
       setOutlookLoading(false);
     }
-  }, [store, calStore]);
+  }, [clearAuthMessage, openIntegrationPopup, plannerStore, store]);
+
+  // ── Google Calendar connect (independent of Outlook) ────────────────────
+  const handleOnboardingGoogleConnect = useCallback(async () => {
+    if (store.googleConnected) {
+      store.setGoogleConnected(false);
+      return;
+    }
+
+    clearAuthMessage();
+    setGoogleLoading(true);
+    setAuthBusy('google');
+    try {
+      const completed = await openIntegrationPopup('google');
+      if (!completed) {
+        setAuthMessage('Google Calendar connection was cancelled.');
+        return;
+      }
+      store.setGoogleConnected(true);
+      setAuthMessage('Google Calendar connected.');
+    } catch (err: unknown) {
+      console.error('[Onboarding Google]', err);
+      store.setGoogleConnected(false);
+      setAuthMessage(err instanceof Error ? err.message : 'Google Calendar connection failed.');
+    } finally {
+      setAuthBusy(null);
+      setGoogleLoading(false);
+    }
+  }, [clearAuthMessage, openIntegrationPopup, store]);
 
   const canContinue = useCallback((): boolean => {
     if (step === 2) return store.userName.trim().length > 0;
@@ -860,9 +1034,12 @@ const OnboardingFlow: React.FC = () => {
       case 6:
         return (
           <StepCalendarSync
-            connected={store.calendarConnected}
-            onConnect={handleOutlookConnect}
+            googleConnected={store.googleConnected}
+            microsoftConnected={store.microsoftConnected}
+            googleLoading={googleLoading}
             outlookLoading={outlookLoading}
+            onConnectGoogle={handleOnboardingGoogleConnect}
+            onConnectMicrosoft={handleOnboardingMicrosoftConnect}
             onSkip={goNext}
           />
         );
@@ -884,34 +1061,18 @@ const OnboardingFlow: React.FC = () => {
   const showProgress = step >= 1 && step <= 7;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
-      {/* Faint grid pattern */}
-      <div
-        className="absolute inset-0 opacity-[0.06] dark:opacity-[0.05] pointer-events-none"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle, #6D59E0 1px, transparent 1px)',
-          backgroundSize: '28px 28px',
-        }}
-      />
-
-      <div className="relative w-full max-w-xl mx-auto px-6 flex flex-col gap-8">
-        {/* Progress indicator */}
-        <div className="flex items-center justify-between min-h-[20px]">
-          {showProgress ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-4">
+      {/* Card container — constrained width, card surface, vertically centered */}
+      <div className="relative w-full max-w-[480px] bg-card border border-border/60 rounded-2xl shadow-elevated flex flex-col">
+        {/* Progress bar strip at top of card */}
+        {showProgress && (
+          <div className="px-8 pt-6 pb-0">
             <ProgressDots step={step - 1} total={7} />
-          ) : (
-            <div />
-          )}
-          {showProgress && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {step} / 7
-            </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Step content */}
-        <div className="relative overflow-hidden min-h-[320px]">
+        <div className="relative overflow-hidden px-8 py-8">
           <AnimatePresence custom={direction} mode="wait">
             <motion.div
               key={step}
@@ -928,16 +1089,16 @@ const OnboardingFlow: React.FC = () => {
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-between px-8 pb-7 pt-0">
           <button
             type="button"
             onClick={goBack}
             disabled={isFirstStep}
             className={cn(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 cursor-pointer',
+              'px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               isFirstStep
                 ? 'opacity-0 pointer-events-none'
-                : 'border border-gray-200 dark:border-border/60 bg-background text-gray-600 dark:text-muted-foreground hover:text-foreground hover:bg-gray-50 dark:hover:bg-muted/50'
+                : 'border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer'
             )}
           >
             Back
@@ -950,11 +1111,11 @@ const OnboardingFlow: React.FC = () => {
             className={cn(
               'flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-150',
               canContinue()
-                ? 'bg-primary  text-white hover:bg-primary/90 cursor-pointer'
-                : 'bg-gray-200 dark:bg-muted text-white  cursor-not-allowed opacity-60'
+                ? 'bg-primary text-white hover:bg-primary/90 cursor-pointer'
+                : 'bg-muted text-muted-foreground/60 cursor-not-allowed opacity-60'
             )}
           >
-            {isFirstStep ? 'Start Setup' : isLastStep ? 'Enter Workspace →' : 'Continue'}
+            {isFirstStep ? 'Start Setup' : isLastStep ? 'Enter Workspace' : 'Continue'}
             {!isFirstStep && !isLastStep && (
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

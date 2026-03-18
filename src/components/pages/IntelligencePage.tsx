@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import Profile from '@/components/Profile';
+import { GoogleCalendarSync } from '@/components/GoogleCalendarSync';
 
 const IntelligencePage: React.FC = () => {
   return (
@@ -20,7 +21,10 @@ const IntelligencePage: React.FC = () => {
           transition={{ duration: 0.3 }} 
           className="h-full w-full overflow-y-auto no-scrollbar"
         >
-          <Profile />
+          <div className="space-y-6 pb-6">
+            <GoogleCalendarSync />
+            <Profile />
+          </div>
         </motion.div>
       </div>
     </>

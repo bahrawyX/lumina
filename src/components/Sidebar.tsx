@@ -21,8 +21,8 @@ import {
   SettingsIcon,
   ExternalLinkIcon,
 } from './icons';
-import { connectOutlook, disconnectOutlook, isOutlookConnected } from '../lib/outlook/outlookAuth';
-import { syncOutlookCalendar, clearOutlookData } from '../services/outlookSyncService';
+import { clearOutlookData } from '../services/outlookSyncService';
+import { useLuminaAuthClient } from './AuthProvider';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -112,16 +112,31 @@ const PlanDayIcon: React.FC<{ size?: number; strokeWidth?: number; className?: s
   </svg>
 );
 
-/* ─── Main Sidebar component ────────────────────────────────────────────────── */
-const OutlookSidebarIcon: React.FC<{ size?: number; className?: string; color?: string }> = ({ size = 14, className, color }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={color || 'currentColor'} className={className}>
-    <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.32.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V12z"/>
+/* ─── Real Microsoft Outlook icon ─────────────────────────────────────────── */
+const OutlookSidebarIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className }) => (
+  <svg width={size} height={size} viewBox="0 0 48 48" className={className} xmlns="http://www.w3.org/2000/svg">
+    <path fill="#0277bd" d="M28.093 33H40c2.209 0 4-1.791 4-4V19c0-2.209-1.791-4-4-4H28.093v18z"/>
+    <path fill="#03a9f4" d="M16 15L28.093 15 28.093 33 16 33z"/>
+    <path fill="#4fc3f7" d="M28.093 20L38 20 38 28 28.093 28z"/>
+    <path fill="#0288d1" d="M21 11H6c-2.209 0-4 1.791-4 4v18c0 2.209 1.791 4 4 4h15V11z"/>
+    <path fill="#fff" d="M12.915 26.687c-2.31 0-3.921-1.666-3.921-4.062s1.583-4.103 3.935-4.103c2.31 0 3.894 1.638 3.894 4.075S15.225 26.687 12.915 26.687zM12.929 20.081c-1.391 0-2.233 1.055-2.233 2.544 0 1.502.828 2.502 2.219 2.502 1.405 0 2.219-1.027 2.219-2.516C15.134 21.08 14.334 20.081 12.929 20.081z"/>
+  </svg>
+);
+
+/* ─── Google G brand icon ─────────────────────────────────────────────────── */
+const GoogleCalendarIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.591 4.418 1.582l3.491-3.49A11.932 11.932 0 0 0 12 0C7.27 0 3.198 2.698 1.24 6.65l4.026 3.115z" />
+    <path fill="#34A853" d="M16.041 18.013A7.072 7.072 0 0 1 12 19.09c-2.973 0-5.535-1.853-6.6-4.487l-4.04 3.066C3.193 21.294 7.265 24 12 24c2.933 0 5.735-1.043 7.834-3.001l-3.793-2.986z" />
+    <path fill="#4A90E2" d="M19.834 20.999C22.029 18.952 23.455 15.904 23.455 12c0-.71-.091-1.418-.273-2.09H12v4.545h6.436a5.463 5.463 0 0 1-1.638 2.902l3.036 2.642z" />
+    <path fill="#FBBC05" d="M5.4 14.603A7.15 7.15 0 0 1 4.909 12c0-.56.076-1.104.214-1.624L1.24 7.26A11.981 11.981 0 0 0 0 12c0 1.92.444 3.73 1.237 5.335L5.4 14.603z" />
   </svg>
 );
 
 const AppSidebar: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const authClient = useLuminaAuthClient();
   const resetOnboarding = useOnboardingStore((s) => s.reset);
   const focusSessionLength = useOnboardingStore((s) => s.focusSessionLength);
   const customFocusMinutes = useOnboardingStore((s) => s.customFocusMinutes);
@@ -137,7 +152,6 @@ const AppSidebar: React.FC = () => {
     cancelFocusSession,
     isSidebarCollapsed,
     setSidebarCollapsed,
-    timezone,
     customCategories,
     addCustomCategory,
     updateContext,
@@ -168,27 +182,135 @@ const AppSidebar: React.FC = () => {
     ? customCategories.find((category) => category.name === editingContextName) ?? null
     : null;
 
+  type IntegrationProvider = 'google' | 'microsoft';
+
+  /**
+   * Opens a popup to our integration connect endpoint (NOT BetterAuth login).
+   * The connect endpoint redirects to the provider's OAuth screen with the
+   * appropriate calendar scopes, then our callback stores tokens in the DB
+   * and redirects to /auth/popup-complete which posts the completion message.
+   */
+  const openIntegrationPopup = React.useCallback(
+    async (provider: IntegrationProvider): Promise<boolean> => {
+      const url = `/api/integrations/${provider}/connect`;
+
+      const width = 520;
+      const height = 700;
+      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+
+      const popup = window.open(
+        url,
+        `lumina-integration-${provider}`,
+        `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`,
+      );
+
+      if (!popup) {
+        throw new Error('Popup blocked. Please allow popups and try again.');
+      }
+
+      popup.focus();
+
+      return new Promise<boolean>((resolve) => {
+        let settled = false;
+
+        const cleanup = () => {
+          window.removeEventListener('message', onMessage);
+          window.clearInterval(pollId);
+          window.clearTimeout(timeoutId);
+        };
+
+        const onMessage = (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) return;
+          const data = event.data;
+          if (!data || typeof data !== 'object') return;
+          if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
+          if ((data as { provider?: string }).provider !== provider) return;
+
+          settled = true;
+          cleanup();
+          resolve(true);
+        };
+
+        const pollId = window.setInterval(() => {
+          if (!settled && popup.closed) {
+            settled = true;
+            cleanup();
+            resolve(false);
+          }
+        }, 350);
+
+        const timeoutId = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          try { popup.close(); } catch { /* noop */ }
+          resolve(false);
+        }, 3 * 60 * 1000);
+
+        window.addEventListener('message', onMessage);
+      });
+    },
+    [],
+  );
+
   const handleOutlookConnect = React.useCallback(async () => {
     if (outlookConnected) {
-      disconnectOutlook();
       clearOutlookData();
       setOutlookConnected(false);
       setOutlookEvents([]);
       return;
     }
+
     setOutlookLoading(true);
     try {
-      await connectOutlook();
+      const completed = await openIntegrationPopup('microsoft');
+      if (!completed) return;
       setOutlookConnected(true);
-      const events = await syncOutlookCalendar(timezone);
-      setOutlookEvents(events);
-    } catch (err: any) {
+    } catch (err) {
+      setOutlookConnected(false);
+      setOutlookEvents([]);
       console.error('[Sidebar Outlook]', err);
     } finally {
       setOutlookLoading(false);
     }
-  }, [outlookConnected, timezone, setOutlookConnected, setOutlookEvents]);
+  }, [outlookConnected, setOutlookConnected, setOutlookEvents, openIntegrationPopup]);
 
+  const [googleCalLoading, setGoogleCalLoading] = React.useState(false);
+  const [googleCalConnected, setGoogleCalConnected] = React.useState(false);
+
+  // Restore integration connection state from the DB on mount
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/integrations/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { google?: { connected: boolean }; microsoft?: { connected: boolean } } | null) => {
+        if (cancelled || !data) return;
+        if (data.google?.connected) setGoogleCalConnected(true);
+        if (data.microsoft?.connected) setOutlookConnected(true);
+      })
+      .catch(() => { /* non-critical, silently ignore */ });
+    return () => { cancelled = true; };
+  }, [setOutlookConnected]);
+
+  const handleGoogleCalendarConnect = React.useCallback(async () => {
+    if (googleCalConnected) {
+      setGoogleCalConnected(false);
+      return;
+    }
+
+    setGoogleCalLoading(true);
+    try {
+      const completed = await openIntegrationPopup('google');
+      if (!completed) return;
+      setGoogleCalConnected(true);
+    } catch (err) {
+      setGoogleCalConnected(false);
+      console.error('[Sidebar Google]', err);
+    } finally {
+      setGoogleCalLoading(false);
+    }
+  }, [googleCalConnected, openIntegrationPopup]);
   /* Elapsed time for active focus session */
   const [elapsed, setElapsed] = React.useState('00:00');
   React.useEffect(() => {
@@ -297,9 +419,8 @@ const AppSidebar: React.FC = () => {
                     router.push('/');
                     openModal();
                   }}
-                  className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-muted/50 hover:bg-muted border border-border/50 text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${
-                    isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
-                  }`}
+                  className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-muted/50 hover:bg-muted border border-border/50 text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
+                    }`}
                 >
                   <PlusIcon size={15} strokeWidth={1.5} className="text-muted-foreground" />
                   {!isSidebarCollapsed && <span>New Entry</span>}
@@ -311,9 +432,8 @@ const AppSidebar: React.FC = () => {
             {/* Ignite Flow / running session */}
             {activeFocusSession ? (
               <div
-                className={`w-full flex items-center gap-2.5 h-9 rounded-xl border border-border/60 bg-muted/40 px-3 ${
-                  isSidebarCollapsed ? 'justify-center px-0' : ''
-                }`}
+                className={`w-full flex items-center gap-2.5 h-9 rounded-xl border border-border/60 bg-muted/40 px-3 ${isSidebarCollapsed ? 'justify-center px-0' : ''
+                  }`}
               >
                 {!isSidebarCollapsed && (
                   <>
@@ -344,13 +464,12 @@ const AppSidebar: React.FC = () => {
                         focusSessionLength === '50/10' || focusSessionLength === '90/20'
                           ? 'deep'
                           : focusSessionLength === 'custom' && customFocusMinutes > 30
-                          ? 'deep'
-                          : 'classic';
+                            ? 'deep'
+                            : 'classic';
                       startFocusSession(mode);
                     }}
-                    className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-transparent hover:bg-muted/60 border border-border/50 text-muted-foreground hover:text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${
-                      isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
-                    }`}
+                    className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-transparent hover:bg-muted/60 border border-border/50 text-muted-foreground hover:text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
+                      }`}
                   >
                     <TimerIcon size={14} strokeWidth={1.5} />
                     {!isSidebarCollapsed && <span>Ignite Flow</span>}
@@ -527,9 +646,8 @@ const AppSidebar: React.FC = () => {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
-                className={`h-auto py-2.5 rounded-xl hover:bg-accent/50 ${
-                  isSidebarCollapsed ? 'justify-center' : ''
-                }`}
+                className={`h-auto py-2.5 rounded-xl hover:bg-accent/50 ${isSidebarCollapsed ? 'justify-center' : ''
+                  }`}
               >
                 <div className="relative flex-shrink-0">
                   <Avatar className="h-7 w-7 rounded-[8px]">
@@ -572,19 +690,43 @@ const AppSidebar: React.FC = () => {
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
+              {/* ── Calendar integrations ─────────────────────── */}
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/60 px-2 py-1 font-medium">
+                Calendars
+              </DropdownMenuLabel>
 
               <DropdownMenuItem
                 onClick={handleOutlookConnect}
                 disabled={outlookLoading}
-                className={outlookConnected ? 'text-blue-600 dark:text-blue-400' : 'text-foreground'}
+                className="gap-2.5"
               >
-                <OutlookSidebarIcon size={14} color="#0078D4" />
-                {outlookLoading ? 'Connecting...' : outlookConnected ? 'Disconnect Outlook' : 'Connect Outlook'}
-                {outlookConnected && (
-                  <span className="ml-auto text-[9px] font-semibold uppercase tracking-wide text-emerald-500/70 border border-emerald-500/30 rounded px-1 py-0.5">
-                    Synced
-                  </span>
-                )}
+                <OutlookSidebarIcon size={16} />
+                <span className="flex-1 text-sm">Outlook</span>
+                <span className={[
+                  'text-[9px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 border',
+                  outlookConnected
+                    ? 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                    : 'text-muted-foreground/60 border-border/50',
+                ].join(' ')}>
+                  {outlookLoading ? '…' : outlookConnected ? 'Synced' : 'Not synced'}
+                </span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handleGoogleCalendarConnect}
+                disabled={googleCalLoading}
+                className="gap-2.5"
+              >
+                <GoogleCalendarIcon size={16} />
+                <span className="flex-1 text-sm">Google Calendar</span>
+                <span className={[
+                  'text-[9px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 border',
+                  googleCalConnected
+                    ? 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                    : 'text-muted-foreground/60 border-border/50',
+                ].join(' ')}>
+                  {googleCalLoading ? '…' : googleCalConnected ? 'Synced' : 'Not synced'}
+                </span>
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -679,9 +821,8 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             <Icon
               size={16}
               strokeWidth={1.5}
-              className={`relative z-10 flex-shrink-0 transition-colors ${
-                isActive ? 'text-foreground' : 'text-muted-foreground'
-              }`}
+              className={`relative z-10 flex-shrink-0 transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'
+                }`}
             />
             {!collapsed && (
               <span className="relative z-10 font-sans text-sm truncate">{label}</span>

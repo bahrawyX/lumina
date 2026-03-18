@@ -20,21 +20,13 @@ export const isSameDay = (d1: Date, d2: Date): boolean => {
 };
 
 export const getDaysInMonth = (year: number, month: number): Date[] => {
-  const date = new Date(year, month, 1);
-  const days: Date[] = [];
-  const startDay = date.getDay();
-  for (let i = startDay - 1; i >= 0; i--) {
-    days.push(new Date(year, month, -i));
-  }
-  while (date.getMonth() === month) {
-    days.push(new Date(date));
-    date.setDate(date.getDate() + 1);
-  }
-  const remaining = 42 - days.length;
-  for (let i = 1; i <= remaining; i++) {
-    days.push(new Date(year, month + 1, i));
-  }
-  return days;
+  const firstOfMonth = new Date(year, month, 1);
+  const startOffset = firstOfMonth.getDay();
+  const gridStart = new Date(year, month, 1 - startOffset);
+
+  return Array.from({ length: 42 }, (_, index) =>
+    new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index)
+  );
 };
 
 export const getDaysInWeek = (currentDate: Date): Date[] => {

@@ -1,5 +1,7 @@
+import 'server-only';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
+import * as schema from '@/db/schema';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -31,7 +33,7 @@ function getDb() {
   if (!sqlClient) {
     throw new Error('DATABASE_URL is required to initialize the database client.');
   }
-  return drizzle({ client: sqlClient });
+  return drizzle({ client: sqlClient, schema });
 }
 
 let _db: ReturnType<typeof getDb> | null = null;
@@ -42,4 +44,4 @@ export function getDatabase() {
 }
 
 export const sql = createSqlClient();
-export const db = sql ? drizzle({ client: sql }) : null;
+export const db = sql ? drizzle({ client: sql, schema }) : null;

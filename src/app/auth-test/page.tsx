@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLuminaAuthClient } from "@/components/AuthProvider";
 import GoogleLoginButton from "@/components/GoogleLoginButton";
+import MicrosoftLoginButton from "@/components/MicrosoftLoginButton";
 
 export default function AuthTestPage() {
   const authClient = useLuminaAuthClient();
@@ -160,6 +161,7 @@ export default function AuthTestPage() {
           </div>
 
           <GoogleLoginButton callbackURL="/auth-test" />
+          <MicrosoftLoginButton callbackURL="/auth-test" />
         </section>
       ) : (
         <section className="rounded-lg border border-border bg-card p-4 space-y-4">

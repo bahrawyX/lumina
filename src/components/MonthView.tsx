@@ -265,10 +265,10 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
+      <div className="flex-1 min-h-0 h-full overflow-hidden">
         <div
-          className={`grid grid-cols-7 grid-rows-6 p-1.5 sm:p-2 gap-1.5 sm:gap-2 ${GRID_CANVAS_CLS}`}
-          style={{ minHeight: 'max(100%, 560px)' }}
+          className={`h-full min-h-[560px] overflow-hidden grid grid-cols-7 grid-rows-6 p-1.5 sm:p-2 gap-1.5 sm:gap-2 ${GRID_CANVAS_CLS}`}
+          style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}
         >
           {gridDays.map((day, idx) => (
             <MonthDayCell

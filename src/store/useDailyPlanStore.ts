@@ -1,6 +1,26 @@
 import { create } from 'zustand';
 import { format, parseISO, isValid } from 'date-fns';
 
+const canUseStorage = typeof window !== 'undefined';
+
+function getStorageItem(key: string): string | null {
+  if (!canUseStorage) return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setStorageItem(key: string, value: string): void {
+  if (!canUseStorage) return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface PlannedTaskItem {
@@ -70,7 +90,7 @@ function normalizeItem(raw: Record<string, unknown>, index: number): PlannedTask
 
 function loadPlans(): Record<string, PlannedTaskItem[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = getStorageItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -97,7 +117,7 @@ function loadPlans(): Record<string, PlannedTaskItem[]> {
 
 function savePlans(plans: Record<string, PlannedTaskItem[]>): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
+    setStorageItem(STORAGE_KEY, JSON.stringify(plans));
   } catch {
     // quota — fail silently
   }
