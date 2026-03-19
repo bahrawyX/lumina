@@ -13,6 +13,7 @@ const microsoftClientSecret = process.env.MICROSOFT_CLIENT_SECRET;
 
 const hasGoogleCredentials = Boolean(googleClientId && googleClientSecret);
 const hasMicrosoftCredentials = Boolean(microsoftClientId && microsoftClientSecret);
+const isProduction = process.env.NODE_ENV === 'production';
 
 if (!db) {
   throw new Error('DATABASE_URL is required for BetterAuth database sessions.');
@@ -55,6 +56,14 @@ export const auth = betterAuth({
   secret,
   baseURL,
   trustedOrigins: [baseURL],
+  cookies: {
+    sessionToken: {
+      options: {
+        sameSite: isProduction ? 'none' : 'lax',
+        secure: isProduction,
+      },
+    },
+  },
   database: drizzleAdapter(db, {
     provider: 'pg',
     schema,

@@ -1,7 +1,10 @@
 import 'server-only';
 import { importGoogleCalendars, getGoogleCalendarsFromDb } from './calendars';
 import { syncAllGoogleCalendarEvents } from './events';
-import { markIntegrationError, markIntegrationSynced } from './token';
+import {
+  markGoogleIntegrationError,
+  markGoogleIntegrationSynced,
+} from './token';
 
 export interface FullSyncResult {
   calendarsImported: number;
@@ -31,7 +34,7 @@ export async function runFullGoogleSync(userId: string): Promise<FullSyncResult>
     const upsertedCalendars = await importGoogleCalendars(userId);
 
     if (upsertedCalendars.length === 0) {
-      await markIntegrationSynced(userId);
+      await markGoogleIntegrationSynced(userId);
       return {
         calendarsImported: 0,
         eventsInserted: 0,
@@ -60,7 +63,7 @@ export async function runFullGoogleSync(userId: string): Promise<FullSyncResult>
     const eventsSkipped = calendarResults.reduce((s, r) => s + r.skipped, 0);
 
     // Mark integration as successfully synced
-    await markIntegrationSynced(userId);
+    await markGoogleIntegrationSynced(userId);
 
     return {
       calendarsImported: upsertedCalendars.length,
@@ -71,7 +74,7 @@ export async function runFullGoogleSync(userId: string): Promise<FullSyncResult>
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await markIntegrationError(userId, message);
+    await markGoogleIntegrationError(userId, message);
     throw err;
   }
 }
@@ -103,7 +106,7 @@ export async function runEventsSyncOnly(userId: string): Promise<FullSyncResult>
     const eventsUpdated = calendarResults.reduce((s, r) => s + r.updated, 0);
     const eventsSkipped = calendarResults.reduce((s, r) => s + r.skipped, 0);
 
-    await markIntegrationSynced(userId);
+    await markGoogleIntegrationSynced(userId);
 
     return {
       calendarsImported: 0,
@@ -114,7 +117,7 @@ export async function runEventsSyncOnly(userId: string): Promise<FullSyncResult>
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await markIntegrationError(userId, message);
+    await markGoogleIntegrationError(userId, message);
     throw err;
   }
 }

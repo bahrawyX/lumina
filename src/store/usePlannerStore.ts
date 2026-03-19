@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { CalendarEvent } from '../types';
-import { getCachedOutlookEvents } from '../services/outlookSyncService';
 
 interface PlannerState {
   outlookEvents: CalendarEvent[];
@@ -16,7 +15,7 @@ interface PlannerState {
 export const usePlannerStore = create<PlannerState>()(
   persist(
     (set) => ({
-      outlookEvents: getCachedOutlookEvents(),
+      outlookEvents: [],
       outlookConnected: false,
       outlookSyncing: false,
 

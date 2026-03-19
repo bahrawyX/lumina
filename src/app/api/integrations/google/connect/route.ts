@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { cookies } from 'next/headers';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
-const STATE_COOKIE = 'lumina_google_connect_state';
 
 /**
  * GET /api/integrations/google/connect
@@ -16,6 +14,8 @@ const STATE_COOKIE = 'lumina_google_connect_state';
  * Session must exist (user must be logged in).
  */
 export async function GET(req: NextRequest) {
+  console.log('[GOOGLE CONNECT] START');
+
   const session = await auth.api.getSession({ headers: req.headers });
   const baseURL = process.env.BETTER_AUTH_URL ?? new URL(req.url).origin;
 
@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientId = process.env.GOOGLE_CLIENT_ID_CALENDAR;
+  console.log('[GOOGLE CONNECT] CLIENT ID:', process.env.GOOGLE_CLIENT_ID_CALENDAR);
+  console.log('[GOOGLE CONNECT] REDIRECT URI:', `${baseURL}/api/integrations/google/callback`);
+
   if (!clientId) {
     return NextResponse.json(
       { error: 'Google integration is not configured on this server.' },
@@ -31,8 +34,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Cryptographically random state nonce — verified in the callback
-  const state = crypto.randomUUID();
+  const state = JSON.stringify({
+    userId: session.user.id,
+  });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -46,15 +50,7 @@ export async function GET(req: NextRequest) {
     state,
   });
 
-  const response = NextResponse.redirect(`${GOOGLE_AUTH_URL}?${params}`);
+  console.log('[GOOGLE CONNECT] URL:', `${GOOGLE_AUTH_URL}?${params.toString()}`);
 
-  response.cookies.set(STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 10 * 60, // 10-minute window for the OAuth flow
-    path: '/',
-  });
-
-  return response;
+  return NextResponse.redirect(`${GOOGLE_AUTH_URL}?${params}`);
 }

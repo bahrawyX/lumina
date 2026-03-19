@@ -26,8 +26,7 @@ export async function GET(req: NextRequest) {
  * Fetch the user's Google calendar list and upsert them into the DB.
  * Returns the list of imported calendar records.
  *
- * Requires the user to have signed in with Google (accounts table must have tokens).
- * On first call, this also bootstraps the integrations row.
+ * Requires an active Google integration with tokens in the integrations table.
  */
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -45,8 +44,9 @@ export async function POST(req: NextRequest) {
 
     // Surface token/auth errors distinctly
     if (
-      message.includes('No Google account linked') ||
-      message.includes('tokens are missing')
+      message.includes('No Google integration found') ||
+      message.includes('Google integration is not active') ||
+      message.includes('Google refresh token missing')
     ) {
       return NextResponse.json({ error: message }, { status: 403 });
     }

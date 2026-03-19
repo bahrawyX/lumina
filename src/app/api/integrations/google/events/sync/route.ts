@@ -51,8 +51,9 @@ export async function POST(req: NextRequest) {
     console.error('[POST /api/integrations/google/events/sync]', message);
 
     if (
-      message.includes('No Google account linked') ||
-      message.includes('tokens are missing')
+      message.includes('No Google integration found') ||
+      message.includes('Google integration is not active') ||
+      message.includes('Google refresh token missing')
     ) {
       return NextResponse.json({ error: message }, { status: 403 });
     }

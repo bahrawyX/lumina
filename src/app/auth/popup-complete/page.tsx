@@ -6,6 +6,8 @@ import { useSearchParams } from 'next/navigation';
 export default function OAuthPopupCompletePage() {
   const searchParams = useSearchParams();
   const provider = searchParams.get('provider') ?? 'oauth';
+  const hasError = searchParams.get('error') === 'true';
+  const errorDetail = searchParams.get('detail');
 
   useEffect(() => {
     if (!window.opener) return;
@@ -15,13 +17,15 @@ export default function OAuthPopupCompletePage() {
         {
           type: 'lumina:oauth-complete',
           provider,
+          success: !hasError,
+          error: hasError ? errorDetail ?? 'oauth_error' : null,
         },
         window.location.origin
       );
     } finally {
       window.close();
     }
-  }, [provider]);
+  }, [provider, hasError, errorDetail]);
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-background text-foreground px-6">

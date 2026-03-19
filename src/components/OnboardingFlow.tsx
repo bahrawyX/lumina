@@ -12,6 +12,7 @@ import { useLuminaAuthClient } from './AuthProvider';
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 const TOTAL_STEPS = 7; // 0..6
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SLIDE_VARIANTS = {
   enter: (dir: number) => ({
@@ -29,6 +30,75 @@ const TRANSITION = {
   duration: 0.35,
   ease: [0.4, 0, 0.2, 1] as [number, number, number, number],
 };
+
+type IntegrationProvider = 'google' | 'microsoft';
+type IntegrationPopupFailureReason =
+  | 'closed'
+  | 'timeout'
+  | 'message-error'
+  | 'popup-blocked'
+  | 'status-false';
+type IntegrationPopupResult =
+  | { ok: true }
+  | { ok: false; reason: IntegrationPopupFailureReason; error?: string | null };
+type AuthMode = 'signin' | 'signup';
+
+function getIntegrationLabel(provider: IntegrationProvider): string {
+  return provider === 'google' ? 'Google Calendar' : 'Outlook';
+}
+
+function isGoogleBlockedContextError(error?: string | null): boolean {
+  if (!error) return false;
+  const normalized = error.toLowerCase();
+  return (
+    normalized.includes('access_denied')
+    || normalized.includes('oauth_error')
+    || normalized.includes('browser')
+    || normalized.includes('secure')
+  );
+}
+
+function getIntegrationFailureMessage(
+  provider: IntegrationProvider,
+  result: IntegrationPopupResult,
+): string {
+  if (result.ok) {
+    return `${getIntegrationLabel(provider)} connection was not completed. Try again in a regular browser window.`;
+  }
+
+  const failedResult = result as Extract<IntegrationPopupResult, { ok: false }>;
+
+  if (
+    provider === 'google' && (
+      failedResult.reason === 'timeout'
+      || failedResult.reason === 'status-false'
+      || (
+        failedResult.reason === 'message-error'
+        && isGoogleBlockedContextError(failedResult.error)
+      )
+    )
+  ) {
+    return 'Google blocked browser/app context. OAuth failed. Connection was not completed. Try again in a regular browser window.';
+  }
+
+  if (failedResult.reason === 'popup-blocked') {
+    return 'Popup blocked. Connection was not completed. Try again in a regular browser window.';
+  }
+
+  if (failedResult.reason === 'closed') {
+    return `${getIntegrationLabel(provider)} popup was closed before completion. Connection was not completed.`;
+  }
+
+  if (failedResult.reason === 'timeout') {
+    return `${getIntegrationLabel(provider)} popup timed out. OAuth failed. Connection was not completed. Try again in a regular browser window.`;
+  }
+
+  if (failedResult.reason === 'status-false') {
+    return `${getIntegrationLabel(provider)} OAuth finished but status stayed disconnected. Connection was not completed. Try again in a regular browser window.`;
+  }
+
+  return `${getIntegrationLabel(provider)} OAuth failed. Connection was not completed. Try again in a regular browser window.`;
+}
 
 /* ─── Reusable primitives ────────────────────────────────────────────────────── */
 
@@ -143,17 +213,40 @@ StepWelcome.displayName = 'StepWelcome';
 const StepAuth = memo<{
   authStatus: 'loading' | 'logged out' | 'logged in';
   authUserEmail: string | null;
+  authMode: AuthMode;
+  authName: string;
   authEmail: string;
   authPassword: string;
   authBusy: 'signup' | 'signin' | 'google' | 'signout' | 'microsoft' | null;
   authMessage: string | null;
+  onAuthNameChange: (value: string) => void;
   onAuthEmailChange: (value: string) => void;
   onAuthPasswordChange: (value: string) => void;
   onSignUp: () => void;
   onSignIn: () => void;
   onGoogleSignIn: () => void;
   onSignOut: () => void;
-}>(({ authStatus, authUserEmail, authEmail, authPassword, authBusy, authMessage, onAuthEmailChange, onAuthPasswordChange, onSignUp, onSignIn, onGoogleSignIn, onSignOut }) => (
+  onSwitchToSignUp: () => void;
+  onSwitchToSignIn: () => void;
+}>(({
+  authStatus,
+  authUserEmail,
+  authMode,
+  authName,
+  authEmail,
+  authPassword,
+  authBusy,
+  authMessage,
+  onAuthNameChange,
+  onAuthEmailChange,
+  onAuthPasswordChange,
+  onSignUp,
+  onSignIn,
+  onGoogleSignIn,
+  onSignOut,
+  onSwitchToSignUp,
+  onSwitchToSignIn,
+}) => (
   <StepShell
     title="Secure your workspace"
     description="Sign in once and your settings follow you across sessions and devices."
@@ -176,6 +269,17 @@ const StepAuth = memo<{
     ) : (
       <div className="space-y-3">
         <div className="space-y-2">
+          {authMode === 'signup' && (
+            <input
+              type="text"
+              name="onboarding-auth-name"
+              value={authName}
+              onChange={(e) => onAuthNameChange(e.target.value)}
+              placeholder="Full name"
+              autoComplete="name"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
+            />
+          )}
           <input
             type="email"
             name="onboarding-auth-email"
@@ -191,19 +295,26 @@ const StepAuth = memo<{
             value={authPassword}
             onChange={(e) => onAuthPasswordChange(e.target.value)}
             placeholder="Password"
-            autoComplete="current-password"
+            autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
             className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
           />
         </div>
 
-        {/* Primary action: Sign In — full width */}
+        {/* Primary action */}
         <button
           type="button"
-          onClick={onSignIn}
-          disabled={Boolean(authBusy) || !authEmail.trim() || !authPassword}
+          onClick={authMode === 'signup' ? onSignUp : onSignIn}
+          disabled={
+            Boolean(authBusy)
+            || !authEmail.trim()
+            || !authPassword
+            || (authMode === 'signup' && !authName.trim())
+          }
           className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {authBusy === 'signin' ? 'Signing in…' : 'Sign In'}
+          {authMode === 'signup'
+            ? (authBusy === 'signup' ? 'Signing up…' : 'Sign Up')
+            : (authBusy === 'signin' ? 'Signing in…' : 'Sign In')}
         </button>
 
         <div className="relative py-0.5">
@@ -238,11 +349,11 @@ const StepAuth = memo<{
           </button>
           <button
             type="button"
-            onClick={onSignUp}
+            onClick={authMode === 'signup' ? onSwitchToSignIn : onSwitchToSignUp}
             disabled={Boolean(authBusy)}
             className="w-full rounded-lg border border-border/50 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
-            {authBusy === 'signup' ? 'Signing up…' : 'Create account'}
+            {authMode === 'signup' ? 'Back to sign in' : 'Create account'}
           </button>
         </div>
       </div>
@@ -453,10 +564,11 @@ const StepCalendarSync = memo<{
   microsoftConnected: boolean;
   googleLoading?: boolean;
   outlookLoading?: boolean;
+  integrationMessage?: string | null;
   onConnectGoogle: () => void;
   onConnectMicrosoft: () => void;
   onSkip: () => void;
-}>(({ googleConnected, microsoftConnected, googleLoading, outlookLoading, onConnectGoogle, onConnectMicrosoft, onSkip }) => {
+}>(({ googleConnected, microsoftConnected, googleLoading, outlookLoading, integrationMessage, onConnectGoogle, onConnectMicrosoft, onSkip }) => {
   const connectedCount = (googleConnected ? 1 : 0) + (microsoftConnected ? 1 : 0);
   const statusText =
     connectedCount === 2
@@ -542,6 +654,14 @@ const StepCalendarSync = memo<{
       <p className="text-xs text-gray-400 dark:text-muted-foreground/60 pt-1">
         {statusText}
       </p>
+
+      {integrationMessage && (
+        <div className="rounded-lg border border-amber-300/60 bg-amber-50/80 dark:bg-amber-400/10 dark:border-amber-400/30 px-3 py-2">
+          <p className="text-xs font-medium text-amber-900 dark:text-amber-100">
+            {integrationMessage}
+          </p>
+        </div>
+      )}
 
       <button
         type="button"
@@ -640,13 +760,19 @@ const OnboardingFlow: React.FC = () => {
   const [step, setStep] = useState<number>(0);
   const [outlookLoading, setOutlookLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('signin');
+  const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authBusy, setAuthBusy] = useState<'signup' | 'signin' | 'google' | 'microsoft' | 'signout' | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [integrationMessage, setIntegrationMessage] = useState<string | null>(null);
 
   const authUser = authData?.user ?? null;
   const authSession = authData?.session ?? null;
+  const onboardingUserName = store.userName;
+  const onboardingUserRole = store.userRole;
+  const setOnboardingUserInfo = store.setUserInfo;
   const authStatus: 'loading' | 'logged out' | 'logged in' = authSessionPending
     ? 'loading'
     : authUser && authSession
@@ -656,6 +782,40 @@ const OnboardingFlow: React.FC = () => {
   const clearAuthMessage = useCallback(() => {
     setAuthMessage(null);
   }, []);
+
+  const clearIntegrationMessage = useCallback(() => {
+    setIntegrationMessage(null);
+  }, []);
+
+  const switchToSignUp = useCallback(() => {
+    clearAuthMessage();
+    setAuthMode('signup');
+  }, [clearAuthMessage]);
+
+  const switchToSignIn = useCallback(() => {
+    clearAuthMessage();
+    setAuthMode('signin');
+  }, [clearAuthMessage]);
+
+  const hydrateNameFromSession = useCallback(async () => {
+    const getSession = (authClient as { getSession?: () => Promise<unknown> }).getSession;
+    if (typeof getSession !== 'function') return;
+
+    const sessionResult = await getSession();
+    const user = (sessionResult as { data?: { user?: { name?: string | null } } })?.data?.user;
+    const sessionName = user?.name?.trim();
+
+    if (sessionName && !onboardingUserName.trim()) {
+      setOnboardingUserInfo(sessionName, onboardingUserRole);
+    }
+    if (sessionName) {
+      setAuthName((current) => (current.trim() ? current : sessionName));
+    }
+  }, [authClient, onboardingUserName, onboardingUserRole, setOnboardingUserInfo]);
+
+  React.useEffect(() => {
+    void hydrateNameFromSession();
+  }, [hydrateNameFromSession, authStatus]);
 
   const startSocialSignInPopup = useCallback(async (provider: 'google' | 'microsoft'): Promise<boolean> => {
     const socialSignIn = (authClient.signIn as any)?.social;
@@ -711,6 +871,12 @@ const OnboardingFlow: React.FC = () => {
         if (!data || typeof data !== 'object') return;
         if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
         if ((data as { provider?: string }).provider !== provider) return;
+        if ((data as { success?: boolean }).success === false) {
+          settled = true;
+          cleanup();
+          resolve(false);
+          return;
+        }
 
         settled = true;
         cleanup();
@@ -743,14 +909,31 @@ const OnboardingFlow: React.FC = () => {
 
   const handleAuthSignUp = useCallback(async () => {
     clearAuthMessage();
+
+    const normalizedName = authName.trim();
+    const normalizedEmail = authEmail.trim().toLowerCase();
+
+    if (normalizedName.length < 2) {
+      setAuthMessage('Please enter your full name (at least 2 characters).');
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setAuthMessage('Please enter a valid email address.');
+      return;
+    }
+
+    if (authPassword.length < 6) {
+      setAuthMessage('Password must be at least 6 characters.');
+      return;
+    }
+
     setAuthBusy('signup');
     try {
-      const normalizedEmail = authEmail.trim().toLowerCase();
-      const fallbackName = normalizedEmail.split('@')[0] || 'Lumina User';
       const result = await authClient.signUp.email({
         email: normalizedEmail,
         password: authPassword,
-        name: fallbackName,
+        name: normalizedName,
         callbackURL: '/onboarding',
       });
       if (result.error) {
@@ -758,18 +941,44 @@ const OnboardingFlow: React.FC = () => {
         return;
       }
       await refetchAuthSession();
+      await hydrateNameFromSession();
+      if (!onboardingUserName.trim()) {
+        setOnboardingUserInfo(normalizedName, onboardingUserRole);
+      }
       setAuthMessage('Signed up successfully.');
     } finally {
       setAuthBusy(null);
     }
-  }, [authClient, authEmail, authPassword, clearAuthMessage, refetchAuthSession]);
+  }, [
+    authClient,
+    authEmail,
+    authName,
+    authPassword,
+    clearAuthMessage,
+    hydrateNameFromSession,
+    refetchAuthSession,
+    onboardingUserName,
+    onboardingUserRole,
+    setOnboardingUserInfo,
+  ]);
 
   const handleAuthSignIn = useCallback(async () => {
     clearAuthMessage();
+    const normalizedEmail = authEmail.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setAuthMessage('Please enter a valid email address.');
+      return;
+    }
+
+    if (!authPassword) {
+      setAuthMessage('Please enter your password.');
+      return;
+    }
+
     setAuthBusy('signin');
     try {
       const result = await authClient.signIn.email({
-        email: authEmail.trim().toLowerCase(),
+        email: normalizedEmail,
         password: authPassword,
         callbackURL: '/onboarding',
       });
@@ -778,11 +987,19 @@ const OnboardingFlow: React.FC = () => {
         return;
       }
       await refetchAuthSession();
+      await hydrateNameFromSession();
       setAuthMessage('Signed in successfully.');
     } finally {
       setAuthBusy(null);
     }
-  }, [authClient, authEmail, authPassword, clearAuthMessage, refetchAuthSession]);
+  }, [
+    authClient,
+    authEmail,
+    authPassword,
+    clearAuthMessage,
+    hydrateNameFromSession,
+    refetchAuthSession,
+  ]);
 
   const handleGoogleSignIn = useCallback(async () => {
     clearAuthMessage();
@@ -795,13 +1012,19 @@ const OnboardingFlow: React.FC = () => {
       }
 
       await refetchAuthSession();
+      await hydrateNameFromSession();
       setAuthMessage('Signed in with Google.');
     } catch (err: any) {
       setAuthMessage(err?.message ?? 'Google sign-in failed.');
     } finally {
       setAuthBusy(null);
     }
-  }, [clearAuthMessage, refetchAuthSession, startSocialSignInPopup]);
+  }, [
+    clearAuthMessage,
+    hydrateNameFromSession,
+    refetchAuthSession,
+    startSocialSignInPopup,
+  ]);
 
   const handleAuthSignOut = useCallback(async () => {
     clearAuthMessage();
@@ -826,7 +1049,7 @@ const OnboardingFlow: React.FC = () => {
    * in the DB before handing off to /auth/popup-complete.
    */
   const openIntegrationPopup = useCallback(
-    async (provider: 'google' | 'microsoft'): Promise<boolean> => {
+    async (provider: IntegrationProvider): Promise<IntegrationPopupResult> => {
       const url = `/api/integrations/${provider}/connect`;
       const width = 520;
       const height = 700;
@@ -839,10 +1062,12 @@ const OnboardingFlow: React.FC = () => {
         `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`,
       );
 
-      if (!popup) throw new Error('Popup blocked. Please allow popups and try again.');
+      if (!popup) {
+        return { ok: false, reason: 'popup-blocked' };
+      }
       popup.focus();
 
-      return new Promise<boolean>((resolve) => {
+      return new Promise<IntegrationPopupResult>((resolve) => {
         let settled = false;
         const cleanup = () => {
           window.removeEventListener('message', onMessage);
@@ -855,19 +1080,34 @@ const OnboardingFlow: React.FC = () => {
           if (!data || typeof data !== 'object') return;
           if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
           if ((data as { provider?: string }).provider !== provider) return;
+          if ((data as { success?: boolean }).success === false) {
+            const error = (data as { error?: unknown }).error;
+            settled = true;
+            cleanup();
+            resolve({
+              ok: false,
+              reason: 'message-error',
+              error: typeof error === 'string' ? error : null,
+            });
+            return;
+          }
           settled = true;
           cleanup();
-          resolve(true);
+          resolve({ ok: true });
         };
         const pollId = window.setInterval(() => {
-          if (!settled && popup.closed) { settled = true; cleanup(); resolve(false); }
+          if (!settled && popup.closed) {
+            settled = true;
+            cleanup();
+            resolve({ ok: false, reason: 'closed' });
+          }
         }, 350);
         const timeoutId = window.setTimeout(() => {
           if (settled) return;
           settled = true;
           cleanup();
           try { popup.close(); } catch { /* noop */ }
-          resolve(false);
+          resolve({ ok: false, reason: 'timeout' });
         }, 3 * 60 * 1000);
         window.addEventListener('message', onMessage);
       });
@@ -875,12 +1115,65 @@ const OnboardingFlow: React.FC = () => {
     [],
   );
 
-  // ── Outlook / Microsoft connect (independent of Google) ─────────────────
-  const handleOnboardingMicrosoftConnect = useCallback(async () => {
-    if (store.microsoftConnected) {
+  const syncIntegrationState = useCallback(async () => {
+    try {
+      const res = await fetch('/api/integrations/status', { cache: 'no-store' });
+      if (!res.ok) {
+        store.setGoogleConnected(false);
+        store.setMicrosoftConnected(false);
+        plannerStore.setOutlookConnected(false);
+        plannerStore.setOutlookEvents([]);
+        return { google: false, microsoft: false };
+      }
+
+      const data = (await res.json()) as {
+        google?: { connected: boolean };
+        microsoft?: { connected: boolean };
+      };
+
+      const google = Boolean(data.google?.connected);
+      const microsoft = Boolean(data.microsoft?.connected);
+
+      store.setGoogleConnected(google);
+      store.setMicrosoftConnected(microsoft);
+      plannerStore.setOutlookConnected(microsoft);
+
+      if (!microsoft) {
+        plannerStore.setOutlookEvents([]);
+      }
+
+      return { google, microsoft };
+    } catch {
+      store.setGoogleConnected(false);
       store.setMicrosoftConnected(false);
       plannerStore.setOutlookConnected(false);
       plannerStore.setOutlookEvents([]);
+      return { google: false, microsoft: false };
+    }
+  }, [plannerStore, store]);
+
+  const confirmIntegration = useCallback(async (provider: IntegrationProvider) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const status = await syncIntegrationState();
+      const connected = provider === 'google' ? status.google : status.microsoft;
+      if (connected) return true;
+      if (attempt < 2) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+      }
+    }
+
+    return false;
+  }, [syncIntegrationState]);
+
+  // ── Outlook / Microsoft connect (independent of Google) ─────────────────
+  const handleOnboardingMicrosoftConnect = useCallback(async () => {
+    clearIntegrationMessage();
+    if (store.microsoftConnected) {
+      await fetch('/api/integrations/microsoft/disconnect', { method: 'POST' }).catch(
+        () => { /* non-critical, best-effort */ },
+      );
+      await syncIntegrationState();
+      setIntegrationMessage(null);
       return;
     }
 
@@ -888,30 +1181,52 @@ const OnboardingFlow: React.FC = () => {
     setOutlookLoading(true);
     setAuthBusy('microsoft');
     try {
-      const completed = await openIntegrationPopup('microsoft');
-      if (!completed) {
-        setAuthMessage('Outlook connection was cancelled.');
+      const popupResult = await openIntegrationPopup('microsoft');
+
+      if (!popupResult.ok) {
+        await syncIntegrationState();
+        setIntegrationMessage(getIntegrationFailureMessage('microsoft', popupResult));
         return;
       }
-      store.setMicrosoftConnected(true);
-      plannerStore.setOutlookConnected(true);
-      setAuthMessage('Outlook calendar connected.');
+
+      const confirmed = await confirmIntegration('microsoft');
+      if (!confirmed) {
+        setIntegrationMessage(
+          getIntegrationFailureMessage('microsoft', {
+            ok: false,
+            reason: 'status-false',
+          }),
+        );
+        return;
+      }
+
+      setIntegrationMessage(null);
     } catch (err: unknown) {
       console.error('[Onboarding Outlook]', err);
-      store.setMicrosoftConnected(false);
-      plannerStore.setOutlookConnected(false);
-      plannerStore.setOutlookEvents([]);
-      setAuthMessage(err instanceof Error ? err.message : 'Outlook connection failed.');
+      await syncIntegrationState();
+      setIntegrationMessage('Outlook OAuth failed. Connection was not completed. Try again in a regular browser window.');
     } finally {
       setAuthBusy(null);
       setOutlookLoading(false);
     }
-  }, [clearAuthMessage, openIntegrationPopup, plannerStore, store]);
+  }, [
+    clearAuthMessage,
+    clearIntegrationMessage,
+    confirmIntegration,
+    openIntegrationPopup,
+    store.microsoftConnected,
+    syncIntegrationState,
+  ]);
 
   // ── Google Calendar connect (independent of Outlook) ────────────────────
   const handleOnboardingGoogleConnect = useCallback(async () => {
+    clearIntegrationMessage();
     if (store.googleConnected) {
-      store.setGoogleConnected(false);
+      await fetch('/api/integrations/google/disconnect', { method: 'POST' }).catch(
+        () => { /* non-critical, best-effort */ },
+      );
+      await syncIntegrationState();
+      setIntegrationMessage(null);
       return;
     }
 
@@ -919,22 +1234,42 @@ const OnboardingFlow: React.FC = () => {
     setGoogleLoading(true);
     setAuthBusy('google');
     try {
-      const completed = await openIntegrationPopup('google');
-      if (!completed) {
-        setAuthMessage('Google Calendar connection was cancelled.');
+      const popupResult = await openIntegrationPopup('google');
+
+      if (!popupResult.ok) {
+        await syncIntegrationState();
+        setIntegrationMessage(getIntegrationFailureMessage('google', popupResult));
         return;
       }
-      store.setGoogleConnected(true);
-      setAuthMessage('Google Calendar connected.');
+
+      const confirmed = await confirmIntegration('google');
+      if (!confirmed) {
+        setIntegrationMessage(
+          getIntegrationFailureMessage('google', {
+            ok: false,
+            reason: 'status-false',
+          }),
+        );
+        return;
+      }
+
+      setIntegrationMessage(null);
     } catch (err: unknown) {
       console.error('[Onboarding Google]', err);
-      store.setGoogleConnected(false);
-      setAuthMessage(err instanceof Error ? err.message : 'Google Calendar connection failed.');
+      await syncIntegrationState();
+      setIntegrationMessage('Google OAuth failed. Connection was not completed. Try again in a regular browser window.');
     } finally {
       setAuthBusy(null);
       setGoogleLoading(false);
     }
-  }, [clearAuthMessage, openIntegrationPopup, store]);
+  }, [
+    clearAuthMessage,
+    clearIntegrationMessage,
+    confirmIntegration,
+    openIntegrationPopup,
+    store.googleConnected,
+    syncIntegrationState,
+  ]);
 
   const canContinue = useCallback((): boolean => {
     if (step === 2) return store.userName.trim().length > 0;
@@ -985,16 +1320,21 @@ const OnboardingFlow: React.FC = () => {
           <StepAuth
             authStatus={authStatus}
             authUserEmail={authUser?.email ?? null}
+            authMode={authMode}
+            authName={authName}
             authEmail={authEmail}
             authPassword={authPassword}
             authBusy={authBusy}
             authMessage={authMessage ?? authSessionError?.message ?? null}
+            onAuthNameChange={setAuthName}
             onAuthEmailChange={setAuthEmail}
             onAuthPasswordChange={setAuthPassword}
             onSignUp={handleAuthSignUp}
             onSignIn={handleAuthSignIn}
             onGoogleSignIn={handleGoogleSignIn}
             onSignOut={handleAuthSignOut}
+            onSwitchToSignUp={switchToSignUp}
+            onSwitchToSignIn={switchToSignIn}
           />
         );
       case 2:
@@ -1038,6 +1378,7 @@ const OnboardingFlow: React.FC = () => {
             microsoftConnected={store.microsoftConnected}
             googleLoading={googleLoading}
             outlookLoading={outlookLoading}
+            integrationMessage={integrationMessage}
             onConnectGoogle={handleOnboardingGoogleConnect}
             onConnectMicrosoft={handleOnboardingMicrosoftConnect}
             onSkip={goNext}

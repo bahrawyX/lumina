@@ -1,22 +1,7 @@
 import type { CalendarEvent } from '../types';
 
-const SYNC_STORAGE_KEY = 'lumina_outlook_events';
-
-function loadCachedOutlookEvents(): CalendarEvent[] {
-  try {
-    const raw = localStorage.getItem(SYNC_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveCachedOutlookEvents(events: CalendarEvent[]): void {
-  localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(events));
-}
-
 export function getCachedOutlookEvents(): CalendarEvent[] {
-  return loadCachedOutlookEvents();
+  return [];
 }
 
 export function mergeOutlookEvents(
@@ -32,9 +17,9 @@ export function mergeOutlookEvents(
 }
 
 export function saveOutlookEvents(events: CalendarEvent[]): void {
-  saveCachedOutlookEvents(events);
+  void events;
 }
 
 export function clearOutlookData(): void {
-  localStorage.removeItem(SYNC_STORAGE_KEY);
+  // No-op: Outlook event data now comes only from DB sync endpoints.
 }

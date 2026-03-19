@@ -22,12 +22,22 @@ const CALENDAR_SCOPE =
  * as a redirect URI in your Azure AD app registration.
  */
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const cookieStore = await cookies();
+  const sessionHeaders = new Headers(req.headers);
+  const cookieHeader = cookieStore.toString();
+  if (cookieHeader) {
+    sessionHeaders.set('cookie', cookieHeader);
+  }
+
+  const session = await auth.api.getSession({ headers: sessionHeaders });
   const baseURL = process.env.BETTER_AUTH_URL ?? new URL(req.url).origin;
   const errorRedirect = `${baseURL}/auth/popup-complete?provider=microsoft&error=true`;
 
   if (!session?.user?.id) {
-    return NextResponse.redirect(errorRedirect);
+    return NextResponse.json(
+      { error: 'Unauthorized: no active session in Microsoft callback.' },
+      { status: 401 },
+    );
   }
 
   const { searchParams } = new URL(req.url);
@@ -43,7 +53,6 @@ export async function GET(req: NextRequest) {
   }
 
   // Verify CSRF state against the httpOnly cookie set by /connect
-  const cookieStore = await cookies();
   const storedState = cookieStore.get(STATE_COOKIE)?.value;
   if (!storedState || storedState !== state) {
     return NextResponse.redirect(`${errorRedirect}&detail=state_mismatch`);
