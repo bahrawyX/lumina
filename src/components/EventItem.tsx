@@ -3,6 +3,7 @@
 import React, { memo } from 'react';
 import { CalendarEvent } from '../types';
 import { EVENT_COLORS } from '../constants';
+import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
 
 interface EventItemProps {
   event: CalendarEvent;
@@ -18,21 +19,6 @@ function fmt(t: string): string {
   const display = h % 12 === 0 ? 12 : h % 12;
   return `${display}:${m} ${period}`;
 }
-
-const MicrosoftProviderIcon: React.FC<{ color: string }> = ({ color }) => (
-  <svg width={10} height={10} viewBox="0 0 24 24" fill={color} className="flex-shrink-0 opacity-80">
-    <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.32.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V12z"/>
-  </svg>
-);
-
-const GoogleProviderIcon: React.FC = () => (
-  <svg width={10} height={10} viewBox="0 0 24 24" className="flex-shrink-0">
-    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.591 4.418 1.582l3.491-3.49A11.932 11.932 0 0 0 12 0C7.27 0 3.198 2.698 1.24 6.65l4.026 3.115z" />
-    <path fill="#34A853" d="M16.041 18.013A7.072 7.072 0 0 1 12 19.09c-2.973 0-5.535-1.853-6.6-4.487l-4.04 3.066C3.193 21.294 7.265 24 12 24c2.933 0 5.735-1.043 7.834-3.001l-3.793-2.986z" />
-    <path fill="#4A90E2" d="M19.834 20.999C22.029 18.952 23.455 15.904 23.455 12c0-.71-.091-1.418-.273-2.09H12v4.545h6.436a5.463 5.463 0 0 1-1.638 2.902l3.036 2.642z" />
-    <path fill="#FBBC05" d="M5.4 14.603A7.15 7.15 0 0 1 4.909 12c0-.56.076-1.104.214-1.624L1.24 7.26A11.981 11.981 0 0 0 0 12c0 1.92.444 3.73 1.237 5.335L5.4 14.603z" />
-  </svg>
-);
 
 const EventItem = memo<EventItemProps>(({ event, onClick }) => {
   const provider = event.provider
@@ -82,8 +68,8 @@ const EventItem = memo<EventItemProps>(({ event, onClick }) => {
         }}
       >
         {isExternal && (provider === 'google'
-          ? <GoogleProviderIcon />
-          : <MicrosoftProviderIcon color={color} />)}
+          ? <GoogleProviderIcon size={10} className="flex-shrink-0" />
+          : <OutlookProviderIcon size={10} className="flex-shrink-0 opacity-80" />)}
         {event.title}
       </span>
       {timeLabel && (

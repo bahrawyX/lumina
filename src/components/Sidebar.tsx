@@ -21,6 +21,8 @@ import {
   ClockIcon,
   SettingsIcon,
   ExternalLinkIcon,
+  GoogleProviderIcon,
+  OutlookProviderIcon,
 } from './icons';
 import { useLuminaAuthClient } from './AuthProvider';
 import { motion } from 'framer-motion';
@@ -111,27 +113,6 @@ const PlanDayIcon: React.FC<{ size?: number; strokeWidth?: number; className?: s
     <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
     <line x1="3" y1="10" x2="21" y2="10" />
     <line x1="8" y1="14" x2="12" y2="14" /><line x1="8" y1="18" x2="16" y2="18" />
-  </svg>
-);
-
-/* ─── Real Microsoft Outlook icon ─────────────────────────────────────────── */
-const OutlookSidebarIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className }) => (
-  <svg width={size} height={size} viewBox="0 0 48 48" className={className} xmlns="http://www.w3.org/2000/svg">
-    <path fill="#0277bd" d="M28.093 33H40c2.209 0 4-1.791 4-4V19c0-2.209-1.791-4-4-4H28.093v18z"/>
-    <path fill="#03a9f4" d="M16 15L28.093 15 28.093 33 16 33z"/>
-    <path fill="#4fc3f7" d="M28.093 20L38 20 38 28 28.093 28z"/>
-    <path fill="#0288d1" d="M21 11H6c-2.209 0-4 1.791-4 4v18c0 2.209 1.791 4 4 4h15V11z"/>
-    <path fill="#fff" d="M12.915 26.687c-2.31 0-3.921-1.666-3.921-4.062s1.583-4.103 3.935-4.103c2.31 0 3.894 1.638 3.894 4.075S15.225 26.687 12.915 26.687zM12.929 20.081c-1.391 0-2.233 1.055-2.233 2.544 0 1.502.828 2.502 2.219 2.502 1.405 0 2.219-1.027 2.219-2.516C15.134 21.08 14.334 20.081 12.929 20.081z"/>
-  </svg>
-);
-
-/* ─── Google G brand icon ─────────────────────────────────────────────────── */
-const GoogleCalendarIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.591 4.418 1.582l3.491-3.49A11.932 11.932 0 0 0 12 0C7.27 0 3.198 2.698 1.24 6.65l4.026 3.115z" />
-    <path fill="#34A853" d="M16.041 18.013A7.072 7.072 0 0 1 12 19.09c-2.973 0-5.535-1.853-6.6-4.487l-4.04 3.066C3.193 21.294 7.265 24 12 24c2.933 0 5.735-1.043 7.834-3.001l-3.793-2.986z" />
-    <path fill="#4A90E2" d="M19.834 20.999C22.029 18.952 23.455 15.904 23.455 12c0-.71-.091-1.418-.273-2.09H12v4.545h6.436a5.463 5.463 0 0 1-1.638 2.902l3.036 2.642z" />
-    <path fill="#FBBC05" d="M5.4 14.603A7.15 7.15 0 0 1 4.909 12c0-.56.076-1.104.214-1.624L1.24 7.26A11.981 11.981 0 0 0 0 12c0 1.92.444 3.73 1.237 5.335L5.4 14.603z" />
   </svg>
 );
 
@@ -903,7 +884,7 @@ const AppSidebar: React.FC = () => {
                 disabled={outlookLoading}
                 className="gap-2.5"
               >
-                <OutlookSidebarIcon size={16} />
+                <OutlookProviderIcon size={16} />
                 <span className="flex-1 text-sm">Outlook</span>
                 <span className={[
                   'text-[9px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 border',
@@ -920,7 +901,7 @@ const AppSidebar: React.FC = () => {
                 disabled={googleCalLoading}
                 className="gap-2.5"
               >
-                <GoogleCalendarIcon size={16} />
+                <GoogleProviderIcon size={16} />
                 <span className="flex-1 text-sm">Google Calendar</span>
                 <span className={[
                   'text-[9px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 border',
