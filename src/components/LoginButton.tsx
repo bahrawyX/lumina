@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useLuminaAuthClient } from './AuthProvider';
 import { useUser } from '@/hooks/useUser';
+import { usePlannerStore } from '@/store/usePlannerStore';
+import { clearAll as clearExternalCache } from '@/lib/calendar/externalEventsCache';
 
 export default function LoginButton() {
   const authClient = useLuminaAuthClient();
@@ -58,6 +60,10 @@ export default function LoginButton() {
     setErrorMessage(null);
 
     try {
+      // Clear external event cache before signing out
+      if (user?.id) clearExternalCache(user.id);
+      usePlannerStore.getState().clearExternalEvents();
+
       const result = await authClient.signOut();
       if (result.error) {
         setErrorMessage(result.error.message ?? 'Unable to sign out.');

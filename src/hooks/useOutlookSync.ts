@@ -1,74 +1,274 @@
 'use client';
 
+/**
+ * useOutlookSync
+ *
+ * Handles external calendar event fetching for ALL connected providers
+ * (Google + Microsoft).  Mounted once in AppShell.tsx.
+ *
+ * Fetch strategy:
+ *  - Range change → fetch immediately (cache decides if network call needed)
+ *  - Background poll every 10 min using REFS for view/date (stable interval,
+ *    does not restart on navigation)
+ *  - cache TTL = 5 min → a poll at 10 min always gets a fresh fetch
+ *
+ * Failure safety:
+ *  - Full HTTP failure → toast warning, existing store events preserved
+ *  - Per-provider API error → toast warning for that provider only, other
+ *    provider's events still updated, stale events preserved
+ *  - Local calendar is NEVER affected by external fetch failures
+ */
+
 import { useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
-import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
-import * as eventsPersistence from '../lib/persistence/eventsPersistence';
+import { authClient } from '../lib/auth-client';
+import { ViewType } from '../types';
+import type { CalendarEvent, EventProvider } from '../types';
+import { getCached, setCache } from '../lib/calendar/externalEventsCache';
+import type { ApiExternalEvent } from '../lib/calendar/externalEventTypes';
 
-const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// Background poll interval — longer than cache TTL so the cache is always
+// stale when the poll fires, guaranteeing a refresh without needing force=true.
+const POLL_INTERVAL_MS = 10 * 60 * 1_000; // 10 minutes  (cache TTL = 5 min)
 
-/**
- * Periodically calls POST /api/sync/outlook to persist Outlook events to the DB,
- * then refreshes the main calendar events store from the DB so they appear in
- * the calendar view alongside Google and local events.
- */
+// ── Date range helpers ─────────────────────────────────────────────────────
+
+function computeRange(view: ViewType, currentDate: Date): { start: string; end: string } {
+  const d = new Date(currentDate);
+  let startMs: number, endMs: number;
+
+  if (view === ViewType.MONTH) {
+    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+    const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    startMs = monthStart.getTime() - 7 * 86_400_000;
+    endMs   = monthEnd.getTime()   + 7 * 86_400_000;
+  } else if (view === ViewType.WEEK) {
+    const dow = d.getDay();
+    const weekStart = new Date(d); weekStart.setDate(d.getDate() - dow);
+    const weekEnd   = new Date(d); weekEnd.setDate(d.getDate() + (6 - dow));
+    startMs = weekStart.getTime() - 2 * 86_400_000;
+    endMs   = weekEnd.getTime()   + 2 * 86_400_000;
+  } else {
+    startMs = d.getTime() - 86_400_000;
+    endMs   = d.getTime() + 2 * 86_400_000;
+  }
+
+  return {
+    start: new Date(startMs).toISOString(),
+    end:   new Date(endMs).toISOString(),
+  };
+}
+
+// ── Normalization: ApiExternalEvent → CalendarEvent ────────────────────────
+
+function fmt2(n: number): string { return String(n).padStart(2, '0'); }
+
+function apiToCalendarEvent(e: ApiExternalEvent): CalendarEvent {
+  if (e.isAllDay) {
+    return {
+      id:          `${e.provider}:${e.externalEventId}`,
+      title:       e.title,
+      description: e.description ?? '',
+      date:        e.startIso.slice(0, 10),
+      startTime:   '00:00',
+      endTime:     '23:59',
+      timezone:    e.timezone,
+      location:    e.location || undefined,
+      category:    'Work',
+      color:       e.color,
+      source:      e.provider,
+      provider:    e.provider as EventProvider,
+      editable:    false,
+      readOnly:    true,
+      draggable:   false,
+      organizer:   e.organizerEmail || undefined,
+    };
+  }
+
+  // Timed event — format in the browser's local timezone for display
+  const start = new Date(e.startIso);
+  const end   = new Date(e.endIso);
+
+  return {
+    id:          `${e.provider}:${e.externalEventId}`,
+    title:       e.title,
+    description: e.description ?? '',
+    date:        `${start.getFullYear()}-${fmt2(start.getMonth() + 1)}-${fmt2(start.getDate())}`,
+    startTime:   `${fmt2(start.getHours())}:${fmt2(start.getMinutes())}`,
+    endTime:     `${fmt2(end.getHours())}:${fmt2(end.getMinutes())}`,
+    timezone:    e.timezone,
+    location:    e.location || undefined,
+    category:    'Work',
+    color:       e.color,
+    source:      e.provider,
+    provider:    e.provider as EventProvider,
+    editable:    false,
+    readOnly:    true,
+    draggable:   false,
+    organizer:   e.organizerEmail || undefined,
+  };
+}
+
+// ── Hook ───────────────────────────────────────────────────────────────────
+
 export function useOutlookSync() {
-  const timezone = useCalendarStore((s) => s.timezone);
-  const outlookConnected = usePlannerStore((s) => s.outlookConnected);
-  const setOutlookSyncing = usePlannerStore((s) => s.setOutlookSyncing);
-  const setOutlookConnected = usePlannerStore((s) => s.setOutlookConnected);
+  const view        = useCalendarStore((s) => s.view);
+  const currentDate = useCalendarStore((s) => s.currentDate);
+  const setGoogleEvents  = usePlannerStore((s) => s.setGoogleEvents);
   const setOutlookEvents = usePlannerStore((s) => s.setOutlookEvents);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const runSync = useCallback(async () => {
-    setOutlookSyncing(true);
-    try {
-      const res = await fetch('/api/sync/outlook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timezone }),
-      });
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id ?? null;
 
-      if (res.status === 401 || res.status === 403 || res.status === 404) {
-        // Token expired or integration removed — mark disconnected
-        setOutlookConnected(false);
-        setOutlookEvents([]);
-        return;
+  // Refs for the stable background poll — updated synchronously each render
+  // so the interval always reads the current view/date without being a dep.
+  const viewRef        = useRef(view);
+  const dateRef        = useRef(currentDate);
+  const isFetchingRef  = useRef(false);
+  viewRef.current  = view;
+  dateRef.current  = currentDate;
+
+  const syncRange = useCallback(
+    async (range: { start: string; end: string }, options?: { showLoader?: boolean; force?: boolean }) => {
+      if (!userId) return;
+      if (isFetchingRef.current) return;
+      const showLoader = options?.showLoader === true;
+      const force = options?.force === true;
+      const loaderToastId = 'calendar-sync-loading';
+
+      const startKey = range.start.slice(0, 10);
+      const endKey   = range.end.slice(0, 10);
+
+      const cachedGoogle = force
+        ? null
+        : (console.log('USER_ID_CACHE_READ', userId, 'google', `${startKey}_${endKey}`), getCached(userId, 'google', startKey, endKey));
+      const cachedMs = force
+        ? null
+        : (console.log('USER_ID_CACHE_READ', userId, 'microsoft', `${startKey}_${endKey}`), getCached(userId, 'microsoft', startKey, endKey));
+
+      isFetchingRef.current = true;
+      if (showLoader) {
+        toast.loading('Syncing calendars...', { id: loaderToastId });
       }
+      let syncFailed = false;
+      try {
+        if (cachedGoogle !== null) {
+          console.log('USER_ID_STORE_SET', userId, 'google', cachedGoogle.length);
+          setGoogleEvents(cachedGoogle);
+        } else {
+          const googleUrl = new URL('/api/external-events/google', window.location.origin);
+          googleUrl.searchParams.set('start', range.start);
+          googleUrl.searchParams.set('end', range.end);
 
-      if (!res.ok) {
-        console.error('[useOutlookSync] Sync failed:', res.status);
-        return;
+          console.log('USER_ID_FETCH', userId, 'google', googleUrl.toString());
+          const googleRes = await fetch(googleUrl.toString());
+
+          if (googleRes.status === 401) return;
+          if (googleRes.status === 403) {
+            console.log('USER_ID_STORE_SET', userId, 'google', 0);
+            setGoogleEvents([]);
+          } else if (!googleRes.ok) {
+            toast.warning('Google Calendar could not refresh. Showing cached events.', {
+              id: 'google-sync-warn',
+              duration: 6_000,
+            });
+          } else {
+            const googleData = await googleRes.json() as { events?: ApiExternalEvent[] };
+            const googleRaw = googleData.events ?? [];
+            const mappedGoogle = googleRaw.map(apiToCalendarEvent);
+            console.log('FETCHED GOOGLE EVENTS COUNT', googleRaw.length);
+            console.log('USER_ID_CACHE_WRITE', userId, 'google', `${startKey}_${endKey}`);
+            setCache(userId, 'google', startKey, endKey, mappedGoogle);
+            console.log('USER_ID_STORE_SET', userId, 'google', mappedGoogle.length);
+            setGoogleEvents(mappedGoogle);
+          }
+        }
+
+        if (cachedMs !== null) {
+          console.log('USER_ID_STORE_SET', userId, 'microsoft', cachedMs.length);
+          setOutlookEvents(cachedMs);
+        } else {
+          const msUrl = new URL('/api/external-events/microsoft', window.location.origin);
+          msUrl.searchParams.set('start', range.start);
+          msUrl.searchParams.set('end', range.end);
+
+          console.log('USER_ID_FETCH', userId, 'microsoft', msUrl.toString());
+          const msRes = await fetch(msUrl.toString());
+
+          if (msRes.status === 401) return;
+          if (msRes.status === 403) {
+            console.log('USER_ID_STORE_SET', userId, 'microsoft', 0);
+            setOutlookEvents([]);
+          } else if (!msRes.ok) {
+            toast.warning('Outlook could not refresh. Showing cached events.', {
+              id: 'ms-sync-warn',
+              duration: 6_000,
+            });
+          } else {
+            const msData = await msRes.json() as { events?: ApiExternalEvent[] };
+            const msRaw = msData.events ?? [];
+            const mappedMicrosoft = msRaw.map(apiToCalendarEvent);
+            console.log('USER_ID_CACHE_WRITE', userId, 'microsoft', `${startKey}_${endKey}`);
+            setCache(userId, 'microsoft', startKey, endKey, mappedMicrosoft);
+            console.log('USER_ID_STORE_SET', userId, 'microsoft', mappedMicrosoft.length);
+            setOutlookEvents(mappedMicrosoft);
+          }
+        }
+      } catch (err) {
+        syncFailed = true;
+        // Unexpected error (network offline, etc.) — preserve store, warn once
+        console.warn('[useOutlookSync]', err);
+        toast.warning('External calendar could not connect. Check your connection.', {
+          id: 'external-events-error',
+          duration: 6_000,
+        });
+        if (showLoader) {
+          toast.error('Calendar sync failed.', { id: loaderToastId, duration: 4_000 });
+        }
+      } finally {
+        if (showLoader && !syncFailed) {
+          toast.success('Calendars synced.', { id: loaderToastId, duration: 2_000 });
+        }
+        isFetchingRef.current = false;
       }
+    },
+    [userId, setGoogleEvents, setOutlookEvents],
+  );
 
-      // Events are now in the DB. Refresh the main events store so they appear
-      // in the calendar alongside Google and local events.
-      const freshEvents = await eventsPersistence.fetchAllForCurrentUser();
-      useCalendarEventsStore.setState({
-        events: freshEvents,
-        dbHydrated: true,
-      });
-
-      // Clear in-memory Outlook events — they are now served from the DB
-      setOutlookEvents([]);
-    } catch (err) {
-      console.error('[useOutlookSync]', err);
-    } finally {
-      setOutlookSyncing(false);
-    }
-  }, [timezone, setOutlookSyncing, setOutlookConnected, setOutlookEvents]);
+  // ── Effect 1: Re-fetch when visible range changes ────────────────────────
+  // `syncRange` checks the cache first — no network call if data is fresh.
+  useEffect(() => {
+    if (!userId) return;
+    syncRange(computeRange(view, currentDate), { showLoader: false });
+  }, [userId, view, currentDate, syncRange]);
 
   useEffect(() => {
-    if (!outlookConnected) return;
+    if (!userId) return;
 
-    runSync();
-
-    intervalRef.current = setInterval(runSync, SYNC_INTERVAL_MS);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    const onSyncNow = () => {
+      void syncRange(computeRange(viewRef.current, dateRef.current), { showLoader: true, force: true });
     };
-  }, [outlookConnected, runSync]);
 
-  return { runSync };
+    window.addEventListener('lumina:external-sync-now', onSyncNow);
+    return () => {
+      window.removeEventListener('lumina:external-sync-now', onSyncNow);
+    };
+  }, [userId, syncRange]);
+
+  // ── Effect 2: Stable background poll ─────────────────────────────────────
+  // Only depends on userId + syncRange — does NOT restart on every navigation.
+  // Reads current view/date from refs at the time each tick fires.
+  useEffect(() => {
+    if (!userId) return;
+
+    const id = setInterval(() => {
+      syncRange(computeRange(viewRef.current, dateRef.current), { showLoader: false });
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(id);
+  }, [userId, syncRange]);
+
+  return null;
 }

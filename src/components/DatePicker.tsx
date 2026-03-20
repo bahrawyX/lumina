@@ -13,6 +13,7 @@ interface DatePickerProps {
   onChange: (value: string) => void;
   label?: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 const DatePicker: React.FC<DatePickerProps> = ({
@@ -20,6 +21,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
   onChange,
   label,
   placeholder = "Pick a date",
+  disabled = false,
 }) => {
   const [open, setOpen] = React.useState(false);
 
@@ -45,9 +47,11 @@ const DatePicker: React.FC<DatePickerProps> = ({
         <PopoverTrigger asChild>
           <Button
             variant="outline"
+            disabled={disabled}
             className={cn(
               "h-9 w-full justify-start text-left font-normal",
-              !value && "text-muted-foreground"
+              !value && "text-muted-foreground",
+              disabled && "opacity-70 cursor-not-allowed"
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4 opacity-50" strokeWidth={1.5} />

@@ -8,6 +8,7 @@ import type { CalendarEvent } from '@/types';
 
 type CanonicalProvider = 'local' | 'google' | 'outlook' | 'microsoft';
 type CanonicalSource = 'manual' | 'google' | 'microsoft' | 'scheduler' | 'lumina' | 'outlook' | 'local';
+type UiProvider = 'local' | 'google' | 'microsoft' | 'outlook';
 
 // ── Shape that the API returns ─────────────────────────────────────────────────
 
@@ -41,11 +42,30 @@ function mapCanonicalToUiSource(provider: CanonicalProvider | undefined, source:
   return 'lumina';
 }
 
-function mapUiToCanonicalProvider(event: Pick<CalendarEvent, 'source'>): 'local' | 'outlook' {
+function mapCanonicalToUiProvider(
+  provider: CanonicalProvider | undefined,
+  source: CanonicalSource | undefined,
+): UiProvider {
+  if (provider === 'microsoft' || provider === 'outlook') return 'microsoft';
+  if (provider === 'google') return 'google';
+  if (source === 'microsoft' || source === 'outlook') return 'microsoft';
+  if (source === 'google') return 'google';
+  return 'local';
+}
+
+function mapUiToCanonicalProvider(
+  event: Pick<CalendarEvent, 'source' | 'provider'>,
+): 'local' | 'google' | 'outlook' {
+  if (event.provider === 'microsoft' || event.provider === 'outlook') return 'outlook';
+  if (event.provider === 'google') return 'google';
   return event.source === 'outlook' ? 'outlook' : 'local';
 }
 
-function mapUiToCanonicalSource(event: Pick<CalendarEvent, 'source'>): 'manual' | 'microsoft' {
+function mapUiToCanonicalSource(
+  event: Pick<CalendarEvent, 'source' | 'provider'>,
+): 'manual' | 'google' | 'microsoft' {
+  if (event.provider === 'microsoft' || event.provider === 'outlook') return 'microsoft';
+  if (event.provider === 'google') return 'google';
   return event.source === 'outlook' ? 'microsoft' : 'manual';
 }
 
@@ -73,7 +93,7 @@ export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data)) return [];
-    return data.map((event: ApiEvent) => ({
+    const mapped = data.map((event: ApiEvent) => ({
       id: event.id,
       title: event.title,
       description: event.description ?? '',
@@ -85,10 +105,12 @@ export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
       category: event.category ?? 'work',
       color: event.color ?? '#6D59E0',
       completed: event.completed,
+      provider: mapCanonicalToUiProvider(event.provider, event.source),
       source: mapCanonicalToUiSource(event.provider, event.source),
       outlookId: event.externalEventId,
       linkedTaskId: event.linkedTaskId ?? null,
     }));
+    return mapped;
   } catch {
     return [];
   }
@@ -117,8 +139,28 @@ export async function createOne(event: CalendarEvent): Promise<void> {
 /** Update an existing event in the DB. Fire-and-forget safe. */
 export async function updateOne(id: string, patch: Partial<CalendarEvent>): Promise<void> {
   try {
-    const provider = patch.source === 'outlook' ? 'outlook' : patch.source === 'lumina' ? 'local' : undefined;
-    const source = patch.source === 'outlook' ? 'microsoft' : patch.source === 'lumina' ? 'manual' : undefined;
+    const provider = patch.provider === 'microsoft' || patch.provider === 'outlook'
+      ? 'outlook'
+      : patch.provider === 'google'
+        ? 'google'
+        : patch.provider === 'local'
+          ? 'local'
+          : patch.source === 'outlook'
+            ? 'outlook'
+            : patch.source === 'lumina'
+              ? 'local'
+              : undefined;
+    const source = patch.provider === 'microsoft' || patch.provider === 'outlook'
+      ? 'microsoft'
+      : patch.provider === 'google'
+        ? 'google'
+        : patch.provider === 'local'
+          ? 'manual'
+          : patch.source === 'outlook'
+            ? 'microsoft'
+            : patch.source === 'lumina'
+              ? 'manual'
+              : undefined;
     await apiFetch(`/api/events/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({

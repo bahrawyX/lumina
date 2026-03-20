@@ -41,11 +41,21 @@ const EventModal: React.FC = () => {
     timezone,
   } = useCalendarStore();
   const { events, addEvent, updateEvent, deleteEvent } = useCalendarEventsStore();
-  const event = events.find((e) => e.id === selectedEventId);
+  const localEvent = events.find((e) => e.id === selectedEventId);
   const outlookEvents = usePlannerStore((s) => s.outlookEvents);
+  const googleEvents = usePlannerStore((s) => s.googleEvents);
   const outlookEvent = outlookEvents.find((e) => e.id === selectedEventId);
-  const activeEvent = event || outlookEvent;
-  const isOutlookEvent = activeEvent?.source === 'outlook';
+  const googleEvent = googleEvents.find((e) => e.id === selectedEventId);
+  const activeEvent = localEvent || outlookEvent || googleEvent;
+  const provider = activeEvent?.provider
+    || (activeEvent?.source === 'outlook' || activeEvent?.source === 'microsoft'
+      ? 'microsoft'
+      : activeEvent?.source === 'google'
+        ? 'google'
+        : 'local');
+  const isExternalEvent = provider === 'google' || provider === 'microsoft';
+  const isGoogleEvent = provider === 'google';
+  const externalColor = activeEvent?.color || (isGoogleEvent ? '#4285F4' : '#0078D4');
 
   const [formData, setFormData] = useState<Partial<CalendarEvent>>({
     title: "", description: "", date: "",
@@ -59,6 +69,7 @@ const EventModal: React.FC = () => {
   useEffect(() => {
     if (!isModalOpen) return;
     if (activeEvent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData(activeEvent);
     } else {
       const startTime = initialTimeForNewEvent || "09:00";
@@ -76,8 +87,9 @@ const EventModal: React.FC = () => {
   useEffect(() => {
     const s = timeToMinutes(formData.startTime || "09:00");
     const e = timeToMinutes(formData.endTime || "10:00");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (e <= s) setFormData((prev) => ({ ...prev, endTime: minutesToTime(Math.min(1435, s + 30)) }));
-  }, [formData.startTime]);
+  }, [formData.startTime, formData.endTime]);
 
   const handleSmartParse = async () => {
     if (!smartInput.trim()) return;
@@ -98,7 +110,7 @@ const EventModal: React.FC = () => {
       setErrors(fe); return;
     }
     const finalEvent: CalendarEvent = {
-      id: event?.id || Math.random().toString(36).substr(2, 9),
+      id: localEvent?.id || Math.random().toString(36).substr(2, 9),
       title: result.data.title,
       description: result.data.description || "",
       date: result.data.date,
@@ -107,9 +119,9 @@ const EventModal: React.FC = () => {
       category: result.data.category as EventCategory,
       location: formData.location || "",
       color: CATEGORIES.find((c) => c.name === result.data.category)?.color || "#6D59E0",
-      timezone: event?.timezone || timezone,
+      timezone: localEvent?.timezone || timezone,
     };
-    if (event) updateEvent(finalEvent); else addEvent(finalEvent);
+    if (localEvent) updateEvent(finalEvent); else addEvent(finalEvent);
     closeModal();
   };
 
@@ -121,12 +133,27 @@ const EventModal: React.FC = () => {
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
-              {isOutlookEvent && (
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="#0078D4" className="flex-shrink-0">
-                  <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.32.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V12z"/>
-                </svg>
+              {isExternalEvent && (
+                isGoogleEvent ? (
+                  <svg width={16} height={16} viewBox="0 0 24 24" className="flex-shrink-0">
+                    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.591 4.418 1.582l3.491-3.49A11.932 11.932 0 0 0 12 0C7.27 0 3.198 2.698 1.24 6.65l4.026 3.115z" />
+                    <path fill="#34A853" d="M16.041 18.013A7.072 7.072 0 0 1 12 19.09c-2.973 0-5.535-1.853-6.6-4.487l-4.04 3.066C3.193 21.294 7.265 24 12 24c2.933 0 5.735-1.043 7.834-3.001l-3.793-2.986z" />
+                    <path fill="#4A90E2" d="M19.834 20.999C22.029 18.952 23.455 15.904 23.455 12c0-.71-.091-1.418-.273-2.09H12v4.545h6.436a5.463 5.463 0 0 1-1.638 2.902l3.036 2.642z" />
+                    <path fill="#FBBC05" d="M5.4 14.603A7.15 7.15 0 0 1 4.909 12c0-.56.076-1.104.214-1.624L1.24 7.26A11.981 11.981 0 0 0 0 12c0 1.92.444 3.73 1.237 5.335L5.4 14.603z" />
+                  </svg>
+                ) : (
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="#0078D4" className="flex-shrink-0">
+                    <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.32.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V12z"/>
+                  </svg>
+                )
               )}
-              {isOutlookEvent ? "Outlook Event" : activeEvent ? "Edit Event" : "Add Event"}
+              {isGoogleEvent
+                ? 'Google Calendar Event'
+                : provider === 'microsoft'
+                  ? 'Outlook Event'
+                  : activeEvent
+                    ? 'Edit Event'
+                    : 'Add Event'}
             </DialogTitle>
             {!activeEvent && (
               <Button
@@ -140,9 +167,9 @@ const EventModal: React.FC = () => {
               </Button>
             )}
           </div>
-          {isOutlookEvent && (
+          {isExternalEvent && (
             <p className="text-xs text-muted-foreground mt-1">
-              This event is synced from Outlook and cannot be edited in Lumina.
+              This event is synced from {isGoogleEvent ? 'Google Calendar' : 'Outlook'} and cannot be edited in Lumina.
             </p>
           )}
         </DialogHeader>
@@ -182,7 +209,7 @@ const EventModal: React.FC = () => {
               value={formData.title || ""}
               onChange={(e) => { setFormData({ ...formData, title: e.target.value }); setErrors((p) => ({ ...p, title: "" })); }}
               className={errors.title ? "border-destructive focus-visible:ring-destructive/40" : ""}
-              disabled={isOutlookEvent}
+              disabled={isExternalEvent}
             />
             {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
           </div>
@@ -196,18 +223,34 @@ const EventModal: React.FC = () => {
               rows={3}
               value={formData.description || ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              disabled={isOutlookEvent}
+              disabled={isExternalEvent}
             />
           </div>
 
-          {/* Outlook-specific details */}
-          {isOutlookEvent && activeEvent?.organizer && (
+          {isExternalEvent && (
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Synced Source</span>
+                <span className="text-xs font-semibold text-foreground">{isGoogleEvent ? 'Google Calendar' : 'Outlook Calendar'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Calendar Color</span>
+                <span className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: externalColor }} />
+                  {externalColor}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* External provider details */}
+          {isExternalEvent && activeEvent?.organizer && (
             <div className="space-y-1.5">
               <Label>Organizer</Label>
               <p className="text-sm text-muted-foreground">{activeEvent.organizer}</p>
             </div>
           )}
-          {isOutlookEvent && activeEvent?.location && (
+          {isExternalEvent && activeEvent?.location && (
             <div className="space-y-1.5">
               <Label>Location</Label>
               <p className="text-sm text-muted-foreground">{activeEvent.location}</p>
@@ -221,6 +264,7 @@ const EventModal: React.FC = () => {
               <DatePicker
                 value={formData.date || ""}
                 onChange={(date) => { setFormData({ ...formData, date }); setErrors((p) => ({ ...p, date: "" })); }}
+                disabled={isExternalEvent}
               />
               {errors.date && <p className="text-xs text-destructive">{errors.date}</p>}
             </div>
@@ -229,6 +273,7 @@ const EventModal: React.FC = () => {
               <DatePicker
                 value={formData.date || ""}
                 onChange={(date) => setFormData({ ...formData, date })}
+                disabled={isExternalEvent}
               />
             </div>
           </div>
@@ -240,6 +285,7 @@ const EventModal: React.FC = () => {
               <TimePicker
                 value={formData.startTime || "09:00"}
                 onChange={(v) => setFormData({ ...formData, startTime: v })}
+                disabled={isExternalEvent}
               />
             </div>
             <div className="space-y-1.5">
@@ -247,6 +293,7 @@ const EventModal: React.FC = () => {
               <TimePicker
                 value={formData.endTime || "10:00"}
                 onChange={(v) => { setFormData({ ...formData, endTime: v }); setErrors((p) => ({ ...p, endTime: "" })); }}
+                disabled={isExternalEvent}
               />
               {errors.endTime && <p className="text-xs text-destructive col-span-2">{errors.endTime}</p>}
             </div>
@@ -258,6 +305,7 @@ const EventModal: React.FC = () => {
             <Select
               value={formData.category || "Work"}
               onValueChange={(v) => setFormData({ ...formData, category: v as EventCategory })}
+              disabled={isExternalEvent}
             >
               <SelectTrigger className="h-9">
                 <SelectValue>
@@ -288,11 +336,11 @@ const EventModal: React.FC = () => {
         {/* Footer */}
         <DialogFooter className="px-6 py-4 border-t flex-row items-center justify-between">
           <div>
-            {event && !isOutlookEvent && (
+            {localEvent && !isExternalEvent && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { deleteEvent(event.id); closeModal(); }}
+                onClick={() => { deleteEvent(localEvent.id); closeModal(); }}
                 className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
               >
                 <TrashIcon className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -302,11 +350,11 @@ const EventModal: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={closeModal}>
-              {isOutlookEvent ? "Close" : "Cancel"}
+              {isExternalEvent ? "Close" : "Cancel"}
             </Button>
-            {!isOutlookEvent && (
+            {!isExternalEvent && (
               <Button size="sm" onClick={handleSave} className="bg-primary hover:bg-primary/90 gap-1.5">
-                {event ? "Save changes" : "Save"}
+                {localEvent ? "Save changes" : "Save"}
               </Button>
             )}
           </div>

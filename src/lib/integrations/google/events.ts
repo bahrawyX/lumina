@@ -1,11 +1,6 @@
 import 'server-only';
-import { and, eq, inArray } from 'drizzle-orm';
-import { getDatabase } from '@/lib/db';
-import { events } from '@/db/schema';
 import { googleFetch } from './client';
 import { mapGoogleEvent, type GoogleEventsListResponse } from './mapper';
-
-const BATCH_SIZE = 100;
 
 // Initial sync window: 90 days ago → 365 days ahead
 function getSyncWindow(): { timeMin: string; timeMax: string } {
@@ -51,143 +46,6 @@ async function fetchGoogleEventsForCalendar(
   return allItems;
 }
 
-/**
- * Batch upsert events into the DB.
- *
- * Upsert key: (calendarId, externalEventId).
- * The unique partial index `events_calendar_external_event_unique` covers this pair
- * when externalEventId IS NOT NULL — all Google events have non-null IDs.
- *
- * On conflict: update mutable fields (title, description, times, etag, etc.).
- * Immutable fields (userId, calendarId, provider, source) are never overwritten.
- */
-async function batchUpsertEvents(
-  userId: string,
-  calendarId: string,
-  mappedEvents: ReturnType<typeof mapGoogleEvent>[],
-): Promise<{ inserted: number; updated: number; skipped: number }> {
-  const db = getDatabase();
-  const now = new Date();
-
-  const valid = mappedEvents.filter((e) => e !== null) as NonNullable<
-    ReturnType<typeof mapGoogleEvent>
-  >[];
-
-  if (valid.length === 0) return { inserted: 0, updated: 0, skipped: 0 };
-
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
-
-  for (let i = 0; i < valid.length; i += BATCH_SIZE) {
-    const batch = valid.slice(i, i + BATCH_SIZE);
-    const externalIds = batch.map((e) => e.externalEventId);
-
-    // Fetch etag + sourceUpdatedAt so we can skip truly unchanged events
-    const existing = await db
-      .select({
-        externalEventId: events.externalEventId,
-        externalEtag:    events.externalEtag,
-        sourceUpdatedAt: events.sourceUpdatedAt,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.calendarId, calendarId),
-          inArray(events.externalEventId, externalIds),
-        ),
-      );
-
-    const existingMap = new Map(
-      existing.map((r) => [r.externalEventId ?? '', r]),
-    );
-
-    const toInsert    = batch.filter((e) => !existingMap.has(e.externalEventId));
-    const maybeUpdate = batch.filter((e) =>  existingMap.has(e.externalEventId));
-
-    if (toInsert.length > 0) {
-      await db.insert(events).values(
-        toInsert.map((e) => ({
-          userId,
-          calendarId,
-          provider:   'google' as const,
-          source:     'google' as const,
-          syncStatus: 'synced' as const,
-          title:           e.title,
-          description:     e.description,
-          location:        e.location,
-          startTime:       e.startTime,
-          endTime:         e.endTime,
-          isAllDay:        e.isAllDay,
-          timezone:        e.timezone,
-          externalEventId: e.externalEventId,
-          externalId:      e.externalEventId,
-          externalEtag:    e.externalEtag,
-          sourceUpdatedAt: e.sourceUpdatedAt,
-          meetingUrl:      e.meetingUrl,
-          organizerEmail:  e.organizerEmail,
-          lastSyncedAt: now,
-          createdAt:    now,
-          updatedAt:    now,
-          color:           '#6D59E0',
-          category:        'work',
-          isCompleted:     false,
-          isTaskGenerated: false,
-        })),
-      );
-      inserted += toInsert.length;
-    }
-
-    for (const e of maybeUpdate) {
-      const row = existingMap.get(e.externalEventId)!;
-
-      // Skip if Google's etag matches — event is identical
-      if (e.externalEtag && e.externalEtag === row.externalEtag) {
-        skipped++;
-        continue;
-      }
-
-      // Skip if provider's updated timestamp is not newer
-      if (
-        e.sourceUpdatedAt &&
-        row.sourceUpdatedAt &&
-        e.sourceUpdatedAt <= row.sourceUpdatedAt
-      ) {
-        skipped++;
-        continue;
-      }
-
-      await db
-        .update(events)
-        .set({
-          title:           e.title,
-          description:     e.description,
-          location:        e.location,
-          startTime:       e.startTime,
-          endTime:         e.endTime,
-          isAllDay:        e.isAllDay,
-          timezone:        e.timezone,
-          externalEtag:    e.externalEtag,
-          sourceUpdatedAt: e.sourceUpdatedAt,
-          meetingUrl:      e.meetingUrl,
-          organizerEmail:  e.organizerEmail,
-          syncStatus:   'synced' as const,
-          lastSyncedAt: now,
-          updatedAt:    now,
-        })
-        .where(
-          and(
-            eq(events.calendarId, calendarId),
-            eq(events.externalEventId, e.externalEventId),
-          ),
-        );
-      updated++;
-    }
-  }
-
-  return { inserted, updated, skipped };
-}
-
 export interface SyncCalendarEventsResult {
   calendarId: string;
   googleCalendarId: string;
@@ -206,23 +64,16 @@ export async function syncGoogleCalendarEvents(
   googleCalendarId: string,
 ): Promise<SyncCalendarEventsResult> {
   const rawItems = await fetchGoogleEventsForCalendar(userId, googleCalendarId);
-
   const mapped = rawItems.map(mapGoogleEvent);
   const valid = mapped.filter((e) => e !== null);
   const invalidCount = rawItems.length - valid.length;
 
-  const { inserted, updated, skipped } = await batchUpsertEvents(
-    userId,
-    dbCalendarId,
-    mapped,
-  );
-
   return {
     calendarId: dbCalendarId,
     googleCalendarId,
-    inserted,
-    updated,
-    skipped: skipped + invalidCount,
+    inserted: 0,
+    updated: 0,
+    skipped: valid.length + invalidCount,
   };
 }
 

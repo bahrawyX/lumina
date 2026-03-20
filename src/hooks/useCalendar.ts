@@ -1,16 +1,17 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
 import { usePlannerStore } from '../store/usePlannerStore';
-import { expandRecurrences, getDaysInMonth, getDaysInWeek, formatDateISO, isSameDay } from '../utils/dateUtils';
+import { expandRecurrences, getDaysInMonth, getDaysInWeek, formatDateISO } from '../utils/dateUtils';
 import { ViewType, EventInstance } from '../types';
 
 export const useCalendar = () => {
   const { searchQuery, activeFilters, view, currentDate, isFocusMode } = useCalendarStore();
-  const events = useCalendarEventsStore((s) => s.events);
+  const events        = useCalendarEventsStore((s) => s.events);
   const outlookEvents = usePlannerStore((s) => s.outlookEvents);
+  const googleEvents  = usePlannerStore((s) => s.googleEvents);
 
   const visibleRange = useMemo(() => {
     if (view === ViewType.MONTH) {
@@ -28,13 +29,25 @@ export const useCalendar = () => {
     const localInstances = expandRecurrences(events, visibleRange.start, visibleRange.end);
 
     const startStr = formatDateISO(visibleRange.start);
-    const endStr = formatDateISO(visibleRange.end);
+    const endStr   = formatDateISO(visibleRange.end);
+
+    const googleInstances: EventInstance[] = googleEvents
+      .filter((e) => e.date >= startStr && e.date <= endStr)
+      .map((e) => ({ ...e, instanceDate: e.date }));
+
     const outlookInstances: EventInstance[] = outlookEvents
       .filter((e) => e.date >= startStr && e.date <= endStr)
       .map((e) => ({ ...e, instanceDate: e.date }));
 
-    return [...localInstances, ...outlookInstances];
-  }, [events, outlookEvents, visibleRange]);
+    return [...localInstances, ...googleInstances, ...outlookInstances];
+  }, [events, googleEvents, outlookEvents, visibleRange]);
+
+  useEffect(() => {
+    console.log('MERGE_COUNTS localEvents.length', events.length);
+    console.log('MERGE_COUNTS googleEvents.length', googleEvents.length);
+    console.log('MERGE_COUNTS outlookEvents.length', outlookEvents.length);
+    console.log('MERGE_COUNTS merged.length', allInstances.length);
+  }, [events.length, googleEvents.length, outlookEvents.length, allInstances.length]);
 
   const filteredInstances = useMemo(() => {
     const query = searchQuery.toLowerCase();
@@ -48,7 +61,8 @@ export const useCalendar = () => {
       if (!matchesSearch || !matchesFilter) return false;
 
       if (isFocusMode) {
-        if (e.source === 'outlook') return true;
+        const provider = e.provider || (e.source === 'outlook' ? 'microsoft' : 'local');
+        if (provider === 'microsoft' || provider === 'google') return true;
         const isFocusCategory = e.category === 'Focus' || e.category === 'Critical';
         const isFuture = e.instanceDate >= todayStr;
         return isFocusCategory && isFuture;

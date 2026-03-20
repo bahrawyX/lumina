@@ -29,7 +29,8 @@ export interface MeetingLink {
   provider: 'Lumina' | 'Zoom' | 'Meet' | 'Teams';
 }
 
-export type EventSource = 'lumina' | 'outlook';
+export type EventSource = 'lumina' | 'google' | 'microsoft' | 'outlook';
+export type EventProvider = 'local' | 'google' | 'microsoft' | 'outlook';
 
 export interface CalendarEvent {
   id: string;
@@ -48,7 +49,10 @@ export interface CalendarEvent {
   meetingLink?: MeetingLink | null;
   completed?: boolean;
   source?: EventSource;
+  provider?: EventProvider;
   editable?: boolean;
+  readOnly?: boolean;
+  draggable?: boolean;
   outlookId?: string;
   organizer?: string;
   linkedTaskId?: string | null;

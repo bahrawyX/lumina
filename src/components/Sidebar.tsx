@@ -7,6 +7,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useTaskBoardStore } from '../store/useTaskBoardStore';
+import { clearProvider, clearAll } from '../lib/calendar/externalEventsCache';
 import CustomContextDialog from './CustomContextDialog';
 import {
   PlusIcon,
@@ -55,6 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import { toast } from 'sonner';
 import notify from '../utils/notify';
 
 const MoreIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className }) => (
@@ -137,6 +139,8 @@ const AppSidebar: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
   const authClient = useLuminaAuthClient();
+  const { data: _session } = authClient.useSession();
+  const _userId = _session?.user?.id ?? null;
   const resetOnboarding = useOnboardingStore((s) => s.reset);
   const focusSessionLength = useOnboardingStore((s) => s.focusSessionLength);
   const customFocusMinutes = useOnboardingStore((s) => s.customFocusMinutes);
@@ -162,7 +166,9 @@ const AppSidebar: React.FC = () => {
     outlookSyncing,
     setOutlookConnected,
     setOutlookEvents,
+    clearExternalEvents,
   } = usePlannerStore();
+  const googleEvents = usePlannerStore((s) => s.googleEvents);
 
   const [outlookLoading, setOutlookLoading] = React.useState(false);
   const [customContextDialogOpen, setCustomContextDialogOpen] = useState(false);
@@ -173,6 +179,10 @@ const AppSidebar: React.FC = () => {
   const isIntelligencePage = pathname === '/intelligence';
   const isTasksPage = pathname === '/tasks';
   const isPlanPage = pathname === '/plan';
+
+  React.useEffect(() => {
+    console.log('GOOGLE EVENTS IN STORE', googleEvents.length);
+  }, [googleEvents.length]);
 
   const allCategories = [...CATEGORIES, ...customCategories];
   const tasksUsingPendingContext = contextPendingDelete
@@ -383,10 +393,24 @@ const AppSidebar: React.FC = () => {
 
   const handleOutlookConnect = React.useCallback(async () => {
     if (outlookConnected) {
-      await fetch('/api/integrations/microsoft/disconnect', { method: 'POST' }).catch(
-        () => { /* non-critical, best-effort */ },
-      );
-      await refreshIntegrationStatus();
+      const disconnectToastId = 'outlook-disconnect-loading';
+      toast.loading('Disconnecting Outlook Calendar...', { id: disconnectToastId });
+      try {
+        const response = await fetch('/api/integrations/microsoft/disconnect', { method: 'POST' });
+        if (!response.ok) {
+          throw new Error(`Disconnect failed (${response.status})`);
+        }
+
+        // Clear provider-specific browser cache and in-memory events
+        if (_userId) clearProvider(_userId, 'microsoft');
+        setOutlookEvents([]);
+        await refreshIntegrationStatus();
+        toast.success('Outlook Calendar disconnected.', { id: disconnectToastId, duration: 2_500 });
+      } catch (err) {
+        console.error('[Sidebar Outlook disconnect]', err);
+        await refreshIntegrationStatus();
+        toast.error('Failed to disconnect Outlook Calendar.', { id: disconnectToastId, duration: 4_000 });
+      }
       return;
     }
 
@@ -410,6 +434,8 @@ const AppSidebar: React.FC = () => {
         );
         return;
       }
+
+      window.dispatchEvent(new Event('lumina:external-sync-now'));
     } catch (err) {
       await refreshIntegrationStatus();
       console.error('[Sidebar Outlook]', err);
@@ -431,10 +457,24 @@ const AppSidebar: React.FC = () => {
 
   const handleGoogleCalendarConnect = React.useCallback(async () => {
     if (googleCalConnected) {
-      await fetch('/api/integrations/google/disconnect', { method: 'POST' }).catch(
-        () => { /* non-critical, best-effort */ },
-      );
-      await refreshIntegrationStatus();
+      const disconnectToastId = 'google-disconnect-loading';
+      toast.loading('Disconnecting Google Calendar...', { id: disconnectToastId });
+      try {
+        const response = await fetch('/api/integrations/google/disconnect', { method: 'POST' });
+        if (!response.ok) {
+          throw new Error(`Disconnect failed (${response.status})`);
+        }
+
+        // Clear provider-specific browser cache and in-memory events
+        if (_userId) clearProvider(_userId, 'google');
+        usePlannerStore.getState().setGoogleEvents([]);
+        await refreshIntegrationStatus();
+        toast.success('Google Calendar disconnected.', { id: disconnectToastId, duration: 2_500 });
+      } catch (err) {
+        console.error('[Sidebar Google disconnect]', err);
+        await refreshIntegrationStatus();
+        toast.error('Failed to disconnect Google Calendar.', { id: disconnectToastId, duration: 4_000 });
+      }
       return;
     }
 
@@ -458,6 +498,8 @@ const AppSidebar: React.FC = () => {
         );
         return;
       }
+
+      window.dispatchEvent(new Event('lumina:external-sync-now'));
     } catch (err) {
       await refreshIntegrationStatus();
       console.error('[Sidebar Google]', err);

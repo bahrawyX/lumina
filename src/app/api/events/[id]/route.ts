@@ -4,34 +4,10 @@ import { getDatabase } from '@/lib/db';
 import { events, tasks } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
-type EventProvider = 'local' | 'google' | 'outlook';
-type EventSource = 'manual' | 'google' | 'microsoft' | 'scheduler';
-
-function normalizeProvider(value: unknown): EventProvider | null {
-  if (typeof value !== 'string') return null;
-  const next = value.toLowerCase();
-  if (next === 'google') return 'google';
-  if (next === 'outlook' || next === 'microsoft') return 'outlook';
-  if (next === 'local' || next === 'manual' || next === 'lumina') return 'local';
-  return null;
-}
-
-function normalizeSource(value: unknown, provider: EventProvider): EventSource | null {
-  if (typeof value !== 'string') return null;
-  const next = value.toLowerCase();
-  if (next === 'manual' || next === 'google' || next === 'microsoft' || next === 'scheduler') return next;
-  if (next === 'lumina' || next === 'local') return 'manual';
-  if (next === 'outlook') return 'microsoft';
-  if (provider === 'outlook') return 'microsoft';
-  if (provider === 'google') return 'google';
-  return 'manual';
-}
-
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-/** PATCH /api/events/[id] — update an event (ownership enforced) */
 export async function PATCH(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const session = await auth.api.getSession({ headers: req.headers });
@@ -75,18 +51,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     if (typeof body.category === 'string' && body.category.trim()) patch.category = body.category;
     if (typeof body.color === 'string' && body.color.trim()) patch.color = body.color;
     if (typeof body.completed === 'boolean') patch.isCompleted = body.completed;
-    const providerFromBody = normalizeProvider(body.provider);
-    const effectiveProvider = providerFromBody ?? (existing.provider as EventProvider);
-
-    if (providerFromBody) {
-      patch.provider = providerFromBody;
-    }
     if (typeof body.syncStatus === 'string' && ['local_only', 'synced', 'pending_update', 'pending_delete'].includes(body.syncStatus)) {
       patch.syncStatus = body.syncStatus;
-    }
-    if (typeof body.source === 'string') {
-      const source = normalizeSource(body.source, effectiveProvider);
-      if (source) patch.source = source;
     }
     if (typeof body.externalEtag === 'string') patch.externalEtag = body.externalEtag;
     if (typeof body.meetingUrl === 'string') patch.meetingUrl = body.meetingUrl;
@@ -132,7 +98,6 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       patch.linkedTaskId = body.linkedTaskId;
     }
 
-    // Recalculate timestamps if date/time fields are supplied
     const startAt = typeof body.startAt === 'string' ? new Date(body.startAt) : null;
     const endAt = typeof body.endAt === 'string' ? new Date(body.endAt) : null;
     const dateStr = typeof body.date === 'string' ? body.date : existing.startTime.toISOString().slice(0, 10);
@@ -169,7 +134,6 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 }
 
-/** DELETE /api/events/[id] — delete an event (ownership enforced) */
 export async function DELETE(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const session = await auth.api.getSession({ headers: req.headers });

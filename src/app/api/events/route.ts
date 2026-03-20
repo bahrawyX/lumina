@@ -5,45 +5,9 @@ import { getDatabase } from '@/lib/db';
 import { calendars, events, tasks } from '@/db/schema';
 
 type EventProvider = 'local' | 'google' | 'outlook';
+type ApiEventProvider = 'local' | 'google' | 'microsoft';
 type EventSyncStatus = 'local_only' | 'synced' | 'pending_update' | 'pending_delete';
 type EventSource = 'manual' | 'google' | 'microsoft' | 'scheduler';
-
-function normalizeProvider(providerValue: unknown, sourceValue: unknown): EventProvider {
-  const provider = typeof providerValue === 'string' ? providerValue.toLowerCase() : '';
-  if (provider === 'google') return 'google';
-  if (provider === 'outlook' || provider === 'microsoft') return 'outlook';
-  if (provider === 'local' || provider === 'manual' || provider === 'lumina') return 'local';
-
-  const source = typeof sourceValue === 'string' ? sourceValue.toLowerCase() : '';
-  if (source === 'google') return 'google';
-  if (source === 'microsoft' || source === 'outlook') return 'outlook';
-  return 'local';
-}
-
-function normalizeSyncStatus(value: unknown): EventSyncStatus {
-  if (value === 'synced' || value === 'pending_update' || value === 'pending_delete') return value;
-  return 'local_only';
-}
-
-function normalizeSource(value: unknown, provider: EventProvider): EventSource {
-  const source = typeof value === 'string' ? value.toLowerCase() : '';
-
-  // Explicit legacy source mappings at API boundary:
-  // lumina/local -> manual, outlook -> microsoft
-  if (source === 'manual' || source === 'google' || source === 'microsoft' || source === 'scheduler') {
-    return source;
-  }
-  if (source === 'lumina' || source === 'local') {
-    return 'manual';
-  }
-  if (source === 'outlook') {
-    return 'microsoft';
-  }
-
-  if (provider === 'google') return 'google';
-  if (provider === 'outlook') return 'microsoft';
-  return 'manual';
-}
 
 function parseDateAndTime(date: unknown, time: unknown, fallback: string): Date | null {
   if (typeof date !== 'string') return null;
@@ -58,8 +22,33 @@ function parseIso(value: unknown): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function mapRowToApiEvent(row: typeof events.$inferSelect) {
-  const provider = row.provider;
+function mapProviderForApi(
+  eventProviderValue: unknown,
+  calendarProviderValue: unknown,
+  sourceValue: unknown,
+): ApiEventProvider {
+  const calendarProvider =
+    typeof calendarProviderValue === 'string' ? calendarProviderValue.toLowerCase() : '';
+  if (calendarProvider === 'microsoft' || calendarProvider === 'outlook') return 'microsoft';
+  if (calendarProvider === 'google') return 'google';
+
+  const eventProvider =
+    typeof eventProviderValue === 'string' ? eventProviderValue.toLowerCase() : '';
+  if (eventProvider === 'outlook' || eventProvider === 'microsoft') return 'microsoft';
+  if (eventProvider === 'google') return 'google';
+
+  const source = typeof sourceValue === 'string' ? sourceValue.toLowerCase() : '';
+  if (source === 'microsoft' || source === 'outlook') return 'microsoft';
+  if (source === 'google') return 'google';
+
+  return 'local';
+}
+
+function mapRowToApiEvent(
+  row: typeof events.$inferSelect,
+  calendarProvider?: string | null,
+) {
+  const provider = mapProviderForApi(row.provider, calendarProvider, row.source);
   return {
     id: row.id,
     title: row.title,
@@ -82,7 +71,7 @@ function mapRowToApiEvent(row: typeof events.$inferSelect) {
     meetingUrl: row.meetingUrl ?? undefined,
     organizerEmail: row.organizerEmail ?? undefined,
     source: row.source,
-    outlookId: provider === 'outlook' ? (row.externalEventId ?? row.externalId ?? undefined) : undefined,
+    outlookId: provider === 'microsoft' ? (row.externalEventId ?? row.externalId ?? undefined) : undefined,
   };
 }
 
@@ -97,12 +86,21 @@ export async function GET(req: NextRequest) {
   try {
     const db = getDatabase();
     const rows = await db
-      .select()
+      .select({
+        event: events,
+        calendarProvider: calendars.provider,
+      })
       .from(events)
-      .where(eq(events.userId, userId))
+      .leftJoin(calendars, eq(events.calendarId, calendars.id))
+      // External provider events are no longer stored in the DB.
+      // Only local (Lumina-owned) events live here; Google/Microsoft events
+      // are fetched on demand and cached in the browser via /api/external-events/*.
+      .where(and(eq(events.userId, userId), eq(events.provider, 'local')))
       .orderBy(events.startTime);
 
-    return NextResponse.json(rows.map(mapRowToApiEvent));
+    return NextResponse.json(
+      rows.map((row) => mapRowToApiEvent(row.event, row.calendarProvider ?? undefined)),
+    );
   } catch (err) {
     console.error('[GET /api/events]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -129,9 +127,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });
   }
 
-  const provider = normalizeProvider(body.provider, body.source);
-  const syncStatus = normalizeSyncStatus(body.syncStatus);
-  const source = normalizeSource(body.source, provider);
+  const provider: EventProvider = 'local';
+  const syncStatus: EventSyncStatus = 'local_only';
+  const source: EventSource = 'manual';
 
   const directStartAt = parseIso(body.startAt);
   const directEndAt = parseIso(body.endAt);

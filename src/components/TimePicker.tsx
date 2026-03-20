@@ -1,6 +1,5 @@
 ﻿import * as React from "react";
 import { ClockIcon } from "./icons";
-import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -13,6 +12,7 @@ interface TimePickerProps {
   value: string;    // HH:mm 24h
   onChange: (value: string) => void;
   label?: string;
+  disabled?: boolean;
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
@@ -26,7 +26,7 @@ function format12(hhmm: string): string {
   return `${String(h12).padStart(2, "0")}:${mStr} ${ampm}`;
 }
 
-const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, label }) => {
+const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, label, disabled = false }) => {
   const [hh, mm] = value.split(":");
   const set = (newHH: string, newMM: string) => onChange(`${newHH}:${newMM}`);
 
@@ -43,7 +43,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, label }) => {
       {/* Two Select dropdowns side by side */}
       <div className="flex gap-2">
         {/* Hour */}
-        <Select value={hh} onValueChange={(v) => set(v, mm)}>
+        <Select value={hh} onValueChange={(v) => set(v, mm)} disabled={disabled}>
           <SelectTrigger className="flex-1 h-9 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
             <SelectValue />
           </SelectTrigger>
@@ -59,7 +59,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, label }) => {
         <span className="flex items-center text-muted-foreground font-medium text-sm select-none">:</span>
 
         {/* Minute */}
-        <Select value={mm} onValueChange={(v) => set(hh, v)}>
+        <Select value={mm} onValueChange={(v) => set(hh, v)} disabled={disabled}>
           <SelectTrigger className="flex-1 h-9 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
             <SelectValue />
           </SelectTrigger>
