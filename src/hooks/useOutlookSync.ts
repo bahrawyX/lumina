@@ -169,12 +169,9 @@ export function useOutlookSync() {
           outlookConnected = Boolean(statusData.microsoft?.connected);
         }
 
-        console.log('SYNC STATE', { googleConnected, outlookConnected });
-
         if (!googleConnected && !outlookConnected) return;
 
         if (googleConnected) {
-          console.log('FETCH GOOGLE');
           if (cachedGoogle !== null) {
             setGoogleEvents(cachedGoogle);
           } else {
@@ -203,7 +200,6 @@ export function useOutlookSync() {
         }
 
         if (outlookConnected) {
-          console.log('FETCH MICROSOFT');
           if (cachedMsWithEvents !== null) {
             setOutlookEvents(cachedMsWithEvents);
           } else {
@@ -226,7 +222,6 @@ export function useOutlookSync() {
               const msRaw = msData.events ?? [];
               const events = msRaw.map(apiToCalendarEvent);
               setCache(userId, 'microsoft', startKey, endKey, events);
-              console.log('MICROSOFT EVENTS BEFORE STORE', events.length);
               setOutlookEvents(events);
             }
           }
@@ -234,7 +229,7 @@ export function useOutlookSync() {
       } catch (err) {
         syncFailed = true;
         // Unexpected error (network offline, etc.) — preserve store, warn once
-        console.warn('[useOutlookSync]', err);
+        console.error('[useOutlookSync]', err);
         toast.warning('External calendar could not connect. Check your connection.', {
           id: 'external-events-error',
           duration: 6_000,
