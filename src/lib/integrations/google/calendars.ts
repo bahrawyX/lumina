@@ -92,6 +92,7 @@ export async function importGoogleCalendars(userId: string): Promise<UpsertedCal
           externalId: cal.externalId,
           name: cal.name,
           color: cal.color,
+          enabled: true,
           isPrimary: cal.isPrimary,
           createdAt: now,
           updatedAt: now,
@@ -111,15 +112,20 @@ export async function importGoogleCalendars(userId: string): Promise<UpsertedCal
  */
 export async function getGoogleCalendarsFromDb(
   userId: string,
-): Promise<Array<{ id: string; externalId: string; name: string }>> {
+): Promise<Array<{ id: string; externalId: string; name: string; enabled: boolean }>> {
   const db = getDatabase();
   const rows = await db
-    .select({ id: calendars.id, externalId: calendars.externalId, name: calendars.name })
+    .select({
+      id: calendars.id,
+      externalId: calendars.externalId,
+      name: calendars.name,
+      enabled: calendars.enabled,
+    })
     .from(calendars)
     .where(and(eq(calendars.userId, userId), eq(calendars.provider, 'google')));
 
   return rows
-    .filter((r): r is { id: string; externalId: string; name: string } =>
+    .filter((r): r is { id: string; externalId: string; name: string; enabled: boolean } =>
       r.externalId !== null,
     );
 }

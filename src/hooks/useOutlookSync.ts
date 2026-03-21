@@ -143,10 +143,11 @@ export function useOutlookSync() {
 
       const cachedGoogle = force
         ? null
-        : (console.log('USER_ID_CACHE_READ', userId, 'google', `${startKey}_${endKey}`), getCached(userId, 'google', startKey, endKey));
+        : getCached(userId, 'google', startKey, endKey);
       const cachedMs = force
         ? null
-        : (console.log('USER_ID_CACHE_READ', userId, 'microsoft', `${startKey}_${endKey}`), getCached(userId, 'microsoft', startKey, endKey));
+        : getCached(userId, 'microsoft', startKey, endKey);
+      const cachedMsWithEvents = cachedMs && cachedMs.length > 0 ? cachedMs : null;
 
       isFetchingRef.current = true;
       if (showLoader) {
@@ -154,66 +155,80 @@ export function useOutlookSync() {
       }
       let syncFailed = false;
       try {
-        if (cachedGoogle !== null) {
-          console.log('USER_ID_STORE_SET', userId, 'google', cachedGoogle.length);
-          setGoogleEvents(cachedGoogle);
-        } else {
-          const googleUrl = new URL('/api/external-events/google', window.location.origin);
-          googleUrl.searchParams.set('start', range.start);
-          googleUrl.searchParams.set('end', range.end);
+        let googleConnected = true;
+        let outlookConnected = true;
 
-          console.log('USER_ID_FETCH', userId, 'google', googleUrl.toString());
-          const googleRes = await fetch(googleUrl.toString());
+        const statusRes = await fetch('/api/integrations/status', { cache: 'no-store' });
+        if (statusRes.status === 401) return;
+        if (statusRes.ok) {
+          const statusData = await statusRes.json() as {
+            google?: { connected?: boolean };
+            microsoft?: { connected?: boolean };
+          };
+          googleConnected = Boolean(statusData.google?.connected);
+          outlookConnected = Boolean(statusData.microsoft?.connected);
+        }
 
-          if (googleRes.status === 401) return;
-          if (googleRes.status === 403) {
-            console.log('USER_ID_STORE_SET', userId, 'google', 0);
-            setGoogleEvents([]);
-          } else if (!googleRes.ok) {
-            toast.warning('Google Calendar could not refresh. Showing cached events.', {
-              id: 'google-sync-warn',
-              duration: 6_000,
-            });
+        console.log('SYNC STATE', { googleConnected, outlookConnected });
+
+        if (!googleConnected && !outlookConnected) return;
+
+        if (googleConnected) {
+          console.log('FETCH GOOGLE');
+          if (cachedGoogle !== null) {
+            setGoogleEvents(cachedGoogle);
           } else {
-            const googleData = await googleRes.json() as { events?: ApiExternalEvent[] };
-            const googleRaw = googleData.events ?? [];
-            const mappedGoogle = googleRaw.map(apiToCalendarEvent);
-            console.log('FETCHED GOOGLE EVENTS COUNT', googleRaw.length);
-            console.log('USER_ID_CACHE_WRITE', userId, 'google', `${startKey}_${endKey}`);
-            setCache(userId, 'google', startKey, endKey, mappedGoogle);
-            console.log('USER_ID_STORE_SET', userId, 'google', mappedGoogle.length);
-            setGoogleEvents(mappedGoogle);
+            const googleUrl = new URL('/api/external-events/google', window.location.origin);
+            googleUrl.searchParams.set('start', range.start);
+            googleUrl.searchParams.set('end', range.end);
+
+            const googleRes = await fetch(googleUrl.toString());
+
+            if (googleRes.status === 401) return;
+            if (googleRes.status === 403) {
+              setGoogleEvents([]);
+            } else if (!googleRes.ok) {
+              toast.warning('Google Calendar could not refresh. Showing cached events.', {
+                id: 'google-sync-warn',
+                duration: 6_000,
+              });
+            } else {
+              const googleData = await googleRes.json() as { events?: ApiExternalEvent[] };
+              const googleRaw = googleData.events ?? [];
+              const mappedGoogle = googleRaw.map(apiToCalendarEvent);
+              setCache(userId, 'google', startKey, endKey, mappedGoogle);
+              setGoogleEvents(mappedGoogle);
+            }
           }
         }
 
-        if (cachedMs !== null) {
-          console.log('USER_ID_STORE_SET', userId, 'microsoft', cachedMs.length);
-          setOutlookEvents(cachedMs);
-        } else {
-          const msUrl = new URL('/api/external-events/microsoft', window.location.origin);
-          msUrl.searchParams.set('start', range.start);
-          msUrl.searchParams.set('end', range.end);
-
-          console.log('USER_ID_FETCH', userId, 'microsoft', msUrl.toString());
-          const msRes = await fetch(msUrl.toString());
-
-          if (msRes.status === 401) return;
-          if (msRes.status === 403) {
-            console.log('USER_ID_STORE_SET', userId, 'microsoft', 0);
-            setOutlookEvents([]);
-          } else if (!msRes.ok) {
-            toast.warning('Outlook could not refresh. Showing cached events.', {
-              id: 'ms-sync-warn',
-              duration: 6_000,
-            });
+        if (outlookConnected) {
+          console.log('FETCH MICROSOFT');
+          if (cachedMsWithEvents !== null) {
+            setOutlookEvents(cachedMsWithEvents);
           } else {
-            const msData = await msRes.json() as { events?: ApiExternalEvent[] };
-            const msRaw = msData.events ?? [];
-            const mappedMicrosoft = msRaw.map(apiToCalendarEvent);
-            console.log('USER_ID_CACHE_WRITE', userId, 'microsoft', `${startKey}_${endKey}`);
-            setCache(userId, 'microsoft', startKey, endKey, mappedMicrosoft);
-            console.log('USER_ID_STORE_SET', userId, 'microsoft', mappedMicrosoft.length);
-            setOutlookEvents(mappedMicrosoft);
+            const msUrl = new URL('/api/external-events/microsoft', window.location.origin);
+            msUrl.searchParams.set('start', range.start);
+            msUrl.searchParams.set('end', range.end);
+
+            const msRes = await fetch(msUrl.toString());
+
+            if (msRes.status === 401) return;
+            if (msRes.status === 403) {
+              setOutlookEvents([]);
+            } else if (!msRes.ok) {
+              toast.warning('Outlook could not refresh. Showing cached events.', {
+                id: 'ms-sync-warn',
+                duration: 6_000,
+              });
+            } else {
+              const msData = await msRes.json() as { events?: ApiExternalEvent[] };
+              const msRaw = msData.events ?? [];
+              const events = msRaw.map(apiToCalendarEvent);
+              setCache(userId, 'microsoft', startKey, endKey, events);
+              console.log('MICROSOFT EVENTS BEFORE STORE', events.length);
+              setOutlookEvents(events);
+            }
           }
         }
       } catch (err) {

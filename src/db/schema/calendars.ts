@@ -28,6 +28,7 @@ export const calendars = pgTable(
     externalId: varchar('external_id', { length: 255 }),
     name: varchar('name', { length: 255 }).notNull(),
     color: varchar('color', { length: 32 }).notNull().default('#6D59E0'),
+    enabled: boolean('enabled').notNull().default(true),
     isPrimary: boolean('is_primary').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

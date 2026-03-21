@@ -116,6 +116,14 @@ const PlanDayIcon: React.FC<{ size?: number; strokeWidth?: number; className?: s
   </svg>
 );
 
+interface ExternalCalendarFilter {
+  id: string;
+  provider: 'google' | 'microsoft';
+  name: string;
+  color: string;
+  enabled: boolean;
+}
+
 const AppSidebar: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
@@ -147,6 +155,7 @@ const AppSidebar: React.FC = () => {
     outlookSyncing,
     setOutlookConnected,
     setOutlookEvents,
+    setGoogleEvents,
     clearExternalEvents,
   } = usePlannerStore();
   const googleEvents = usePlannerStore((s) => s.googleEvents);
@@ -160,10 +169,6 @@ const AppSidebar: React.FC = () => {
   const isIntelligencePage = pathname === '/intelligence';
   const isTasksPage = pathname === '/tasks';
   const isPlanPage = pathname === '/plan';
-
-  React.useEffect(() => {
-    console.log('GOOGLE EVENTS IN STORE', googleEvents.length);
-  }, [googleEvents.length]);
 
   const allCategories = [...CATEGORIES, ...customCategories];
   const tasksUsingPendingContext = contextPendingDelete
@@ -324,6 +329,10 @@ const AppSidebar: React.FC = () => {
 
   const [googleCalLoading, setGoogleCalLoading] = React.useState(false);
   const [googleCalConnected, setGoogleCalConnected] = React.useState(false);
+  const [calendarFiltersOpen, setCalendarFiltersOpen] = React.useState(false);
+  const [calendarFiltersLoading, setCalendarFiltersLoading] = React.useState(false);
+  const [calendarFilters, setCalendarFilters] = React.useState<ExternalCalendarFilter[]>([]);
+  const [savingCalendarId, setSavingCalendarId] = React.useState<string | null>(null);
 
   const refreshIntegrationStatus = React.useCallback(async () => {
     try {
@@ -358,6 +367,73 @@ const AppSidebar: React.FC = () => {
       return { google: false, microsoft: false };
     }
   }, [setOutlookConnected, setOutlookEvents]);
+
+  const loadCalendarFilters = React.useCallback(async () => {
+    setCalendarFiltersLoading(true);
+    try {
+      const res = await fetch('/api/integrations/calendars', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`Calendar list failed (${res.status})`);
+      }
+
+      const data = (await res.json()) as { calendars?: ExternalCalendarFilter[] };
+      const rows = Array.isArray(data.calendars) ? data.calendars : [];
+      setCalendarFilters(rows);
+    } catch (err) {
+      console.error('[Sidebar calendar filters]', err);
+      toast.error('Could not load calendar filters.', { duration: 3_500 });
+    } finally {
+      setCalendarFiltersLoading(false);
+    }
+  }, []);
+
+  const openCalendarFiltersDialog = React.useCallback(() => {
+    setCalendarFiltersOpen(true);
+    void loadCalendarFilters();
+  }, [loadCalendarFilters]);
+
+  const toggleCalendarFilter = React.useCallback(
+    async (calendar: ExternalCalendarFilter) => {
+      const nextEnabled = !calendar.enabled;
+      setSavingCalendarId(calendar.id);
+      setCalendarFilters((prev) =>
+        prev.map((row) =>
+          row.id === calendar.id ? { ...row, enabled: nextEnabled } : row,
+        ),
+      );
+
+      try {
+        const res = await fetch(`/api/integrations/calendars/${calendar.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: nextEnabled }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Calendar update failed (${res.status})`);
+        }
+
+        if (_userId) {
+          clearProvider(_userId, calendar.provider);
+        }
+
+        if (calendar.provider === 'google') {
+          setGoogleEvents([]);
+        } else {
+          setOutlookEvents([]);
+        }
+
+        window.dispatchEvent(new Event('lumina:external-sync-now'));
+      } catch (err) {
+        console.error('[Sidebar toggle calendar filter]', err);
+        toast.error('Could not update this calendar filter. Reverting.', { duration: 3_500 });
+        await loadCalendarFilters();
+      } finally {
+        setSavingCalendarId(null);
+      }
+    },
+    [_userId, loadCalendarFilters, setGoogleEvents, setOutlookEvents],
+  );
 
   const confirmIntegration = React.useCallback(async (provider: IntegrationProvider) => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -448,7 +524,7 @@ const AppSidebar: React.FC = () => {
 
         // Clear provider-specific browser cache and in-memory events
         if (_userId) clearProvider(_userId, 'google');
-        usePlannerStore.getState().setGoogleEvents([]);
+        setGoogleEvents([]);
         await refreshIntegrationStatus();
         toast.success('Google Calendar disconnected.', { id: disconnectToastId, duration: 2_500 });
       } catch (err) {
@@ -494,6 +570,7 @@ const AppSidebar: React.FC = () => {
     googleCalConnected,
     openIntegrationPopup,
     refreshIntegrationStatus,
+    setGoogleEvents,
   ]);
   /* Elapsed time for active focus session */
   const [elapsed, setElapsed] = React.useState('00:00');
@@ -913,6 +990,11 @@ const AppSidebar: React.FC = () => {
                 </span>
               </DropdownMenuItem>
 
+              <DropdownMenuItem onClick={openCalendarFiltersDialog} className="gap-2.5">
+                <SettingsIcon size={14} className="text-muted-foreground" />
+                <span className="flex-1 text-sm">Calendar Filters</span>
+              </DropdownMenuItem>
+
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
@@ -949,6 +1031,104 @@ const AppSidebar: React.FC = () => {
         initialColor={editingContext?.color ?? '#EF4444'}
         mode="edit"
       />
+      <Dialog open={calendarFiltersOpen} onOpenChange={setCalendarFiltersOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">Calendar Filters</DialogTitle>
+            <DialogDescription>
+              Pick exactly which external calendars should appear in Lumina.
+            </DialogDescription>
+          </DialogHeader>
+
+          {calendarFiltersLoading ? (
+            <div className="space-y-3 py-2">
+              <div className="h-11 rounded-xl bg-muted/50 animate-pulse" />
+              <div className="h-11 rounded-xl bg-muted/50 animate-pulse" />
+              <div className="h-11 rounded-xl bg-muted/50 animate-pulse" />
+            </div>
+          ) : calendarFilters.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+              No external calendars found yet. Connect Google or Outlook to start filtering.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
+              {(['google', 'microsoft'] as const).map((provider) => {
+                const rows = calendarFilters.filter((row) => row.provider === provider);
+                if (rows.length === 0) return null;
+
+                const enabledCount = rows.filter((row) => row.enabled).length;
+
+                return (
+                  <div key={provider} className="rounded-2xl border border-border/70 bg-card overflow-hidden">
+                    <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border/60 bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        {provider === 'google' ? <GoogleProviderIcon size={16} /> : <OutlookProviderIcon size={16} />}
+                        <span className="text-sm font-medium text-foreground">
+                          {provider === 'google' ? 'Google Calendar' : 'Outlook'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        {enabledCount}/{rows.length} enabled
+                      </span>
+                    </div>
+
+                    <div className="p-2 space-y-1.5">
+                      {rows.map((calendar) => {
+                        const isSaving = savingCalendarId === calendar.id;
+
+                        return (
+                          <div
+                            key={calendar.id}
+                            className="flex items-center justify-between rounded-xl border border-border/50 bg-background px-2.5 py-2"
+                          >
+                            <div className="min-w-0 flex items-center gap-2.5">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10"
+                                style={{ backgroundColor: calendar.color || '#6D59E0' }}
+                              />
+                              <span className="truncate text-sm text-foreground">{calendar.name}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => void toggleCalendarFilter(calendar)}
+                              disabled={isSaving}
+                              aria-label={calendar.enabled ? `Disable ${calendar.name}` : `Enable ${calendar.name}`}
+                              className={[
+                                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                                calendar.enabled ? 'bg-primary' : 'bg-muted',
+                                isSaving ? 'opacity-60 cursor-wait' : 'cursor-pointer',
+                              ].join(' ')}
+                            >
+                              <span
+                                className={[
+                                  'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform',
+                                  calendar.enabled ? 'translate-x-6' : 'translate-x-1',
+                                ].join(' ')}
+                              />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <DialogFooter className="sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => void loadCalendarFilters()}
+              disabled={calendarFiltersLoading}
+            >
+              Refresh List
+            </Button>
+            <Button onClick={() => setCalendarFiltersOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(contextPendingDelete)} onOpenChange={(open) => { if (!open) setContextPendingDelete(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

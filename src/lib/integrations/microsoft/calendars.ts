@@ -76,6 +76,7 @@ export async function importMicrosoftCalendars(
           externalId: cal.externalId,
           name: cal.name,
           color: cal.color,
+          enabled: true,
           isPrimary: cal.isPrimary,
           createdAt: now,
           updatedAt: now,
@@ -90,13 +91,14 @@ export async function importMicrosoftCalendars(
 
 export async function getMicrosoftCalendarsFromDb(
   userId: string,
-): Promise<Array<{ id: string; externalId: string; name: string }>> {
+): Promise<Array<{ id: string; externalId: string; name: string; enabled: boolean }>> {
   const db = getDatabase();
   const rows = await db
     .select({
       id: calendars.id,
       externalId: calendars.externalId,
       name: calendars.name,
+      enabled: calendars.enabled,
     })
     .from(calendars)
     .where(
@@ -104,7 +106,7 @@ export async function getMicrosoftCalendarsFromDb(
     );
 
   return rows.filter(
-    (r): r is { id: string; externalId: string; name: string } =>
+    (r): r is { id: string; externalId: string; name: string; enabled: boolean } =>
       r.externalId !== null,
   );
 }

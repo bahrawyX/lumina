@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
 import { usePlannerStore } from '../store/usePlannerStore';
@@ -41,13 +41,6 @@ export const useCalendar = () => {
 
     return [...localInstances, ...googleInstances, ...outlookInstances];
   }, [events, googleEvents, outlookEvents, visibleRange]);
-
-  useEffect(() => {
-    console.log('MERGE_COUNTS localEvents.length', events.length);
-    console.log('MERGE_COUNTS googleEvents.length', googleEvents.length);
-    console.log('MERGE_COUNTS outlookEvents.length', outlookEvents.length);
-    console.log('MERGE_COUNTS merged.length', allInstances.length);
-  }, [events.length, googleEvents.length, outlookEvents.length, allInstances.length]);
 
   const filteredInstances = useMemo(() => {
     const query = searchQuery.toLowerCase();

@@ -28,9 +28,6 @@ const EventItem = memo<EventItemProps>(({ event, onClick }) => {
         ? 'google'
         : 'local');
   const isExternal = provider === 'microsoft' || provider === 'google';
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[EVENT RENDER]', event.id, event.provider || event.source || 'unknown');
-  }
 
   const color = isExternal
     ? (event.color || (provider === 'google' ? '#4285F4' : '#0078D4'))

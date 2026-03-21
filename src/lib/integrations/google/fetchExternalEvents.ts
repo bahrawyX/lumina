@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDatabase } from '@/lib/db';
 import { calendars } from '@/db/schema';
 import { googleFetch } from './client';
@@ -67,16 +67,37 @@ export async function fetchGoogleExternalEvents(
   userId: string,
   startIso: string,
   endIso: string,
+  selectedCalendarIds?: string[],
 ): Promise<ApiExternalEvent[]> {
+  if (selectedCalendarIds && selectedCalendarIds.length === 0) {
+    return [];
+  }
+
   const db = getDatabase();
 
   const googleCals = await db
-    .select({ externalId: calendars.externalId, color: calendars.color })
+    .select({ id: calendars.id, externalId: calendars.externalId, color: calendars.color })
     .from(calendars)
-    .where(and(eq(calendars.userId, userId), eq(calendars.provider, 'google')));
+    .where(
+      selectedCalendarIds
+        ? and(
+            eq(calendars.userId, userId),
+            eq(calendars.provider, 'google'),
+            inArray(calendars.id, selectedCalendarIds),
+          )
+        : and(
+            eq(calendars.userId, userId),
+            eq(calendars.provider, 'google'),
+          ),
+    );
 
   if (googleCals.length === 0) {
-    // No imported calendar metadata yet — fall back to the primary calendar
+    if (selectedCalendarIds) {
+      // All selected calendars were disabled/invalid or no calendar is enabled.
+      return [];
+    }
+
+    // Backward-compatible fallback for older callers that don't pass calendar IDs.
     return fetchCalendarEvents(
       userId,
       'primary',

@@ -150,7 +150,6 @@ export function GoogleCalendarSync() {
         url.searchParams.set('start', range.start);
         url.searchParams.set('end',   range.end);
 
-        console.log('USER_ID_FETCH', userId, 'google', url.toString());
         const res = await fetch(url.toString());
         const data = await res.json();
 
@@ -162,9 +161,7 @@ export function GoogleCalendarSync() {
         const mappedGoogle = rawEvents.map(apiToCalendarEvent);
 
         // Cache and populate the store — no DB write
-        console.log('USER_ID_CACHE_WRITE', userId, 'google', `${range.start.slice(0, 10)}_${range.end.slice(0, 10)}`);
         setCache(userId, 'google', range.start.slice(0, 10), range.end.slice(0, 10), mappedGoogle);
-        console.log('USER_ID_STORE_SET', userId, 'google', mappedGoogle.length);
         setGoogleEvents(mappedGoogle);
 
         setStatus('success');
