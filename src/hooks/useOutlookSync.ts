@@ -32,6 +32,12 @@ import type { ApiExternalEvent } from '../lib/calendar/externalEventTypes';
 // Background poll interval — longer than cache TTL so the cache is always
 // stale when the poll fires, guaranteeing a refresh without needing force=true.
 const POLL_INTERVAL_MS = 10 * 60 * 1_000; // 10 minutes  (cache TTL = 5 min)
+const FOCUS_SYNC_MIN_INTERVAL_MS = 30 * 1000;
+
+export function triggerExternalSync(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event('lumina:external-sync-now'));
+}
 
 // ── Date range helpers ─────────────────────────────────────────────────────
 
@@ -118,6 +124,9 @@ export function useOutlookSync() {
   const currentDate = useCalendarStore((s) => s.currentDate);
   const setGoogleEvents  = usePlannerStore((s) => s.setGoogleEvents);
   const setOutlookEvents = usePlannerStore((s) => s.setOutlookEvents);
+  const setIsSyncing = usePlannerStore((s) => s.setIsSyncing);
+  const setLastSyncedAt = usePlannerStore((s) => s.setLastSyncedAt);
+  const setSyncError = usePlannerStore((s) => s.setSyncError);
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;
@@ -127,6 +136,7 @@ export function useOutlookSync() {
   const viewRef        = useRef(view);
   const dateRef        = useRef(currentDate);
   const isFetchingRef  = useRef(false);
+  const lastFocusSyncAtRef = useRef(0);
   viewRef.current  = view;
   dateRef.current  = currentDate;
 
@@ -150,10 +160,13 @@ export function useOutlookSync() {
       const cachedMsWithEvents = cachedMs && cachedMs.length > 0 ? cachedMs : null;
 
       isFetchingRef.current = true;
+      setIsSyncing(true);
+      setSyncError(null);
       if (showLoader) {
         toast.loading('Syncing calendars...', { id: loaderToastId });
       }
       let syncFailed = false;
+      const providerErrors: string[] = [];
       try {
         let googleConnected = true;
         let outlookConnected = true;
@@ -184,11 +197,13 @@ export function useOutlookSync() {
             if (googleRes.status === 401) return;
             if (googleRes.status === 403) {
               setGoogleEvents([]);
+              providerErrors.push('Google authorization required.');
             } else if (!googleRes.ok) {
               toast.warning('Google Calendar could not refresh. Showing cached events.', {
                 id: 'google-sync-warn',
                 duration: 6_000,
               });
+              providerErrors.push(`Google sync failed (${googleRes.status}).`);
             } else {
               const googleData = await googleRes.json() as { events?: ApiExternalEvent[] };
               const googleRaw = googleData.events ?? [];
@@ -212,11 +227,13 @@ export function useOutlookSync() {
             if (msRes.status === 401) return;
             if (msRes.status === 403) {
               setOutlookEvents([]);
+              providerErrors.push('Outlook authorization required.');
             } else if (!msRes.ok) {
               toast.warning('Outlook could not refresh. Showing cached events.', {
                 id: 'ms-sync-warn',
                 duration: 6_000,
               });
+              providerErrors.push(`Outlook sync failed (${msRes.status}).`);
             } else {
               const msData = await msRes.json() as { events?: ApiExternalEvent[] };
               const msRaw = msData.events ?? [];
@@ -226,8 +243,17 @@ export function useOutlookSync() {
             }
           }
         }
+
+        if (providerErrors.length > 0) {
+          setSyncError(providerErrors[0]);
+        } else {
+          setLastSyncedAt(new Date().toISOString());
+          setSyncError(null);
+        }
       } catch (err) {
         syncFailed = true;
+        const message = err instanceof Error ? err.message : 'External sync failed.';
+        setSyncError(message);
         // Unexpected error (network offline, etc.) — preserve store, warn once
         console.error('[useOutlookSync]', err);
         toast.warning('External calendar could not connect. Check your connection.', {
@@ -242,9 +268,17 @@ export function useOutlookSync() {
           toast.success('Calendars synced.', { id: loaderToastId, duration: 2_000 });
         }
         isFetchingRef.current = false;
+        setIsSyncing(false);
       }
     },
-    [userId, setGoogleEvents, setOutlookEvents],
+    [
+      userId,
+      setGoogleEvents,
+      setOutlookEvents,
+      setIsSyncing,
+      setLastSyncedAt,
+      setSyncError,
+    ],
   );
 
   // ── Effect 1: Re-fetch when visible range changes ────────────────────────
@@ -278,6 +312,23 @@ export function useOutlookSync() {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
+  }, [userId, syncRange]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+
+      const now = Date.now();
+      if (now - lastFocusSyncAtRef.current < FOCUS_SYNC_MIN_INTERVAL_MS) return;
+      lastFocusSyncAtRef.current = now;
+
+      void syncRange(computeRange(viewRef.current, dateRef.current), { showLoader: false });
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [userId, syncRange]);
 
   return null;

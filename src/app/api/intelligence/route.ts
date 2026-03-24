@@ -1,0 +1,216 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { and, eq, gt, gte, lt, ne } from 'drizzle-orm';
+import { auth } from '@/lib/auth';
+import { getDatabase } from '@/lib/db';
+import { events, focusSessions, integrations, tasks } from '@/db/schema';
+import { fetchGoogleExternalEvents } from '@/lib/integrations/google/fetchExternalEvents';
+import { fetchMicrosoftExternalEvents } from '@/lib/integrations/microsoft/fetchExternalEvents';
+import { getEnabledCalendarIds } from '@/lib/integrations/enabledCalendars';
+import { buildIntelligenceNarrative } from '@/lib/intelligence/llmSummary';
+import { runIntelligenceEngine } from '@/lib/intelligence/engine';
+import type {
+  IntelligenceCalendarEvent,
+  IntelligenceFocusSession,
+  IntelligenceTask,
+} from '@/lib/intelligence/types';
+
+const DEFAULT_RANGE_DAYS_PAST = 1;
+const DEFAULT_RANGE_DAYS_FUTURE = 14;
+const DEFAULT_MIN_FOCUS_WINDOW_MINUTES = 60;
+const DEFAULT_FOCUS_HISTORY_DAYS = 30;
+
+function parseIsoOrDefault(value: string | null, fallbackMs: number): string {
+  if (!value) return new Date(fallbackMs).toISOString();
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date(fallbackMs).toISOString();
+  return parsed.toISOString();
+}
+
+function parsePositiveInt(value: string | null, fallback: number): number {
+  if (!value) return fallback;
+  const num = Number.parseInt(value, 10);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return num;
+}
+
+function mapLocalEvents(rows: Array<typeof events.$inferSelect>): IntelligenceCalendarEvent[] {
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    provider: 'local',
+    startIso: row.startTime.toISOString(),
+    endIso: row.endTime.toISOString(),
+    isAllDay: row.isAllDay,
+    timezone: row.timezone,
+    category: row.category,
+  }));
+}
+
+function mapTasks(rows: Array<typeof tasks.$inferSelect>): IntelligenceTask[] {
+  return rows.map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    dueDateIso: task.dueDate ? task.dueDate.toISOString() : null,
+    estimatedMinutes: Math.max(1, task.estimatedMinutes),
+    context: null,
+  }));
+}
+
+function mapFocusSessions(rows: Array<typeof focusSessions.$inferSelect>): IntelligenceFocusSession[] {
+  return rows.map((session) => ({
+    id: session.id,
+    startIso: session.startTime.toISOString(),
+    endIso: session.endTime.toISOString(),
+    durationMinutes: session.durationMinutes,
+  }));
+}
+
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const userId = session.user.id;
+  const now = Date.now();
+  const { searchParams } = new URL(req.url);
+
+  const startIso = parseIsoOrDefault(
+    searchParams.get('start'),
+    now - DEFAULT_RANGE_DAYS_PAST * 86_400_000,
+  );
+  const endIso = parseIsoOrDefault(
+    searchParams.get('end'),
+    now + DEFAULT_RANGE_DAYS_FUTURE * 86_400_000,
+  );
+
+  const minFocusWindowMinutes = parsePositiveInt(
+    searchParams.get('minFocusWindowMinutes'),
+    DEFAULT_MIN_FOCUS_WINDOW_MINUTES,
+  );
+
+  const timezone = searchParams.get('timezone')?.trim() || 'UTC';
+  const includeNarrative = searchParams.get('includeNarrative') === '1';
+
+  try {
+    const db = getDatabase();
+    const startDate = new Date(startIso);
+    const endDate = new Date(endIso);
+    const historyStartDate = new Date(now - DEFAULT_FOCUS_HISTORY_DAYS * 86_400_000);
+
+    const [localEventRows, taskRows, focusRows, integrationRows] = await Promise.all([
+      db
+        .select()
+        .from(events)
+        .where(
+          and(
+            eq(events.userId, userId),
+            eq(events.provider, 'local'),
+            lt(events.startTime, endDate),
+            gt(events.endTime, startDate),
+          ),
+        ),
+      db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.userId, userId), ne(tasks.status, 'archived'))),
+      db
+        .select()
+        .from(focusSessions)
+        .where(
+          and(
+            eq(focusSessions.userId, userId),
+            gte(focusSessions.startTime, historyStartDate),
+          ),
+        ),
+      db
+        .select({ provider: integrations.provider, status: integrations.status, expiresAt: integrations.expiresAt })
+        .from(integrations)
+        .where(eq(integrations.userId, userId)),
+    ]);
+
+    const hasGoogle = integrationRows.some(
+      (row) => row.provider === 'google' && row.status === 'active' && row.expiresAt > new Date(),
+    );
+    const hasMicrosoft = integrationRows.some(
+      (row) =>
+        (row.provider === 'microsoft' || row.provider === 'outlook')
+        && row.status === 'active'
+        && row.expiresAt > new Date(),
+    );
+
+    const [googleEvents, microsoftEvents] = await Promise.all([
+      hasGoogle
+        ? (async () => {
+            const ids = await getEnabledCalendarIds(userId, 'google');
+            return fetchGoogleExternalEvents(userId, startIso, endIso, ids);
+          })().catch((err) => {
+            console.error('[GET /api/intelligence] Google fetch failed', err);
+            return [];
+          })
+        : Promise.resolve([]),
+      hasMicrosoft
+        ? (async () => {
+            const ids = await getEnabledCalendarIds(userId, 'microsoft');
+            return fetchMicrosoftExternalEvents(userId, startIso, endIso, ids);
+          })().catch((err) => {
+            console.error('[GET /api/intelligence] Microsoft fetch failed', err);
+            return [];
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const localEvents = mapLocalEvents(localEventRows);
+    const externalGoogle: IntelligenceCalendarEvent[] = googleEvents.map((event) => ({
+      id: `google:${event.externalEventId}`,
+      title: event.title,
+      provider: 'google' as const,
+      startIso: event.startIso,
+      endIso: event.endIso,
+      isAllDay: event.isAllDay,
+      timezone: event.timezone,
+      category: 'work',
+    }));
+    const externalMicrosoft: IntelligenceCalendarEvent[] = microsoftEvents.map((event) => ({
+      id: `microsoft:${event.externalEventId}`,
+      title: event.title,
+      provider: 'microsoft' as const,
+      startIso: event.startIso,
+      endIso: event.endIso,
+      isAllDay: event.isAllDay,
+      timezone: event.timezone,
+      category: 'work',
+    }));
+
+    const output = runIntelligenceEngine({
+      userId,
+      timezone,
+      rangeStartIso: startIso,
+      rangeEndIso: endIso,
+      minFocusWindowMinutes,
+      calendarEvents: [...localEvents, ...externalGoogle, ...externalMicrosoft],
+      tasks: mapTasks(taskRows),
+      focusSessions: mapFocusSessions(focusRows),
+    });
+
+    const narrative = includeNarrative ? await buildIntelligenceNarrative(output, { useLlm: false }) : null;
+
+    return NextResponse.json({
+      ok: true,
+      ...output,
+      narrative,
+      sources: {
+        localEvents: localEvents.length,
+        googleEvents: externalGoogle.length,
+        microsoftEvents: externalMicrosoft.length,
+        tasks: taskRows.length,
+        focusSessions: focusRows.length,
+      },
+    });
+  } catch (err) {
+    console.error('[GET /api/intelligence]', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

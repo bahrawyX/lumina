@@ -9,11 +9,17 @@ interface PlannerState {
   googleEvents: CalendarEvent[];
   outlookConnected: boolean;
   outlookSyncing: boolean;
+  isSyncing: boolean;
+  lastSyncedAt: string | null;
+  syncError: string | null;
 
   setOutlookEvents: (events: CalendarEvent[]) => void;
   setGoogleEvents:  (events: CalendarEvent[]) => void;
   setOutlookConnected: (connected: boolean) => void;
   setOutlookSyncing:   (syncing: boolean) => void;
+  setIsSyncing: (syncing: boolean) => void;
+  setLastSyncedAt: (iso: string | null) => void;
+  setSyncError: (message: string | null) => void;
   /** Clear all in-memory external event arrays (call on signout or provider disconnect). */
   clearExternalEvents: () => void;
 }
@@ -25,11 +31,17 @@ export const usePlannerStore = create<PlannerState>()(
       googleEvents:  [],
       outlookConnected: false,
       outlookSyncing:   false,
+      isSyncing: false,
+      lastSyncedAt: null,
+      syncError: null,
 
       setOutlookEvents:    (outlookEvents)    => set({ outlookEvents }),
       setGoogleEvents:     (googleEvents)     => set({ googleEvents }),
       setOutlookConnected: (outlookConnected) => set({ outlookConnected }),
       setOutlookSyncing:   (outlookSyncing)   => set({ outlookSyncing }),
+      setIsSyncing:        (isSyncing)        => set({ isSyncing }),
+      setLastSyncedAt:     (lastSyncedAt)     => set({ lastSyncedAt }),
+      setSyncError:        (syncError)        => set({ syncError }),
       clearExternalEvents: () => set({ outlookEvents: [], googleEvents: [] }),
     }),
     {

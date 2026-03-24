@@ -7,6 +7,34 @@ import { usePlannerStore } from '../store/usePlannerStore';
 import { expandRecurrences, getDaysInMonth, getDaysInWeek, formatDateISO } from '../utils/dateUtils';
 import { ViewType, EventInstance } from '../types';
 
+function buildExactExternalKey(event: EventInstance): string {
+  return `${event.title.toLowerCase()}|${event.date}|${event.startTime}|${event.endTime}`;
+}
+
+function buildFallbackExternalKey(event: EventInstance): string {
+  return `${event.title.toLowerCase()}|${event.date}|${event.startTime}`;
+}
+
+function dedupeExternalInstances(instances: EventInstance[]): EventInstance[] {
+  const exactSeen = new Set<string>();
+  const fallbackSeen = new Set<string>();
+  const deduped: EventInstance[] = [];
+
+  for (const event of instances) {
+    const exactKey = buildExactExternalKey(event);
+    const fallbackKey = buildFallbackExternalKey(event);
+    if (exactSeen.has(exactKey) || fallbackSeen.has(fallbackKey)) {
+      continue;
+    }
+
+    exactSeen.add(exactKey);
+    fallbackSeen.add(fallbackKey);
+    deduped.push(event);
+  }
+
+  return deduped;
+}
+
 export const useCalendar = () => {
   const { searchQuery, activeFilters, view, currentDate, isFocusMode } = useCalendarStore();
   const events        = useCalendarEventsStore((s) => s.events);
@@ -39,7 +67,13 @@ export const useCalendar = () => {
       .filter((e) => e.date >= startStr && e.date <= endStr)
       .map((e) => ({ ...e, instanceDate: e.date }));
 
-    return [...localInstances, ...googleInstances, ...outlookInstances];
+    // Keep a stable preference order for duplicate external events.
+    const dedupedExternal = dedupeExternalInstances([
+      ...googleInstances,
+      ...outlookInstances,
+    ]);
+
+    return [...localInstances, ...dedupedExternal];
   }, [events, googleEvents, outlookEvents, visibleRange]);
 
   const filteredInstances = useMemo(() => {

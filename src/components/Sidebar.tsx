@@ -1032,7 +1032,7 @@ const AppSidebar: React.FC = () => {
         mode="edit"
       />
       <Dialog open={calendarFiltersOpen} onOpenChange={setCalendarFiltersOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg p-5">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">Calendar Filters</DialogTitle>
             <DialogDescription>
