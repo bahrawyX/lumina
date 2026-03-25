@@ -3,7 +3,95 @@
 >
 > This is a code-verified audit of the current repository state, including runtime route contracts, database schema, client/store contracts, and concrete database improvements.
 >
-> Last updated: 2026-03-18
+> Last updated: 2026-03-25
+
+---
+
+## 0c. Planner + Focus + Mobile UX Addendum (2026-03-25)
+
+This addendum captures the planner/focus continuity pass, mobile UX overhaul, and task contract expansion completed after the previous 2026-03-18 updates.
+
+### 0c.1 Task scheduling and focus continuity fields (DB + API)
+
+Task records now persist the following additional fields end-to-end:
+
+- `scheduledStart` (`HH:mm` or `null`)
+- `scheduledEnd` (`HH:mm` or `null`)
+- `remainingFocusTime` (seconds, integer, or `null`)
+
+Implementation points:
+
+- Schema columns added in `src/db/schema/tasks.ts`.
+- Migration added: `drizzle/0004_focus_resume_task_fields.sql` and journal updated.
+- API mappings updated in `src/app/api/tasks/route.ts` and `src/app/api/tasks/[id]/route.ts` for GET/POST/PATCH.
+- Client task type/store normalization updated in `src/types/task.ts`, `src/utils/taskBoard.ts`, and `src/store/useTaskBoardStore.ts`.
+
+### 0c.2 Focus interruption and resume behavior
+
+Focus flow now supports explicit interruption handling with persistence:
+
+- When a running focus session is interrupted, the user is prompted: "Did you finish this task?"
+- "Yes, it's done": marks task done and clears `remainingFocusTime`.
+- "Not yet": saves remaining seconds to `remainingFocusTime` and exits.
+- Starting a focus session from task board now resumes from saved `remainingFocusTime` when present.
+
+Primary files:
+
+- `src/components/focus/FocusSessionView.tsx`
+- `src/components/focus/FocusTimer.tsx`
+- `src/components/tasks/TaskBoard.tsx`
+
+### 0c.3 Roll Over Unfinished Tasks
+
+Planner now supports rolling unfinished/planned tasks to tomorrow with optimistic UI feedback:
+
+- Roll-over CTA in daily plan header.
+- Animated removal of rolled-over items from today's plan.
+- Toast feedback for progress/success/failure.
+- Batch DB sync via task PATCH updates (`dueDate` to tomorrow).
+
+Primary files:
+
+- `src/components/planner/DailyPlanView.tsx`
+- `src/components/planner/DailyPlanHeader.tsx`
+- `src/components/planner/RollOverButton.tsx`
+- `src/store/useTaskBoardStore.ts`
+
+### 0c.4 Mobile-first interaction and layout updates
+
+App shell and planner/task workflows were upgraded for mobile ergonomics:
+
+- Touch-friendly DnD sensors (`MouseSensor` + `TouchSensor` hold-to-drag) in planner and board.
+- Sidebar hidden on mobile with fixed bottom navigation.
+- Safe-area spacing utilities applied to avoid iOS home-indicator overlap.
+- Task and planning modal UX adapted to bottom-sheet patterns.
+
+Primary files:
+
+- `src/app/(app)/AppShell.tsx`
+- `src/components/ui/MobileBottomSheet.tsx`
+- `src/components/planner/PlanningModal.tsx`
+- `src/components/tasks/TaskDialog.tsx`
+- `src/components/planner/DailyPlanView.tsx`
+
+### 0c.5 Planner timeline and quick-add polish
+
+Planner UI received density and input-flow improvements:
+
+- Planned task cards and timeline block sizing reduced for better scanability.
+- Quick-add row now supports emoji insertion.
+- Quick-add duration control migrated to shadcn/Radix Select styling.
+
+Primary files:
+
+- `src/components/calendar/DayCalendarTimeline.tsx`
+- `src/components/planner/PlannedTaskCard.tsx`
+- `src/components/planner/DailyPlanView.tsx`
+
+### 0c.6 Scope guardrails
+
+- No new auth-provider scope expansion was introduced.
+- Integration ownership/security model from 2026-03-18 remains unchanged.
 
 ---
 
@@ -265,7 +353,7 @@ Location: `src/app/auth/popup-complete/page.tsx`
 
 ## 5. API Contracts (Current Behavior)
 
-All domain routes below require authenticated session except sync routes (see notes).
+All domain routes below require an authenticated session.
 
 ### 5.1 Events API
 
@@ -366,10 +454,14 @@ Response: mapped task array:
     "id": "uuid",
     "title": "string",
     "description": "string | undefined",
-    "status": "todo | in_progress | done",
+      "status": "todo | doing | done | archived",
+      "dbStatus": "todo | in_progress | done | archived",
     "priority": "low | medium | high",
     "dueDate": "YYYY-MM-DD | null",
     "durationMinutes": 30,
+      "scheduledStart": "HH:mm | null",
+      "scheduledEnd": "HH:mm | null",
+      "remainingFocusTime": 600,
     "order": 0,
     "context": null,
     "linkedEventId": null,
@@ -379,9 +471,10 @@ Response: mapped task array:
 ]
 ```
 
-Important mismatch:
+Notes:
 
-- API emits `in_progress` while client type system and board logic primarily use `doing`.
+- API returns UI-friendly `status` (`doing`) plus canonical `dbStatus` (`in_progress`) for compatibility.
+- Archived tasks are excluded by default; include with `?includeArchived=true` or `?includeArchived=1`.
 
 #### POST `/api/tasks`
 
@@ -390,11 +483,14 @@ Request body accepted:
 ```json
 {
   "title": "required string",
-  "description": "optional string",
-  "status": "optional todo|in_progress|done",
+   "description": "optional string | null",
+   "status": "optional todo|doing|in_progress|done|archived",
   "priority": "optional low|medium|high",
   "dueDate": "optional ISO/date string or null",
-  "durationMinutes": "optional number"
+   "durationMinutes": "optional number",
+   "scheduledStart": "optional HH:mm or null",
+   "scheduledEnd": "optional HH:mm or null",
+   "remainingFocusTime": "optional number(seconds) or null"
 }
 ```
 
@@ -410,10 +506,13 @@ Patchable fields:
 
 - `title`
 - `description`
-- `status` (`todo|in_progress|done`)
+- `status` (`todo|doing|in_progress|done|archived`)
 - `priority`
 - `durationMinutes` -> mapped to `estimatedMinutes`
 - `dueDate` (`null` clears)
+- `scheduledStart` (`HH:mm` or `null`)
+- `scheduledEnd` (`HH:mm` or `null`)
+- `remainingFocusTime` (seconds integer or `null`)
 
 Ownership check:
 
@@ -688,6 +787,9 @@ Indexes and checks:
 | priority | task_priority | no | medium | |
 | estimated_minutes | integer | no | 30 | |
 | due_date | timestamptz | yes | null | |
+| scheduled_start | varchar(5) | yes | null | HH:mm |
+| scheduled_end | varchar(5) | yes | null | HH:mm |
+| remaining_focus_time | integer | yes | null | seconds remaining for resume |
 | created_at | timestamptz | no | now() | |
 | updated_at | timestamptz | no | now() | |
 
@@ -695,6 +797,10 @@ Indexes:
 
 - `tasks_user_id_idx` on `user_id`
 - `tasks_status_idx` on `status`
+
+Checks:
+
+- `tasks_estimated_minutes_check`: `estimated_minutes > 0`
 
 #### `planner_items`
 
@@ -876,10 +982,11 @@ Not persisted as first-class columns today:
 
 Severity uses: High, Medium, Low.
 
-1. High - task status enum mismatch across layers.
-   - DB/API use `in_progress`.
-   - Client task type and helpers use `doing`.
-   - Risk: column filtering/reordering logic divergence and inconsistent UI state.
+1. Medium - task status vocabulary is normalized but still dual at boundaries.
+   - DB canonical value remains `in_progress`.
+   - UI canonical value remains `doing`.
+   - API now maps both directions and emits `status` + `dbStatus`.
+   - Residual risk: new callers can bypass normalization if they assume one vocabulary everywhere.
 
 2. High - event contract mismatch (UI richer than persisted model).
    - UI carries `category/color/timezone/linkedTaskId/completed`, but API/DB largely drop or synthesize these.
