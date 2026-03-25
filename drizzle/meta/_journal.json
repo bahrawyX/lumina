@@ -43,6 +43,13 @@
       "when": 1774459995375,
       "tag": "0005_productive_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774460925086,
+      "tag": "0006_magenta_cargill",
+      "breakpoints": true
     }
   ]
 }

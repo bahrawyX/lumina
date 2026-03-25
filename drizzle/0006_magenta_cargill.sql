@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "focus_session_length" integer DEFAULT 25 NOT NULL;

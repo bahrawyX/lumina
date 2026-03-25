@@ -27,6 +27,7 @@ import { useEffect, useRef } from 'react';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
 import { authClient } from '@/lib/auth-client';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
@@ -58,6 +59,8 @@ export default function PersistenceBootstrap() {
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
+  const preferencesHydrated = useSettingsStore((s) => s.preferencesHydrated);
+  const hydrateFocusSessionLengthFromDb = useSettingsStore((s) => s.hydrateFocusSessionLengthFromDb);
 
   const { data: session } = authClient.useSession();
 
@@ -79,6 +82,22 @@ export default function PersistenceBootstrap() {
     // Always call hydrateFromDb (even with empty array) so dbHydrated becomes
     // true and the stores never fall back to localStorage as a live data source.
     void Promise.all([
+      preferencesHydrated
+        ? Promise.resolve()
+        : fetch('/api/users/preferences')
+            .then(async (res) => {
+              if (!res.ok) throw new Error(`Preferences fetch failed (${res.status})`);
+              return res.json() as Promise<{ focusSessionLength?: number }>;
+            })
+            .then((prefs) => {
+              if (typeof prefs.focusSessionLength === 'number') {
+                hydrateFocusSessionLengthFromDb(prefs.focusSessionLength);
+              }
+            })
+            .catch(() => {
+              // Keep local persisted settings if DB prefs are unavailable.
+            }),
+
       eventsHydrated
         ? Promise.resolve()
         : eventsPersistence.fetchAllForCurrentUser()

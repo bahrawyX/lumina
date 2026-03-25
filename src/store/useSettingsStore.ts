@@ -13,6 +13,8 @@ function clampFocusMinutes(minutes: number): number {
 interface SettingsState {
   focusSessionLength: number;
   setFocusSessionLength: (minutes: number) => void;
+  hydrateFocusSessionLengthFromDb: (minutes: number) => void;
+  preferencesHydrated: boolean;
   resetSettings: () => void;
 }
 
@@ -20,8 +22,27 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       focusSessionLength: DEFAULT_FOCUS_MINUTES,
-      setFocusSessionLength: (minutes) => set({ focusSessionLength: clampFocusMinutes(minutes) }),
-      resetSettings: () => set({ focusSessionLength: DEFAULT_FOCUS_MINUTES }),
+      preferencesHydrated: false,
+      setFocusSessionLength: (minutes) => {
+        const clamped = clampFocusMinutes(minutes);
+        set({ focusSessionLength: clamped });
+
+        void fetch('/api/users/preferences', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ focusSessionLength: clamped }),
+        }).catch(() => {
+          // Keep UI optimistic; silent failure avoids interrupting focus flow.
+        });
+      },
+      hydrateFocusSessionLengthFromDb: (minutes) => set({
+        focusSessionLength: clampFocusMinutes(minutes),
+        preferencesHydrated: true,
+      }),
+      resetSettings: () => set({
+        focusSessionLength: DEFAULT_FOCUS_MINUTES,
+        preferencesHydrated: false,
+      }),
     }),
     {
       name: 'lumina-settings',
