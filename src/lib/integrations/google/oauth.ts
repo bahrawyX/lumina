@@ -1,42 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
+import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { integrations } from '@/db/schema';
 import { runFullGoogleSync } from '@/lib/integrations/google/sync';
 
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 
-/**
- * GET /api/integrations/google/callback
- *
- * Google OAuth callback for the calendar integration (NOT login).
- * Exchanges the authorization code for tokens and stores them in
- * the integrations table, keyed strictly to the authenticated user.
- */
-export async function GET(req: NextRequest) {
-  console.log('[GOOGLE CALLBACK] HIT');
-  console.log('[GOOGLE CALLBACK] COOKIE HEADER:', req.headers.get('cookie'));
-  console.log('[GOOGLE CALLBACK] HEADERS:', Object.fromEntries(req.headers.entries()));
+export async function handleGoogleConnect(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  const baseURL = process.env.BETTER_AUTH_URL ?? new URL(req.url).origin;
 
+  if (!session?.user?.id) {
+    return NextResponse.redirect(new URL('/login', req.url));
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID_CALENDAR;
+  if (!clientId) {
+    return NextResponse.json(
+      { error: 'Google integration is not configured on this server.' },
+      { status: 503 },
+    );
+  }
+
+  const state = JSON.stringify({ userId: session.user.id });
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: `${baseURL}/api/integrations/google/callback`,
+    response_type: 'code',
+    scope: CALENDAR_SCOPE,
+    access_type: 'offline',
+    prompt: 'consent',
+    state,
+  });
+
+  return NextResponse.redirect(`${GOOGLE_AUTH_URL}?${params}`);
+}
+
+export async function handleGoogleCallback(req: NextRequest) {
   try {
     const baseURL = process.env.BETTER_AUTH_URL ?? new URL(req.url).origin;
     const expectedRedirect = `${baseURL}/api/integrations/google/callback`;
-
-    console.log('[GOOGLE CALLBACK] BASE URL:', baseURL);
-    console.log('[GOOGLE CALLBACK] EXPECTED REDIRECT:', expectedRedirect);
-    console.log('[GOOGLE CALLBACK] CLIENT ID:', process.env.GOOGLE_CLIENT_ID_CALENDAR);
-    console.log(
-      '[GOOGLE CALLBACK] CLIENT SECRET EXISTS:',
-      !!process.env.GOOGLE_CLIENT_SECRET_CALENDAR,
-    );
 
     const { searchParams } = req.nextUrl;
     const code = searchParams.get('code');
     const rawState = searchParams.get('state');
     const errorParam = searchParams.get('error');
-
-    console.log('[GOOGLE CALLBACK] CODE:', code);
-    console.log('[GOOGLE CALLBACK] STATE:', rawState);
 
     if (errorParam) {
       return NextResponse.json(
@@ -72,8 +84,6 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = parsedState.userId;
-    console.log('[GOOGLE CALLBACK] USER ID FROM STATE:', userId);
-
     if (!userId) {
       return NextResponse.json(
         {
@@ -83,8 +93,6 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       );
     }
-
-    console.log('[GOOGLE CALLBACK] STATE VALID');
 
     const clientId = process.env.GOOGLE_CLIENT_ID_CALENDAR;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET_CALENDAR;
@@ -98,9 +106,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    console.log('[GOOGLE CALLBACK] EXCHANGING TOKEN');
-
-    // Exchange authorization code for tokens
     const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -115,7 +120,6 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
-      console.error('[google/callback] Token exchange failed:', body);
       return NextResponse.json(
         {
           error: 'GOOGLE_CALLBACK_FAILED',
@@ -133,8 +137,6 @@ export async function GET(req: NextRequest) {
       token_type?: string;
     };
 
-    console.log('[GOOGLE CALLBACK] TOKEN DATA:', tokenData);
-
     if (!tokenData.access_token) {
       return NextResponse.json(
         {
@@ -144,12 +146,6 @@ export async function GET(req: NextRequest) {
         { status: 500 },
       );
     }
-
-    console.info('[google/callback] Token exchange succeeded', {
-      hasAccessToken: Boolean(tokenData.access_token),
-      hasRefreshToken: Boolean(tokenData.refresh_token),
-      scope: tokenData.scope ?? null,
-    });
 
     const db = getDatabase();
     const now = new Date();
@@ -161,14 +157,8 @@ export async function GET(req: NextRequest) {
       .where(and(eq(integrations.userId, userId), eq(integrations.provider, 'google')))
       .limit(1);
 
-    // If Google doesn't return a refresh token (user already consented before),
-    // preserve the existing one so we don't break future token refreshes.
     const refreshToken = tokenData.refresh_token ?? existing?.refreshToken;
-
-    console.log('[GOOGLE CALLBACK] FINAL REFRESH TOKEN:', refreshToken);
-
     if (!refreshToken) {
-      console.error('[google/callback] Missing refresh token and no existing one');
       return NextResponse.json(
         {
           error: 'GOOGLE_CALLBACK_FAILED',
@@ -178,73 +168,36 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    try {
-      await db
-        .insert(integrations)
-        .values({
-          userId,
-          provider: 'google',
+    await db
+      .insert(integrations)
+      .values({
+        userId,
+        provider: 'google',
+        accessToken: tokenData.access_token,
+        refreshToken: refreshToken ?? existing?.refreshToken,
+        expiresAt,
+        scope: tokenData.scope ?? CALENDAR_SCOPE,
+        tokenType: tokenData.token_type ?? 'Bearer',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [integrations.userId, integrations.provider],
+        set: {
           accessToken: tokenData.access_token,
           refreshToken: refreshToken ?? existing?.refreshToken,
           expiresAt,
-          scope: tokenData.scope ?? 'https://www.googleapis.com/auth/calendar.readonly',
-          tokenType: tokenData.token_type ?? 'Bearer',
+          scope: tokenData.scope ?? CALENDAR_SCOPE,
           status: 'active',
-          createdAt: now,
           updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [integrations.userId, integrations.provider],
-          set: {
-            accessToken: tokenData.access_token,
-            refreshToken: refreshToken ?? existing?.refreshToken,
-            expiresAt,
-            scope: tokenData.scope ?? 'https://www.googleapis.com/auth/calendar.readonly',
-            status: 'active',
-            updatedAt: now,
-          },
-        });
-    } catch (dbErr) {
-      console.error('[google/callback] Failed to upsert integration row:', dbErr);
-      return NextResponse.json(
-        {
-          error: 'GOOGLE_CALLBACK_FAILED',
-          detail: `DB upsert failed: ${String(dbErr)}`,
         },
-        { status: 500 },
-      );
-    }
+      });
 
-    console.log('[GOOGLE CALLBACK] DB UPSERT DONE');
+    await runFullGoogleSync(userId);
 
-    console.info('[google/callback] Integration row upserted', {
-      userId,
-      provider: 'google',
-      hasRefreshToken: Boolean(refreshToken),
-    });
-
-    console.log('[GOOGLE CALLBACK] STARTING SYNC');
-
-    try {
-      await runFullGoogleSync(userId);
-    } catch (syncErr) {
-      console.error('[google/callback] Full Google sync failed:', syncErr);
-      return NextResponse.json(
-        {
-          error: 'GOOGLE_CALLBACK_FAILED',
-          detail: `Google sync failed: ${String(syncErr)}`,
-        },
-        { status: 500 },
-      );
-    }
-
-    console.log('[GOOGLE CALLBACK] SYNC DONE');
-
-    // Hand off to the popup-complete page
-    const response = NextResponse.redirect(`${baseURL}/auth/popup-complete?provider=google`);
-    return response;
+    return NextResponse.redirect(`${baseURL}/auth/popup-complete?provider=google`);
   } catch (error) {
-    console.error('[GOOGLE CALLBACK ERROR]:', error);
     return NextResponse.json(
       {
         error: 'GOOGLE_CALLBACK_FAILED',
@@ -253,4 +206,23 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function handleGoogleDisconnect(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const db = getDatabase();
+  await db
+    .delete(integrations)
+    .where(
+      and(
+        eq(integrations.userId, session.user.id),
+        eq(integrations.provider, 'google'),
+      ),
+    );
+
+  return NextResponse.json({ ok: true });
 }

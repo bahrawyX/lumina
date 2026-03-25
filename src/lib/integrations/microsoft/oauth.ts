@@ -1,27 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { integrations } from '@/db/schema';
 
-const MS_TOKEN_URL =
-  'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+const MS_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
+const MS_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+const CALENDAR_SCOPE = 'openid offline_access https://graph.microsoft.com/Calendars.Read';
 const STATE_COOKIE = 'lumina_microsoft_connect_state';
-const CALENDAR_SCOPE =
-  'openid offline_access https://graph.microsoft.com/Calendars.Read';
 
-/**
- * GET /api/integrations/microsoft/callback
- *
- * Microsoft OAuth callback for the Outlook Calendar integration (NOT login).
- * Exchanges the authorization code for tokens and stores them in the
- * integrations table, keyed strictly to the authenticated user.
- *
- * MANUAL PREREQUISITE: Register `{BETTER_AUTH_URL}/api/integrations/microsoft/callback`
- * as a redirect URI in your Azure AD app registration.
- */
-export async function GET(req: NextRequest) {
+export async function handleMicrosoftConnect(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  const baseURL = process.env.BETTER_AUTH_URL ?? new URL(req.url).origin;
+
+  if (!session?.user?.id) {
+    return NextResponse.redirect(new URL('/login', req.url));
+  }
+
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  if (!clientId) {
+    return NextResponse.json(
+      { error: 'Microsoft integration is not configured on this server.' },
+      { status: 503 },
+    );
+  }
+
+  const state = crypto.randomUUID();
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: `${baseURL}/api/integrations/microsoft/callback`,
+    response_type: 'code',
+    scope: CALENDAR_SCOPE,
+    prompt: 'select_account',
+    state,
+  });
+
+  const response = NextResponse.redirect(`${MS_AUTH_URL}?${params}`);
+  response.cookies.set(STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 10 * 60,
+    path: '/',
+  });
+
+  return response;
+}
+
+export async function handleMicrosoftCallback(req: NextRequest) {
   const cookieStore = await cookies();
   const sessionHeaders = new Headers(req.headers);
   const cookieHeader = cookieStore.toString();
@@ -52,7 +80,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${errorRedirect}&detail=missing_params`);
   }
 
-  // Verify CSRF state against the httpOnly cookie set by /connect
   const storedState = cookieStore.get(STATE_COOKIE)?.value;
   if (!storedState || storedState !== state) {
     return NextResponse.redirect(`${errorRedirect}&detail=state_mismatch`);
@@ -65,7 +92,6 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Exchange authorization code for tokens
     const tokenRes = await fetch(MS_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -80,8 +106,6 @@ export async function GET(req: NextRequest) {
     });
 
     if (!tokenRes.ok) {
-      const body = await tokenRes.text();
-      console.error('[microsoft/callback] Token exchange failed:', body);
       return NextResponse.redirect(errorRedirect);
     }
 
@@ -101,7 +125,6 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + (tokenData.expires_in ?? 3600) * 1000);
 
-    // Preserve the existing refresh token if Microsoft doesn't return a new one
     let refreshToken = tokenData.refresh_token;
     if (!refreshToken) {
       const [existing] = await db
@@ -143,14 +166,32 @@ export async function GET(req: NextRequest) {
         },
       });
 
-    // Clear CSRF state cookie, hand off to popup-complete page
-    const response = NextResponse.redirect(
-      `${baseURL}/auth/popup-complete?provider=microsoft`,
-    );
+    const response = NextResponse.redirect(`${baseURL}/auth/popup-complete?provider=microsoft`);
     response.cookies.delete(STATE_COOKIE);
     return response;
-  } catch (err) {
-    console.error('[microsoft/callback] Unexpected error:', err);
+  } catch {
     return NextResponse.redirect(errorRedirect);
   }
+}
+
+export async function handleMicrosoftDisconnect(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const db = getDatabase();
+  await db
+    .delete(integrations)
+    .where(
+      and(
+        eq(integrations.userId, session.user.id),
+        or(
+          eq(integrations.provider, 'microsoft'),
+          eq(integrations.provider, 'outlook'),
+        ),
+      ),
+    );
+
+  return NextResponse.json({ ok: true });
 }

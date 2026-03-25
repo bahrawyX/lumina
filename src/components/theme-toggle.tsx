@@ -1,13 +1,13 @@
 'use client';
 
-import { useTheme } from 'next-themes';
+import { useTheme } from './theme-provider';
 import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { SunIcon, MoonIcon } from './icons';
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // Avoid rendering mismatched icon before client mount
@@ -21,7 +21,7 @@ export function ThemeToggle() {
     );
   }
 
-  const isDark = theme === 'dark';
+  const isDark = resolvedTheme === 'dark';
 
   return (
     <Tooltip>
