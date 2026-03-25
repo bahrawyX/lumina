@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, gt, gte, lt, ne } from 'drizzle-orm';
+import { and, eq, gt, gte, lt } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, focusSessions, integrations, tasks } from '@/db/schema';
@@ -50,7 +50,7 @@ function mapTasks(rows: Array<typeof tasks.$inferSelect>): IntelligenceTask[] {
   return rows.map((task) => ({
     id: task.id,
     title: task.title,
-    status: task.status,
+    status: task.status as IntelligenceTask['status'],
     priority: task.priority,
     dueDateIso: task.dueDate ? task.dueDate.toISOString() : null,
     estimatedMinutes: Math.max(1, task.estimatedMinutes),
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
       db
         .select()
         .from(tasks)
-        .where(and(eq(tasks.userId, userId), ne(tasks.status, 'archived'))),
+        .where(eq(tasks.userId, userId)),
       db
         .select()
         .from(focusSessions)

@@ -6,16 +6,15 @@
 
 import type { Task } from '@/types/task';
 
-type ApiTaskStatus = 'todo' | 'doing' | 'in_progress' | 'done' | 'archived';
+type ApiTaskStatus = 'todo' | 'doing' | 'done';
 
-function mapApiStatusToUi(status: Exclude<ApiTaskStatus, 'archived'>): Task['status'] {
-  if (status === 'in_progress' || status === 'doing') return 'doing';
+function mapApiStatusToUi(status: ApiTaskStatus): Task['status'] {
+  if (status === 'doing') return 'doing';
   return status;
 }
 
-function mapUiStatusToDb(status: Task['status'] | undefined): Exclude<ApiTaskStatus, 'doing'> | undefined {
+function mapUiStatusToDb(status: Task['status'] | undefined): 'todo' | 'doing' | 'done' | undefined {
   if (!status) return undefined;
-  if (status === 'doing') return 'in_progress';
   return status;
 }
 
@@ -44,10 +43,9 @@ export async function fetchAllForCurrentUser(): Promise<Task[]> {
     const data = await res.json();
     if (!Array.isArray(data)) return [];
     return data
-      .filter((task: { status?: ApiTaskStatus }) => task.status !== 'archived')
       .map((task: Task & { status?: ApiTaskStatus }) => ({
       ...task,
-      status: mapApiStatusToUi((task.status ?? 'todo') as Exclude<ApiTaskStatus, 'archived'>),
+      status: mapApiStatusToUi((task.status ?? 'todo') as ApiTaskStatus),
     }));
   } catch {
     return [];

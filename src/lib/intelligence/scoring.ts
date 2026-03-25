@@ -76,7 +76,7 @@ export function getUrgentTaskMinutesForDate(
   tasks: Array<{ dueDateIso: string | null; estimatedMinutes: number; status: string }>,
 ): number {
   return tasks
-    .filter((task) => task.status !== 'done' && task.status !== 'archived')
+    .filter((task) => task.status !== 'done')
     .filter((task) => {
       if (!task.dueDateIso) return false;
       return getDateKeyInTimezone(task.dueDateIso, timezone) <= dateKey;

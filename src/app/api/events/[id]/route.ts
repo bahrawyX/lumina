@@ -23,6 +23,30 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  const {
+    title,
+    description,
+    location,
+    isAllDay,
+    timezone,
+    category,
+    color,
+    completed,
+    syncStatus,
+    externalEtag,
+    meetingUrl,
+    organizerEmail,
+    sourceUpdatedAt,
+    externalEventId,
+    externalId,
+    linkedTaskId,
+    startAt,
+    endAt,
+    date,
+    startTime,
+    endTime,
+  } = body;
+
   try {
     const db = getDatabase();
 
@@ -41,42 +65,44 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // Build a safe update payload — only allow known mutable fields
     const patch: Record<string, unknown> = { updatedAt: new Date() };
 
-    if (typeof body.title === 'string' && body.title.trim()) {
-      patch.title = body.title.trim();
+    if (typeof title === 'string' && title.trim()) {
+      patch.title = title.trim();
     }
-    if (typeof body.description === 'string') patch.description = body.description;
-    if (typeof body.location === 'string') patch.location = body.location;
-    if (typeof body.isAllDay === 'boolean') patch.isAllDay = body.isAllDay;
-    if (typeof body.timezone === 'string' && body.timezone.trim()) patch.timezone = body.timezone;
-    if (typeof body.category === 'string' && body.category.trim()) patch.category = body.category;
-    if (typeof body.color === 'string' && body.color.trim()) patch.color = body.color;
-    if (typeof body.completed === 'boolean') patch.isCompleted = body.completed;
-    if (typeof body.syncStatus === 'string' && ['local_only', 'synced', 'pending_update', 'pending_delete'].includes(body.syncStatus)) {
-      patch.syncStatus = body.syncStatus;
+    if (typeof description === 'string') patch.description = description;
+    if (typeof location === 'string') patch.location = location;
+    if (typeof isAllDay === 'boolean') patch.isAllDay = isAllDay;
+    if (typeof timezone === 'string' && timezone.trim()) patch.timezone = timezone;
+    if (category === null) patch.category = null;
+    else if (typeof category === 'string' && category.trim()) patch.category = category.trim();
+    if (color === null) patch.color = null;
+    else if (typeof color === 'string' && color.trim()) patch.color = color.trim();
+    if (typeof completed === 'boolean') patch.completed = completed;
+    if (typeof syncStatus === 'string' && ['local_only', 'synced', 'pending_update', 'pending_delete'].includes(syncStatus)) {
+      patch.syncStatus = syncStatus;
     }
-    if (typeof body.externalEtag === 'string') patch.externalEtag = body.externalEtag;
-    if (typeof body.meetingUrl === 'string') patch.meetingUrl = body.meetingUrl;
-    if (typeof body.organizerEmail === 'string') patch.organizerEmail = body.organizerEmail;
+    if (typeof externalEtag === 'string') patch.externalEtag = externalEtag;
+    if (typeof meetingUrl === 'string') patch.meetingUrl = meetingUrl;
+    if (typeof organizerEmail === 'string') patch.organizerEmail = organizerEmail;
 
-    if (body.sourceUpdatedAt === null) {
+    if (sourceUpdatedAt === null) {
       patch.sourceUpdatedAt = null;
       patch.lastSyncedAt = null;
-    } else if (typeof body.sourceUpdatedAt === 'string') {
-      const parsed = new Date(body.sourceUpdatedAt);
+    } else if (typeof sourceUpdatedAt === 'string') {
+      const parsed = new Date(sourceUpdatedAt);
       if (!isNaN(parsed.getTime())) {
         patch.sourceUpdatedAt = parsed;
         patch.lastSyncedAt = parsed;
       }
     }
 
-    if (body.externalEventId === null || body.externalId === null) {
+    if (externalEventId === null || externalId === null) {
       patch.externalEventId = null;
       patch.externalId = null;
     } else {
-      const nextExternal = typeof body.externalEventId === 'string'
-        ? body.externalEventId
-        : typeof body.externalId === 'string'
-          ? body.externalId
+      const nextExternal = typeof externalEventId === 'string'
+        ? externalEventId
+        : typeof externalId === 'string'
+          ? externalId
           : undefined;
       if (typeof nextExternal === 'string') {
         patch.externalEventId = nextExternal;
@@ -84,34 +110,34 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       }
     }
 
-    if (body.linkedTaskId === null) {
+    if (linkedTaskId === null) {
       patch.linkedTaskId = null;
-    } else if (typeof body.linkedTaskId === 'string' && body.linkedTaskId.trim()) {
+    } else if (typeof linkedTaskId === 'string' && linkedTaskId.trim()) {
       const linkedTaskRows = await db
         .select({ id: tasks.id })
         .from(tasks)
-        .where(and(eq(tasks.id, body.linkedTaskId), eq(tasks.userId, userId)))
+        .where(and(eq(tasks.id, linkedTaskId), eq(tasks.userId, userId)))
         .limit(1);
       if (linkedTaskRows.length === 0) {
         return NextResponse.json({ error: 'linkedTaskId is invalid for this user' }, { status: 400 });
       }
-      patch.linkedTaskId = body.linkedTaskId;
+      patch.linkedTaskId = linkedTaskId;
     }
 
-    const startAt = typeof body.startAt === 'string' ? new Date(body.startAt) : null;
-    const endAt = typeof body.endAt === 'string' ? new Date(body.endAt) : null;
-    const dateStr = typeof body.date === 'string' ? body.date : existing.startTime.toISOString().slice(0, 10);
-    const startStr = typeof body.startTime === 'string' ? body.startTime : existing.startTime.toISOString().slice(11, 16);
-    const endStr = typeof body.endTime === 'string' ? body.endTime : existing.endTime.toISOString().slice(11, 16);
+    const parsedStartAt = typeof startAt === 'string' ? new Date(startAt) : null;
+    const parsedEndAt = typeof endAt === 'string' ? new Date(endAt) : null;
+    const dateStr = typeof date === 'string' ? date : existing.startTime.toISOString().slice(0, 10);
+    const startStr = typeof startTime === 'string' ? startTime : existing.startTime.toISOString().slice(11, 16);
+    const endStr = typeof endTime === 'string' ? endTime : existing.endTime.toISOString().slice(11, 16);
 
-    if (startAt && !isNaN(startAt.getTime())) patch.startTime = startAt;
-    if (endAt && !isNaN(endAt.getTime())) patch.endTime = endAt;
+    if (parsedStartAt && !isNaN(parsedStartAt.getTime())) patch.startTime = parsedStartAt;
+    if (parsedEndAt && !isNaN(parsedEndAt.getTime())) patch.endTime = parsedEndAt;
 
-    if (!patch.startTime && (typeof body.date === 'string' || typeof body.startTime === 'string')) {
+    if (!patch.startTime && (typeof date === 'string' || typeof startTime === 'string')) {
       const ts = new Date(`${dateStr}T${startStr}:00.000Z`);
       if (!isNaN(ts.getTime())) patch.startTime = ts;
     }
-    if (!patch.endTime && (typeof body.date === 'string' || typeof body.endTime === 'string')) {
+    if (!patch.endTime && (typeof date === 'string' || typeof endTime === 'string')) {
       const ts = new Date(`${dateStr}T${endStr}:00.000Z`);
       if (!isNaN(ts.getTime())) patch.endTime = ts;
     }

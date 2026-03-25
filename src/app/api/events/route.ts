@@ -59,9 +59,9 @@ function mapRowToApiEvent(
     location: row.location ?? undefined,
     isAllDay: row.isAllDay,
     timezone: row.timezone,
-    category: row.category,
-    color: row.color,
-    completed: row.isCompleted,
+    category: row.category ?? undefined,
+    color: row.color ?? undefined,
+    completed: row.completed,
     linkedTaskId: row.linkedTaskId,
     provider,
     externalEventId: row.externalEventId ?? row.externalId ?? undefined,
@@ -122,7 +122,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const {
+    title: rawTitle,
+    date,
+    startTime,
+    endTime,
+    startAt,
+    endAt,
+    description,
+    location,
+    isAllDay,
+    timezone: rawTimezone,
+    category: rawCategory,
+    color: rawColor,
+    completed,
+    linkedTaskId: rawLinkedTaskId,
+    externalEventId,
+    externalId,
+    externalEtag,
+    sourceUpdatedAt: rawSourceUpdatedAt,
+    meetingUrl,
+    organizerEmail,
+  } = body;
+
+  const title = typeof rawTitle === 'string' ? rawTitle.trim() : '';
   if (!title) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });
   }
@@ -131,12 +154,12 @@ export async function POST(req: NextRequest) {
   const syncStatus: EventSyncStatus = 'local_only';
   const source: EventSource = 'manual';
 
-  const directStartAt = parseIso(body.startAt);
-  const directEndAt = parseIso(body.endAt);
+  const directStartAt = parseIso(startAt);
+  const directEndAt = parseIso(endAt);
 
-  const fallbackDate = typeof body.date === 'string' ? body.date : undefined;
-  const startTs = directStartAt ?? parseDateAndTime(fallbackDate, body.startTime, '00:00');
-  const endTs = directEndAt ?? parseDateAndTime(fallbackDate, body.endTime, '23:59');
+  const fallbackDate = typeof date === 'string' ? date : undefined;
+  const startTs = directStartAt ?? parseDateAndTime(fallbackDate, startTime, '00:00');
+  const endTs = directEndAt ?? parseDateAndTime(fallbackDate, endTime, '23:59');
 
   if (!startTs || !endTs) {
     return NextResponse.json({ error: 'Valid start and end timestamps are required' }, { status: 400 });
@@ -145,16 +168,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'endAt must be after startAt' }, { status: 400 });
   }
 
-  const linkedTaskId = typeof body.linkedTaskId === 'string' && body.linkedTaskId.trim() ? body.linkedTaskId : null;
-  const timezone = typeof body.timezone === 'string' && body.timezone.trim() ? body.timezone : 'UTC';
-  const category = typeof body.category === 'string' && body.category.trim() ? body.category : 'work';
-  const color = typeof body.color === 'string' && body.color.trim() ? body.color : '#6D59E0';
-  const externalEventId = typeof body.externalEventId === 'string' && body.externalEventId.trim()
-    ? body.externalEventId
-    : typeof body.externalId === 'string' && body.externalId.trim()
-      ? body.externalId
+  const linkedTaskId = typeof rawLinkedTaskId === 'string' && rawLinkedTaskId.trim() ? rawLinkedTaskId : null;
+  const timezone = typeof rawTimezone === 'string' && rawTimezone.trim() ? rawTimezone : 'UTC';
+  const category = typeof rawCategory === 'string' && rawCategory.trim() ? rawCategory.trim() : null;
+  const color = typeof rawColor === 'string' && rawColor.trim() ? rawColor.trim() : null;
+  const normalizedExternalEventId = typeof externalEventId === 'string' && externalEventId.trim()
+    ? externalEventId
+    : typeof externalId === 'string' && externalId.trim()
+      ? externalId
       : null;
-  const sourceUpdatedAt = parseIso(body.sourceUpdatedAt);
+  const sourceUpdatedAt = parseIso(rawSourceUpdatedAt);
 
   try {
     const db = getDatabase();
@@ -194,25 +217,25 @@ export async function POST(req: NextRequest) {
         userId,
         calendarId,
         title,
-        description: typeof body.description === 'string' ? body.description : null,
-        location: typeof body.location === 'string' ? body.location : null,
+        description: typeof description === 'string' ? description : null,
+        location: typeof location === 'string' ? location : null,
         startTime: startTs,
         endTime: endTs,
-        isAllDay: body.isAllDay === true,
+        isAllDay: isAllDay === true,
         timezone,
         category,
         color,
-        isCompleted: body.completed === true,
+        completed: completed === true,
         linkedTaskId,
         provider,
-        externalEventId,
-        externalEtag: typeof body.externalEtag === 'string' ? body.externalEtag : null,
+        externalEventId: normalizedExternalEventId,
+        externalEtag: typeof externalEtag === 'string' ? externalEtag : null,
         sourceUpdatedAt,
         syncStatus,
-        meetingUrl: typeof body.meetingUrl === 'string' ? body.meetingUrl : null,
-        organizerEmail: typeof body.organizerEmail === 'string' ? body.organizerEmail : null,
+        meetingUrl: typeof meetingUrl === 'string' ? meetingUrl : null,
+        organizerEmail: typeof organizerEmail === 'string' ? organizerEmail : null,
         source,
-        externalId: externalEventId,
+        externalId: normalizedExternalEventId,
         lastSyncedAt: sourceUpdatedAt,
       })
       .returning();

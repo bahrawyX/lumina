@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks } from '@/db/schema';
-import { and, eq, ne } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -15,15 +15,9 @@ function normalizeRemainingFocusTime(value: unknown): number | null {
   return Math.max(0, Math.round(value));
 }
 
-function normalizeTaskStatusForDb(status: unknown): 'todo' | 'in_progress' | 'done' | 'archived' {
-  if (status === 'doing') return 'in_progress';
-  if (status === 'in_progress' || status === 'done' || status === 'archived') return status;
+function normalizeTaskStatusForDb(status: unknown): 'todo' | 'doing' | 'done' {
+  if (status === 'doing' || status === 'done') return status;
   return 'todo';
-}
-
-function mapStatusForUi(status: 'todo' | 'in_progress' | 'done' | 'archived'): 'todo' | 'doing' | 'done' | 'archived' {
-  if (status === 'in_progress') return 'doing';
-  return status;
 }
 
 /** GET /api/tasks — return all tasks for the authenticated user */
@@ -33,21 +27,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const userId = session.user.id;
-  const includeArchived = (() => {
-    const raw = new URL(req.url).searchParams.get('includeArchived');
-    return raw === '1' || raw === 'true';
-  })();
+  void req;
 
   try {
     const db = getDatabase();
     const rows = await db
       .select()
       .from(tasks)
-      .where(
-        includeArchived
-          ? eq(tasks.userId, userId)
-          : and(eq(tasks.userId, userId), ne(tasks.status, 'archived'))
-      )
+      .where(eq(tasks.userId, userId))
       .orderBy(tasks.createdAt);
 
     // Map DB rows to the client-side Task shape
@@ -55,7 +42,7 @@ export async function GET(req: NextRequest) {
       id: row.id,
       title: row.title,
       description: row.description ?? undefined,
-      status: mapStatusForUi(row.status as 'todo' | 'in_progress' | 'done' | 'archived'),
+      status: row.status as 'todo' | 'doing' | 'done',
       dbStatus: row.status,
       priority: row.priority as 'low' | 'medium' | 'high',
       dueDate: row.dueDate ? row.dueDate.toISOString().slice(0, 10) : null,

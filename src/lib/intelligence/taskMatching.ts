@@ -12,7 +12,7 @@ export function suggestTaskTimeSlots(args: {
   focusWindows: FocusWindow[];
 }): TaskSuggestion[] {
   const openTasks = args.tasks
-    .filter((task) => task.status !== 'done' && task.status !== 'archived')
+    .filter((task) => task.status !== 'done')
     .sort((a, b) => {
       const priorityDiff = priorityWeight(b.priority) - priorityWeight(a.priority);
       if (priorityDiff !== 0) return priorityDiff;

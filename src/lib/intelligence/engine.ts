@@ -74,7 +74,7 @@ export function runIntelligenceEngine(input: IntelligenceInput): IntelligenceOut
     googleEvents: countByProvider('google', providerCounts),
     microsoftEvents: countByProvider('microsoft', providerCounts),
     totalTasks: input.tasks.length,
-    openTasks: input.tasks.filter((task) => task.status !== 'done' && task.status !== 'archived').length,
+    openTasks: input.tasks.filter((task) => task.status !== 'done').length,
     focusSessionsCount: input.focusSessions.length,
     scheduledMinutes: meetingMinutes,
     meetingMinutes,

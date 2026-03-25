@@ -16,6 +16,14 @@ function priorityTone(priority: Recommendation['priority']): string {
   return 'text-emerald-300 border-emerald-400/25 bg-emerald-500/10';
 }
 
+function acceptLabel(type: Recommendation['type']): string {
+  if (type === 'conflict') return 'Resolve Conflict';
+  if (type === 'overload') return 'Defer Tasks';
+  if (type === 'focus_window') return 'Protect Window';
+  if (type === 'task_plan') return 'Schedule Task';
+  return 'Accept';
+}
+
 export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendationCardProps> = ({ recommendation }) => {
   const applyRecommendation = useIntelligenceStore((s) => s.applyRecommendation);
   const [isApplying, setIsApplying] = React.useState(false);
@@ -63,7 +71,7 @@ export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendation
           disabled={isApplying}
           className="h-8 px-3 rounded-lg bg-white/10 border border-white/15 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40 transition-colors"
         >
-          {isApplying ? 'Applying...' : 'Accept'}
+          {isApplying ? 'Applying...' : acceptLabel(recommendation.type)}
         </button>
       </div>
     </motion.article>

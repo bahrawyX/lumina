@@ -15,9 +15,8 @@ function normalizeRemainingFocusTime(value: unknown): number | null {
   return Math.max(0, Math.round(value));
 }
 
-function normalizeTaskStatusForDb(status: unknown): 'todo' | 'in_progress' | 'done' | 'archived' | null {
-  if (status === 'doing') return 'in_progress';
-  if (status === 'todo' || status === 'in_progress' || status === 'done' || status === 'archived') return status;
+function normalizeTaskStatusForDb(status: unknown): 'todo' | 'doing' | 'done' | null {
+  if (status === 'todo' || status === 'doing' || status === 'done') return status;
   return null;
 }
 

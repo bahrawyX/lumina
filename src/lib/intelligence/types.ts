@@ -14,7 +14,7 @@ export interface IntelligenceCalendarEvent {
 export interface IntelligenceTask {
   id: string;
   title: string;
-  status: 'todo' | 'in_progress' | 'done' | 'archived';
+  status: 'todo' | 'doing' | 'done';
   priority: 'low' | 'medium' | 'high';
   dueDateIso: string | null;
   estimatedMinutes: number;

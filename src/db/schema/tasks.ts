@@ -14,9 +14,8 @@ import { users } from './users';
 
 export const taskStatusEnum = pgEnum('task_status', [
   'todo',
-  'in_progress',
+  'doing',
   'done',
-  'archived',
 ]);
 
 export const taskPriorityEnum = pgEnum('task_priority', [

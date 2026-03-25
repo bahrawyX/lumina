@@ -40,7 +40,7 @@ export function detectConflicts(args: {
     });
   }
 
-  const openTasks = args.tasks.filter((task) => task.status !== 'done' && task.status !== 'archived');
+  const openTasks = args.tasks.filter((task) => task.status !== 'done');
   for (const task of openTasks) {
     if (!task.dueDateIso) continue;
 
