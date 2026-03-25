@@ -16,6 +16,14 @@ import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 
+const MOBILE_NAV_ITEMS = [
+  { href: '/', label: 'Home' },
+  { href: '/tasks', label: 'Tasks' },
+  { href: '/plan', label: 'Plan' },
+  { href: '/performance', label: 'Stats' },
+  { href: '/focus', label: 'Focus' },
+] as const;
+
 /* ─── Reads ?connected= after OAuth redirect and fires a branded Sonner toast ───── */
 function OAuthRedirectToast() {
   const searchParams = useSearchParams();
@@ -183,9 +191,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
         className="flex h-screen w-full bg-warm-50 dark:bg-neutral-dark overflow-hidden text-gray-800 dark:text-gray-100 antialiased selection:bg-primary selection:text-white"
       >
-        <Sidebar />
+        <div className="hidden md:flex md:h-full">
+          <Sidebar />
+        </div>
         <main className="flex-1 flex flex-col min-w-0 transition-all duration-500 overflow-hidden relative">
-          <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 relative">
+          <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-safe pb-[calc(env(safe-area-inset-bottom)+80px)] md:pb-0 relative">
             {children}
           </div>
         </main>
@@ -209,6 +219,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
+
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/50 backdrop-blur-lg border-t border-white/10 pb-safe">
+          <div className="grid grid-cols-5 px-2 pt-2 pb-2">
+            {MOBILE_NAV_ITEMS.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <button
+                  key={item.href}
+                  type="button"
+                  onClick={() => router.push(item.href)}
+                  className={`min-h-11 rounded-xl text-[11px] font-semibold transition-colors ${active ? 'text-white bg-white/12' : 'text-white/70 hover:text-white hover:bg-white/8'}`}
+                  aria-label={item.label}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </motion.div>
     </>
   );

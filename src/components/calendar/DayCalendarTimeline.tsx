@@ -10,6 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { EventInstance } from '../../types';
 import {
   HOUR_HEIGHT,
@@ -71,15 +72,17 @@ const PlannedBlock: React.FC<{
   task: Task | undefined;
   startHour: number;
   onRemove: (id: string) => void;
+  onMarkDone?: (taskId: string) => void;
   onDragHandlePointerDown: (e: React.PointerEvent) => void;
   isDragging: boolean;
   planDragRef: React.RefObject<PlanDragData | null>;
   left: string;
   width: string;
-}> = React.memo(({ planItem, task, startHour, onRemove, onDragHandlePointerDown, isDragging, planDragRef, left, width }) => {
+  revealDelayMs?: number;
+}> = React.memo(({ planItem, task, startHour, onRemove, onMarkDone, onDragHandlePointerDown, isDragging, planDragRef, left, width, revealDelayMs }) => {
   const durMins = timeToMinutes(planItem.endTime) - timeToMinutes(planItem.startTime);
   const originalTop = (timeToMinutes(planItem.startTime) - startHour * 60) * PX_PER_MIN;
-  const height = Math.max(36, durMins * PX_PER_MIN);
+  const height = Math.max(20, durMins * PX_PER_MIN * 0.75);
 
   const blockRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -125,10 +128,18 @@ const PlannedBlock: React.FC<{
   }, [isDragging, originalTop, planDragRef, startHour]);
 
   return (
-    <div
+    <motion.div
       ref={blockRef}
       className="absolute z-20"
-      style={{ top: originalTop, height, left, width, paddingRight: 4 }}
+      style={{ top: originalTop, height, left, width, paddingRight: 2 }}
+      initial={revealDelayMs !== undefined ? { opacity: 0, y: 6, scale: 0.985 } : false}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.98, filter: 'blur(1px)' }}
+      transition={
+        revealDelayMs !== undefined
+          ? { duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: revealDelayMs / 1000 }
+          : { duration: 0.22, ease: [0.2, 0, 0, 1] }
+      }
     >
       <div
         ref={tooltipRef}
@@ -143,10 +154,11 @@ const PlannedBlock: React.FC<{
         planItem={planItem}
         task={task}
         onRemove={onRemove}
+        onMarkDone={onMarkDone}
         onDragHandlePointerDown={onDragHandlePointerDown}
         isDragging={isDragging}
       />
-    </div>
+    </motion.div>
   );
 });
 PlannedBlock.displayName = 'PlannedBlock';
@@ -178,10 +190,13 @@ export interface DayCalendarTimelineProps {
 
   planItems?: PlannedTaskItem[];
   taskMap?: Map<string, Task>;
+  revealPlanItemDelays?: Map<string, number>;
   onRemovePlanItem?: (id: string) => void;
+  onMarkTaskDone?: (taskId: string) => void;
   onUpdatePlanItemTime?: (id: string, start: string, end: string) => void;
 
   dropRef?: (el: HTMLDivElement | null) => void;
+  gridBodyRef?: React.RefObject<HTMLDivElement>;
   isDropOver?: boolean;
 
   calPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -214,9 +229,12 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
   draggedCalEventId,
   planItems,
   taskMap,
+  revealPlanItemDelays,
   onRemovePlanItem,
+  onMarkTaskDone,
   onUpdatePlanItemTime,
   dropRef,
+  gridBodyRef,
   isDropOver,
   calPointerMove,
   calPointerUp,
@@ -491,6 +509,9 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
         {/* ── Grid body ────────────────────────────────────────────────── */}
         <div
           ref={(el) => {
+            if (gridBodyRef) {
+              (gridBodyRef as { current: HTMLDivElement | null }).current = el;
+            }
             dropRef?.(el);
           }}
           className={`flex-1 relative transition-colors duration-150 ${isDropOver ? 'bg-primary/5' : ''}`}
@@ -506,9 +527,9 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
               className="absolute left-0 right-0 pointer-events-none flex items-center"
               style={{ top: `${nowTop}px`, zIndex: 40 }}
             >
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] -ml-[5px] animate-pulse" />
+              <div className="pointer-events-none w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] -ml-[5px] animate-pulse" />
               <div className="h-[2px] flex-1 bg-gradient-to-r from-red-500/60 to-transparent relative">
-                <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
+                <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-2.5 px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
                   <span className="w-1 h-1 bg-white rounded-full animate-ping" />
                   NOW • {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
@@ -571,26 +592,30 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
           })}
 
           {/* z-20 — Planner task blocks */}
-          {planItems && planItems.map((item) => {
-            const layout = combinedOverlapMap.get(item.id);
-            const totalCols = layout?.totalColumns ?? 1;
-            const col = layout?.column ?? 0;
-            const pct = 100 / totalCols;
-            return (
-              <PlannedBlock
-                key={item.id}
-                planItem={item}
-                task={taskMap?.get(item.taskId)}
-                startHour={startHour}
-                onRemove={onRemovePlanItem ?? (() => {})}
-                isDragging={draggingPlanId === item.id}
-                planDragRef={planDragRef}
-                onDragHandlePointerDown={(e) => handlePlanDragStart(item.id, e)}
-                left={`${col * pct}%`}
-                width={`${pct}%`}
-              />
-            );
-          })}
+          <AnimatePresence initial={false}>
+            {planItems && planItems.map((item) => {
+              const layout = combinedOverlapMap.get(item.id);
+              const totalCols = layout?.totalColumns ?? 1;
+              const col = layout?.column ?? 0;
+              const pct = 100 / totalCols;
+              return (
+                <PlannedBlock
+                  key={item.id}
+                  planItem={item}
+                  task={taskMap?.get(item.taskId)}
+                  startHour={startHour}
+                  onRemove={onRemovePlanItem ?? (() => {})}
+                  onMarkDone={onMarkTaskDone}
+                  isDragging={draggingPlanId === item.id}
+                  planDragRef={planDragRef}
+                  onDragHandlePointerDown={(e) => handlePlanDragStart(item.id, e)}
+                  left={`${col * pct}%`}
+                  width={`${pct}%`}
+                  revealDelayMs={revealPlanItemDelays?.get(item.id)}
+                />
+              );
+            })}
+          </AnimatePresence>
         </div>
       </div>
     </div>

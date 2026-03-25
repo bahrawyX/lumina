@@ -3,8 +3,10 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFocusStore } from '../../store/useFocusStore';
+import { useTaskBoardStore } from '../../store/useTaskBoardStore';
 import { FocusHeader } from './FocusHeader';
 import { FocusTimer } from './FocusTimer';
+import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 
 // ── Session history card ──────────────────────────────────────────────────────
 
@@ -59,14 +61,50 @@ export const FocusDoneView: React.FC = () => {
 
 export const FocusSessionView: React.FC = () => {
   const activeSession = useFocusStore((s) => s.activeSession);
+  const timerState = useFocusStore((s) => s.timerState);
+  const getElapsedSecs = useFocusStore((s) => s.getElapsedSecs);
+  const cancelSession = useFocusStore((s) => s.cancelSession);
   const sessionHistory = useFocusStore((s) => s.sessionHistory);
+  const updateTask = useTaskBoardStore((s) => s.updateTask);
   const router = useRouter();
+  const [showInterruptionPrompt, setShowInterruptionPrompt] = React.useState(false);
 
   useEffect(() => {
     if (!activeSession) {
       router.replace('/tasks');
     }
   }, [activeSession, router]);
+
+  const handleRequestInterruption = React.useCallback(() => {
+    if (!activeSession) return;
+    const remaining = Math.max(0, activeSession.totalDurationSecs - getElapsedSecs());
+    if (timerState === 'running' && remaining > 0) {
+      setShowInterruptionPrompt(true);
+      return;
+    }
+    cancelSession();
+    router.push('/tasks');
+  }, [activeSession, getElapsedSecs, timerState, cancelSession, router]);
+
+  const handleDoneAndExit = React.useCallback(() => {
+    if (!activeSession) return;
+    updateTask(activeSession.taskId, { status: 'done', remainingFocusTime: null });
+    cancelSession();
+    setShowInterruptionPrompt(false);
+    router.push('/tasks');
+  }, [activeSession, updateTask, cancelSession, router]);
+
+  const handlePauseAndExit = React.useCallback(() => {
+    if (!activeSession) return;
+    const remaining = Math.max(0, Math.floor(activeSession.totalDurationSecs - getElapsedSecs()));
+    updateTask(activeSession.taskId, {
+      status: activeSession ? 'doing' : 'todo',
+      remainingFocusTime: remaining,
+    });
+    cancelSession();
+    setShowInterruptionPrompt(false);
+    router.push('/tasks');
+  }, [activeSession, getElapsedSecs, updateTask, cancelSession, router]);
 
   if (!activeSession) return null;
 
@@ -79,12 +117,12 @@ export const FocusSessionView: React.FC = () => {
 
       {/* Header */}
       <div className="relative z-10 flex-shrink-0 px-6 pt-5 pb-2">
-        <FocusHeader taskTitle={activeSession.taskTitle} />
+        <FocusHeader taskTitle={activeSession.taskTitle} onAttemptClose={handleRequestInterruption} />
       </div>
 
       {/* Timer — centered */}
       <div className="relative z-10 flex-1 flex items-center justify-center px-4">
-        <FocusTimer />
+        <FocusTimer onRequestInterruption={handleRequestInterruption} />
       </div>
 
       {/* Session history */}
@@ -122,6 +160,36 @@ export const FocusSessionView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <MobileBottomSheet
+        open={showInterruptionPrompt}
+        onClose={() => setShowInterruptionPrompt(false)}
+        title="Focus session paused"
+        className="md:max-w-md"
+      >
+        <div className="space-y-5">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-100">Focus session paused. Did you finish this task?</h3>
+            <p className="mt-1 text-sm text-zinc-400">If not, we will save your remaining timer so you can resume later.</p>
+          </div>
+          <div className="grid gap-3">
+            <button
+              type="button"
+              onClick={handleDoneAndExit}
+              className="min-h-11 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-500/90 transition-colors"
+            >
+              Yes, it's done
+            </button>
+            <button
+              type="button"
+              onClick={handlePauseAndExit}
+              className="min-h-11 rounded-xl border border-white/10 bg-white/[0.03] text-zinc-100 text-sm font-semibold hover:bg-white/[0.07] transition-colors"
+            >
+              Not yet
+            </button>
+          </div>
+        </div>
+      </MobileBottomSheet>
     </div>
   );
 };

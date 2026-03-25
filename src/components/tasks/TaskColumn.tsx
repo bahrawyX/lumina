@@ -3,8 +3,9 @@
 import React, { useMemo, useRef } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { motion } from 'framer-motion';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskStatus } from '../../types/task';
+import type { Task, TaskPriority, TaskStatus } from '../../types/task';
 import { getDoingFocusHint } from '../../utils/taskBoard';
 import { TaskCard } from './TaskCard';
 import { Button } from '../ui/button';
@@ -36,6 +37,7 @@ interface TaskColumnProps {
   tasks: Task[];
   linkedEvents: Record<string, CalendarEvent | undefined>;
   isDragOver: boolean;
+  onPriorityChange: (task: Task, priority: TaskPriority) => void;
   onAddTask: (status: TaskStatus) => void;
   onEditTask: (task: Task) => void;
   onScheduleTask: (task: Task) => void;
@@ -46,6 +48,7 @@ interface TaskColumnProps {
 
 export const TaskColumn = React.memo<TaskColumnProps>(({
   id, label, tasks, linkedEvents, isDragOver,
+  onPriorityChange,
   onAddTask, onEditTask, onScheduleTask, onAutoScheduleTask, onDeleteTask, onFocusTask,
 }) => {
   const { setNodeRef } = useDroppable({ id });
@@ -68,7 +71,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
   );
 
   return (
-    <div className="flex flex-col flex-1 min-w-[260px] max-w-[340px] h-full">
+    <div className="flex flex-col w-full md:flex-1 md:min-w-[260px] md:max-w-[340px] h-full">
       {/* Column header */}
       <div className="mb-3 px-1">
         <div className="flex items-center gap-2.5">
@@ -90,10 +93,10 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
       {/* Drop zone + card list */}
       <div
         ref={setNodeRef}
-        className={`flex-1 rounded-2xl border-2 border-dashed p-1.5 min-h-[120px] transition-colors ${
+        className={`flex-1 rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 ${
           isDragOver
-            ? 'border-border bg-primary/5'
-            : 'border-transparent bg-transparent'
+            ? 'border-primary/30 bg-primary/10'
+            : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'
         }`}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
@@ -110,16 +113,18 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
             >
               <div className="flex flex-col gap-2">
                 {visibleTasks.map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  linkedEvent={task.linkedEventId ? linkedEvents[task.linkedEventId] ?? null : null}
-                  onEdit={onEditTask}
-                  onSchedule={onScheduleTask}
-                  onAutoSchedule={onAutoScheduleTask}
-                  onDelete={onDeleteTask}
-                  onFocus={onFocusTask}
-                />
+                <motion.div key={task.id} layout>
+                  <TaskCard
+                    task={task}
+                    linkedEvent={task.linkedEventId ? linkedEvents[task.linkedEventId] ?? null : null}
+                    onPriorityChange={onPriorityChange}
+                    onEdit={onEditTask}
+                    onSchedule={onScheduleTask}
+                    onAutoSchedule={onAutoScheduleTask}
+                    onDelete={onDeleteTask}
+                    onFocus={onFocusTask}
+                  />
+                </motion.div>
               ))}
               </div>
             </div>
@@ -140,8 +145,10 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
       <Button
         variant="ghost"
         size="sm"
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={() => onAddTask(id)}
-        className="mt-2 w-full justify-start gap-1.5 text-muted-foreground hover:text-foreground h-8 rounded-xl text-xs font-medium"
+        className="relative z-10 mt-2 w-full justify-start gap-1.5 text-muted-foreground hover:text-foreground h-8 rounded-xl text-xs font-medium"
         aria-label={`Add task to ${label}`}
       >
         <PlusIcon />

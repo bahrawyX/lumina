@@ -4,8 +4,10 @@ import React, { useState, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOnboardingStore, FocusPreference, FocusSessionLength, FocusGoal } from '../store/useOnboardingStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
+import { focusSessionSelectionToMinutes } from '../lib/focusSettings';
 import { cn } from '../lib/utils';
 import TimePicker from './TimePicker';
 import { useLuminaAuthClient } from './AuthProvider';
@@ -731,6 +733,7 @@ StepCompletion.displayName = 'StepCompletion';
 const OnboardingFlow: React.FC = () => {
   const router = useRouter();
   const store = useOnboardingStore();
+  const setGlobalFocusSessionLength = useSettingsStore((s) => s.setFocusSessionLength);
   const calStore = useCalendarStore();
   const plannerStore = usePlannerStore();
   const authClient = useLuminaAuthClient();
@@ -1261,6 +1264,17 @@ const OnboardingFlow: React.FC = () => {
     return true;
   }, [step, store.userName, store.focusGoals.length]);
 
+  const handleSessionLengthChange = useCallback((selection: FocusSessionLength) => {
+    store.setFocusSessionLength(selection);
+    const minutes = focusSessionSelectionToMinutes(selection, store.customFocusMinutes);
+    setGlobalFocusSessionLength(minutes);
+  }, [setGlobalFocusSessionLength, store]);
+
+  const handleCustomSessionLengthChange = useCallback((focusMinutes: number, breakMinutes: number) => {
+    store.setFocusSessionLength('custom', focusMinutes, breakMinutes);
+    setGlobalFocusSessionLength(focusSessionSelectionToMinutes('custom', focusMinutes));
+  }, [setGlobalFocusSessionLength, store]);
+
   const goNext = useCallback(() => {
     if (!canContinue()) return;
     if (step === 8) {
@@ -1351,8 +1365,8 @@ const OnboardingFlow: React.FC = () => {
             value={store.focusSessionLength}
             customFocus={store.customFocusMinutes}
             customBreak={store.customBreakMinutes}
-            onChange={store.setFocusSessionLength}
-            onCustomChange={(f, b) => store.setFocusSessionLength('custom', f, b)}
+            onChange={handleSessionLengthChange}
+            onCustomChange={handleCustomSessionLengthChange}
           />
         );
       case 6:

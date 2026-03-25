@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
+import type { CalendarEvent } from '../../types';
 import type { Task, TaskStatus } from '../../types/task';
 import { COLUMNS } from '../../types/task';
 import { Button } from '../ui/button';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Calendar } from '../ui/calendar';
 import { Input } from '../ui/input';
+import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
 
 // ── Close icon ────────────────────────────────────────────────────────────────
@@ -29,11 +31,14 @@ export interface TaskDialogPayload {
   status: TaskStatus;
   durationMinutes: number;
   dueDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 interface TaskDialogProps {
   open: boolean;
   task?: Task | null;             // null/undefined = create mode
+  linkedEvent?: CalendarEvent | null;
   defaultStatus?: TaskStatus;
   onSave: (payload: TaskDialogPayload) => void;
   onClose: () => void;
@@ -42,7 +47,7 @@ interface TaskDialogProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const TaskDialog: React.FC<TaskDialogProps> = ({
-  open, task, defaultStatus = 'todo', onSave, onClose,
+  open, task, linkedEvent, defaultStatus = 'todo', onSave, onClose,
 }) => {
   const isEdit = Boolean(task);
 
@@ -51,8 +56,12 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [status, setStatus] = useState<TaskStatus>(defaultStatus);
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [dueDate, setDueDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [titleError, setTitleError] = useState(false);
+  const [timeError, setTimeError] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   // Sync form when task changes or dialog opens
   useEffect(() => {
@@ -62,10 +71,23 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setStatus(task?.status ?? defaultStatus);
       setDurationMinutes(task?.durationMinutes ?? 30);
       setDueDate(normalizeDueDateString(task?.dueDate) ?? '');
+      setStartTime(linkedEvent?.startTime ?? '');
+      setEndTime(linkedEvent?.endTime ?? '');
       setTitleError(false);
+      setTimeError(false);
       setDatePickerOpen(false);
+      setEmojiPickerOpen(false);
     }
-  }, [open, task, defaultStatus]);
+  }, [open, task, linkedEvent, defaultStatus]);
+
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    const emoji = emojiData.emoji;
+    setTitle((prev) => {
+      const trimmed = prev.trim();
+      return trimmed ? `${emoji} ${trimmed}` : emoji;
+    });
+    setEmojiPickerOpen(false);
+  };
 
   const handleSave = () => {
     const trimmed = title.trim();
@@ -73,12 +95,25 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setTitleError(true);
       return;
     }
+
+    if ((startTime && !endTime) || (!startTime && endTime)) {
+      setTimeError(true);
+      return;
+    }
+
+    if (startTime && endTime && endTime <= startTime) {
+      setTimeError(true);
+      return;
+    }
+
     onSave({
       title: trimmed,
       description: description.trim() || undefined,
       status,
       durationMinutes,
       dueDate: normalizeDueDateString(dueDate),
+      startTime: startTime || null,
+      endTime: endTime || null,
     });
   };
 
@@ -88,37 +123,14 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
-            onClick={onClose}
-          />
-
-          {/* Dialog panel */}
-          <motion.div
-            key="dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={isEdit ? 'Edit task' : 'Create task'}
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 4 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            onKeyDown={handleKeyDown}
-            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4"
-          >
-            <div
-              className="pointer-events-auto w-full max-w-md bg-card border border-border/70 rounded-2xl shadow-2xl p-6 flex flex-col gap-5"
-              onClick={e => e.stopPropagation()}
-            >
+    <MobileBottomSheet
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Edit task' : 'Create task'}
+      className="md:bg-card md:border-border/70"
+      contentClassName="flex flex-col gap-5"
+    >
+      <div onKeyDown={handleKeyDown}>
               {/* Header */}
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-base font-semibold text-foreground tracking-[-0.01em]">
@@ -126,7 +138,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                 </h2>
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  className="p-2.5 min-h-11 min-w-11 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                   aria-label="Close dialog"
                 >
                   <XIcon />
@@ -140,14 +152,37 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   <Label htmlFor="task-title" className="text-xs font-medium text-muted-foreground">
                     Title <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    id="task-title"
-                    autoFocus
-                    placeholder="What needs to be done?"
-                    value={title}
-                    onChange={e => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
-                    className={`h-9 text-sm rounded-xl ${titleError ? 'border-destructive ring-destructive/30' : ''}`}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="task-title"
+                      autoFocus
+                      placeholder="What needs to be done?"
+                      value={title}
+                      onChange={e => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
+                      className={`h-9 pr-10 text-sm rounded-xl ${titleError ? 'border-destructive ring-destructive/30' : ''}`}
+                    />
+                    <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="Insert emoji"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors"
+                        >
+                          😊
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-auto p-0 border-white/10 bg-zinc-950/90 backdrop-blur-md">
+                        <EmojiPicker
+                          theme={Theme.DARK}
+                          onEmojiClick={handleEmojiClick}
+                          width={300}
+                          height={360}
+                          previewConfig={{ showPreview: false }}
+                          lazyLoadEmojis
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   {titleError && (
                     <p className="text-[11px] text-destructive">Title is required.</p>
                   )}
@@ -167,6 +202,44 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                     className="text-sm rounded-xl resize-none"
                   />
                 </div>
+
+                {/* Manual schedule times */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="task-start-time" className="text-xs font-medium text-muted-foreground">
+                      Start Time
+                    </Label>
+                    <Input
+                      id="task-start-time"
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => {
+                        setStartTime(e.target.value);
+                        if (timeError) setTimeError(false);
+                      }}
+                      className="h-9 text-sm rounded-xl bg-white/[0.02]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="task-end-time" className="text-xs font-medium text-muted-foreground">
+                      End Time
+                    </Label>
+                    <Input
+                      id="task-end-time"
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => {
+                        setEndTime(e.target.value);
+                        if (timeError) setTimeError(false);
+                      }}
+                      className="h-9 text-sm rounded-xl bg-white/[0.02]"
+                    />
+                  </div>
+                </div>
+                {timeError && (
+                  <p className="text-[11px] text-destructive">End time must be after start time, and both times are required if one is set.</p>
+                )}
 
                 {/* Status + Duration row */}
                 <div className="grid grid-cols-2 gap-3">
@@ -276,10 +349,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
               <p className="text-[10px] text-muted-foreground/50 text-right -mt-3">
                 Ctrl+Enter to save
               </p>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+      </div>
+    </MobileBottomSheet>
   );
 };

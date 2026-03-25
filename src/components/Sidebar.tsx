@@ -6,8 +6,10 @@ import { CATEGORIES } from '../constants';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { useOnboardingStore } from '../store/useOnboardingStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskBoardStore } from '../store/useTaskBoardStore';
 import { clearProvider, clearAll } from '../lib/calendar/externalEventsCache';
+import { focusModeFromMinutes } from '../lib/focusSettings';
 import CustomContextDialog from './CustomContextDialog';
 import {
   PlusIcon,
@@ -131,8 +133,7 @@ const AppSidebar: React.FC = () => {
   const { data: _session } = authClient.useSession();
   const _userId = _session?.user?.id ?? null;
   const resetOnboarding = useOnboardingStore((s) => s.reset);
-  const focusSessionLength = useOnboardingStore((s) => s.focusSessionLength);
-  const customFocusMinutes = useOnboardingStore((s) => s.customFocusMinutes);
+  const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const tasks = useTaskBoardStore((s) => s.tasks);
   const {
     openModal,
@@ -721,13 +722,7 @@ const AppSidebar: React.FC = () => {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => {
-                      const mode =
-                        focusSessionLength === '50/10' || focusSessionLength === '90/20'
-                          ? 'deep'
-                          : focusSessionLength === 'custom' && customFocusMinutes > 30
-                            ? 'deep'
-                            : 'classic';
-                      startFocusSession(mode);
+                      startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength);
                     }}
                     className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-transparent hover:bg-muted/60 border border-border/50 text-muted-foreground hover:text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
                       }`}

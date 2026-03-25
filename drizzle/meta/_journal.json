@@ -29,6 +29,13 @@
       "when": 1774000000000,
       "tag": "0003_breezy_calendar_filters",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774100000000,
+      "tag": "0004_focus_resume_task_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -14,11 +14,11 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TimerIcon, CloseIcon, ChevronRightIcon, MinimizeIcon } from './icons';
-import { FocusMode } from '../types';
+import { TimerIcon, CloseIcon, MinimizeIcon } from './icons';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { focusModeFromMinutes } from '../lib/focusSettings';
 import { Button } from './ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 const EXPANDED_W = 300;
@@ -27,12 +27,6 @@ const COLLAPSED_W = 76;
 const COLLAPSED_H = 76;
 const PAD = 16;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-
-// ── Modes config ──────────────────────────────────────────────────────────────
-const MODES: { mode: FocusMode; label: string; minutes: number; description: string }[] = [
-  { mode: 'classic', label: 'Classic 25m', minutes: 25, description: 'Quick focus reset' },
-  { mode: 'deep', label: 'Deep Work 50m', minutes: 50, description: 'Extended concentration block' },
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 const TimerCallout: React.FC = () => {
@@ -47,7 +41,7 @@ const TimerCallout: React.FC = () => {
     setTimerPosition,
   } = useCalendarStore();
 
-  const [showModes, setShowModes] = useState(false);
+  const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const [timeLeft, setTimeLeft] = useState(0);
   const [justCompleted, setJustCompleted] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -120,10 +114,13 @@ const TimerCallout: React.FC = () => {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
-              onClick={() => { startFocusSession('classic'); setJustCompleted(false); }}
+              onClick={() => {
+                startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength);
+                setJustCompleted(false);
+              }}
               className="absolute -top-16 right-0 whitespace-nowrap px-5 py-2.5 bg-white dark:bg-neutral-panel border border-gray-100 dark:border-neutral-border shadow-soft rounded-2xl text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:text-primary transition-colors"
             >
-              Start 5m reset?
+              Start preferred session?
             </motion.button>
           )}
         </AnimatePresence>
@@ -131,44 +128,12 @@ const TimerCallout: React.FC = () => {
         <motion.button
           whileHover={{ scale: 1.05, y: -3 }}
           whileTap={{ scale: 0.96 }}
-          onClick={() => setShowModes(p => !p)}
+          onClick={() => startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength)}
           className="w-16 h-16 bg-primary text-white rounded-full flex items-center justify-center shadow-layered border-4 border-white dark:border-neutral-dark relative"
           aria-label="Ignite Flow"
         >
           <TimerIcon size={22} />
         </motion.button>
-
-        <AnimatePresence>
-          {showModes && (
-            <motion.div
-              initial={{ opacity: 0, y: 12, scale: 0.96 }}
-              animate={{ opacity: 1, y: -12, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.96 }}
-              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-              className="absolute bottom-20 right-0 w-72 bg-white dark:bg-neutral-panel rounded-[28px] p-5 shadow-layered border border-gray-100/70 dark:border-neutral-border/40 space-y-4"
-            >
-              <div className="px-1 flex items-center justify-between">
-                <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-gray-400">Ignite Flow</span>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowModes(false)}><CloseIcon size={13} /></Button>
-              </div>
-              <div className="space-y-1.5">
-                {MODES.map(m => (
-                  <button
-                    key={m.mode}
-                    onClick={() => { startFocusSession(m.mode); setShowModes(false); }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl hover:bg-primary/5 dark:hover:bg-primary/10 transition-all flex items-center justify-between group"
-                  >
-                    <div>
-                      <p className="font-display text-[13px] font-semibold text-gray-800 dark:text-gray-100 group-hover:text-primary transition-colors">{m.label}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{m.description}</p>
-                    </div>
-                    <ChevronRightIcon size={13} className="text-gray-300 group-hover:text-primary transition-colors flex-shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     );
   }

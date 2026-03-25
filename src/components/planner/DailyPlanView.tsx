@@ -6,13 +6,17 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { format } from 'date-fns';
+import { addDays } from 'date-fns';
+import { toast } from 'sonner';
+import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 
 import { useCalendarStore } from '../../store/useCalendarStore';
 import { useCalendarEventsStore } from '../../store/useCalendarEventsStore';
@@ -22,14 +26,14 @@ import type { Task } from '../../types/task';
 
 import {
   computePlanSummary,
-  findNextFreeSlot,
   DEFAULT_TASK_DURATION_MINS,
   addMinsToTime,
+  findNextFreeSlot,
   minutesToTime,
   timeToMinutes,
 } from '../../utils/dailyPlanUtils';
 import { HOUR_HEIGHT } from '../../utils/dateUtils';
-import { autoPlanDay } from '../../utils/scheduling/autoPlanDay';
+import { autoScheduleTasks } from '../../utils/scheduling/autoScheduleTasks';
 import notify from '../../utils/notify';
 import { useVirtualWindow } from '../../hooks/useVirtualWindow';
 
@@ -37,6 +41,9 @@ import { DailyPlanHeader } from './DailyPlanHeader';
 import { TodayTimeline } from './TodayTimeline';
 import { TaskPoolCard, TaskPoolCardOverlay } from './TaskPoolCard';
 import { FreeTimePanel } from './FreeTimePanel';
+import { PlanningModal } from './PlanningModal';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 const POOL_ROW_ESTIMATE_PX = 78;
 
@@ -57,6 +64,7 @@ export const DailyPlanView: React.FC = () => {
   // ── Task board store ──────────────────────────────────────────────────────
   const allTasks = useTaskBoardStore((s) => s.tasks);
   const updateTask = useTaskBoardStore((s) => s.updateTask);
+  const rollOverTasks = useTaskBoardStore((s) => s.rollOverTasks);
   const addTask = useTaskBoardStore((s) => s.addTask);
   const deleteTask = useTaskBoardStore((s) => s.deleteTask);
 
@@ -120,21 +128,64 @@ export const DailyPlanView: React.FC = () => {
 
   // ── Auto Plan My Day ──────────────────────────────────────────────────────
   const [isPlanningDay, setIsPlanningDay] = useState(false);
+  const [isRollingOver, setIsRollingOver] = useState(false);
+  const [planningPhase, setPlanningPhase] = useState<'planning' | 'revealing'>('planning');
+  const [revealPlanItemDelays, setRevealPlanItemDelays] = useState<Map<string, number>>(new Map());
+  const [rollingOutTaskIds, setRollingOutTaskIds] = useState<Set<string>>(new Set());
 
-  const handleAutoPlanDay = useCallback(() => {
+  const rolloverCandidates = useMemo(
+    () => allTasks.filter((task) => task.status !== 'done' && (task.dueDate === today || plannedTaskIds.has(task.id))),
+    [allTasks, plannedTaskIds, today],
+  );
+
+  const visiblePlanItems = useMemo(
+    () => planItems.filter((item) => !rollingOutTaskIds.has(item.taskId)),
+    [planItems, rollingOutTaskIds],
+  );
+
+  const handleAutoPlanDay = useCallback(async () => {
     if (isPlanningDay || poolTasks.length === 0) return;
 
     setIsPlanningDay(true);
+    setPlanningPhase('planning');
+    setRevealPlanItemDelays(new Map());
     try {
       const now = new Date();
-      const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const assignments = autoPlanDay(poolTasks, busyRanges, nowTime);
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const dayStartTime = currentTime > '09:00' ? currentTime : '09:00';
+
+      const assignments = autoScheduleTasks(poolTasks, dayStartTime).map((item) => ({
+        taskId: item.id,
+        startTime: item.startTime,
+        endTime: item.endTime,
+      }));
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 2800);
+      });
+
       if (assignments.length === 0) {
         notify('No unscheduled tasks fit the remaining time today.');
         return;
       }
 
       const added = batchAddPlanItems(today, assignments);
+      if (added.length === 0) {
+        notify('No unscheduled tasks fit the remaining time today.');
+        return;
+      }
+
+      const revealMap = new Map<string, number>();
+      added.forEach((item, idx) => {
+        revealMap.set(item.id, idx * 70);
+      });
+      setRevealPlanItemDelays(revealMap);
+      setPlanningPhase('revealing');
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 520);
+      });
+
       const addedTaskIds = new Set(added.map((i) => i.taskId));
       for (const task of poolTasks) {
         if (addedTaskIds.has(task.id) && task.status === 'todo') {
@@ -143,13 +194,66 @@ export const DailyPlanView: React.FC = () => {
       }
 
       notify(`Scheduled ${added.length} task${added.length === 1 ? '' : 's'} for today \u2728`);
+      setPlanningPhase('planning');
     } finally {
       setIsPlanningDay(false);
+      setPlanningPhase('planning');
     }
-  }, [isPlanningDay, poolTasks, busyRanges, today, batchAddPlanItems, updateTask]);
+  }, [isPlanningDay, poolTasks, today, batchAddPlanItems, updateTask]);
+
+  const handleRollOverTasks = useCallback(async () => {
+    if (isRollingOver || rolloverCandidates.length === 0) return;
+
+    const tomorrow = format(addDays(new Date(today), 1), 'yyyy-MM-dd');
+    const taskIds = rolloverCandidates.map((task) => task.id);
+    const taskIdSet = new Set(taskIds);
+    const planItemsToRemove = planItems.filter((item) => taskIdSet.has(item.taskId));
+
+    setIsRollingOver(true);
+    setRollingOutTaskIds(taskIdSet);
+    toast(`✨ Rolling over ${rolloverCandidates.length} tasks to tomorrow...`);
+
+    try {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 260));
+
+      rollOverTasks(taskIds, tomorrow);
+      for (const item of planItemsToRemove) {
+        removePlanItem(item.id, today);
+      }
+
+      const results = await Promise.all(
+        taskIds.map(async (taskId) => {
+          const res = await fetch(`/api/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dueDate: tomorrow }),
+          });
+          return { taskId, ok: res.ok };
+        })
+      );
+
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        toast.error(`Rolled over with ${failed.length} sync failure${failed.length === 1 ? '' : 's'}.`);
+      } else {
+        toast.success(`Rolled over ${taskIds.length} task${taskIds.length === 1 ? '' : 's'} to tomorrow.`);
+      }
+    } catch {
+      toast.error('Failed to roll over tasks.');
+    } finally {
+      setRollingOutTaskIds(new Set());
+      setIsRollingOver(false);
+    }
+  }, [isRollingOver, rolloverCandidates, planItems, rollOverTasks, removePlanItem, today]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
   );
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -179,15 +283,17 @@ export const DailyPlanView: React.FC = () => {
       let startTime: string;
 
       const scrollContainer = timelineScrollRef.current;
+      const timelineGridBody = timelineGridBodyRef.current;
       if (scrollContainer) {
-        // Compute the exact pointer position at the moment of drop.
-        // dnd-kit's activatorEvent is the initial pointerdown; delta is the
-        // total displacement from that point to the drop position.
-        const activatorEvent = event.activatorEvent as PointerEvent;
-        const finalClientY = activatorEvent.clientY + event.delta.y;
+        // Prefer dnd-kit's translated drag rect on drop; it's more reliable than
+        // activatorEvent+delta when overlays/indicators are present.
+        const translated = active.rect.current.translated;
+        const finalClientY = translated
+          ? translated.top + translated.height / 2
+          : ((event.activatorEvent as PointerEvent).clientY + event.delta.y);
 
-        // Convert to absolute scroll-container Y (accounts for scroll offset)
-        const rect = scrollContainer.getBoundingClientRect();
+        const measurementTarget = timelineGridBody ?? scrollContainer;
+        const rect = measurementTarget.getBoundingClientRect();
         const absoluteY = finalClientY - rect.top + scrollContainer.scrollTop;
 
         // pixel → minute (timeline starts at 00:00, so no startHour offset needed)
@@ -256,6 +362,10 @@ export const DailyPlanView: React.FC = () => {
     removePlanItem(planItemId, today);
   }, [removePlanItem, today]);
 
+  const handleMarkTaskDone = useCallback((taskId: string) => {
+    updateTask(taskId, { status: 'done' });
+  }, [updateTask]);
+
   const handleUpdatePlanItemTime = useCallback((planItemId: string, startTime: string, endTime: string) => {
     updatePlanItem(planItemId, today, { startTime, endTime });
   }, [updatePlanItem, today]);
@@ -263,26 +373,42 @@ export const DailyPlanView: React.FC = () => {
   // ── Quick-add task (pool) ─────────────────────────────────────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddTitle, setQuickAddTitle] = useState('');
+  const [quickAddDuration, setQuickAddDuration] = useState(30);
+  const [quickAddEmojiOpen, setQuickAddEmojiOpen] = useState(false);
   const quickAddInputRef = useRef<HTMLInputElement>(null);
 
   const openQuickAdd = useCallback(() => {
     setQuickAddOpen(true);
     setQuickAddTitle('');
+    setQuickAddDuration(30);
+    setQuickAddEmojiOpen(false);
     setTimeout(() => quickAddInputRef.current?.focus(), 30);
+  }, []);
+
+  const handleQuickAddEmoji = useCallback((emojiData: EmojiClickData) => {
+    const emoji = emojiData.emoji;
+    setQuickAddTitle((prev) => {
+      const trimmed = prev.trim();
+      return trimmed ? `${emoji} ${trimmed}` : emoji;
+    });
+    setQuickAddEmojiOpen(false);
+    setTimeout(() => quickAddInputRef.current?.focus(), 0);
   }, []);
 
   const commitQuickAdd = useCallback(() => {
     const trimmed = quickAddTitle.trim();
     if (!trimmed) { setQuickAddOpen(false); return; }
-    addTask({ title: trimmed, status: 'todo', priority: 'medium' });
+    addTask({ title: trimmed, status: 'todo', priority: 'medium', durationMinutes: quickAddDuration });
     setQuickAddTitle('');
     // Keep open so user can add multiple tasks in a row
     setTimeout(() => quickAddInputRef.current?.focus(), 20);
-  }, [quickAddTitle, addTask]);
+  }, [quickAddTitle, quickAddDuration, addTask]);
 
   const cancelQuickAdd = useCallback(() => {
     setQuickAddOpen(false);
     setQuickAddTitle('');
+    setQuickAddDuration(30);
+    setQuickAddEmojiOpen(false);
   }, []);
 
   // ── Task Pool collapse (small screens only) ───────────────────────────────
@@ -291,6 +417,8 @@ export const DailyPlanView: React.FC = () => {
   const poolViewportRef = useRef<HTMLDivElement | null>(null);
   // Ref to DayCalendarTimeline's scroll container — used for pixel→minute on drop
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
+  // Ref to the timeline's absolute-positioned grid body for stable drop math.
+  const timelineGridBodyRef = useRef<HTMLDivElement | null>(null);
   const poolWindow = useVirtualWindow({
     count: poolTasks.length,
     itemSize: POOL_ROW_ESTIMATE_PX,
@@ -315,20 +443,44 @@ export const DailyPlanView: React.FC = () => {
         {/* Header */}
         <DailyPlanHeader
           date={todayDate}
-          plannedCount={planItems.length}
+          plannedCount={visiblePlanItems.length}
           unplannedCount={poolTasks.length}
+          rolloverCount={rolloverCandidates.length}
+          onRollOver={handleRollOverTasks}
           onAutoPlan={handleAutoPlanDay}
           isPlanning={isPlanningDay}
+          isRollingOver={isRollingOver}
         />
 
+        {/* Mobile summary cards */}
+        <div className="md:hidden -mx-1 px-1 overflow-x-auto no-scrollbar snap-x snap-mandatory flex gap-2 pb-1">
+          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-3">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">Planned</p>
+            <p className="mt-1 text-xl font-semibold text-foreground tabular-nums">{summary.plannedCount}</p>
+            <p className="text-[11px] text-muted-foreground/70">{summary.plannedMinutes} mins scheduled</p>
+          </div>
+          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-3">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">Remaining</p>
+            <p className="mt-1 text-xl font-semibold text-amber-400 tabular-nums">{summary.unplannedCount}</p>
+            <p className="text-[11px] text-muted-foreground/70">Tasks still unplanned</p>
+          </div>
+          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-3">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">Best Window</p>
+            <p className="mt-1 text-sm font-semibold text-emerald-400 tabular-nums">
+              {summary.topFreeBlock ? `${summary.topFreeBlock.startTime}-${summary.topFreeBlock.endTime}` : 'No free block'}
+            </p>
+            <p className="text-[11px] text-muted-foreground/70">Swipe for details</p>
+          </div>
+        </div>
+
         {/* Three-column body */}
-        <div className={`flex-1 grid gap-4 min-h-0 transition-[grid-template-columns] duration-200 ${
+        <div className={`flex-1 grid gap-3 md:gap-4 min-h-0 transition-[grid-template-columns] duration-200 ${
           poolOpen
-            ? 'grid-cols-[220px_1fr_200px] xl:grid-cols-[240px_1fr_220px]'
-            : 'grid-cols-[0px_1fr_200px] xl:grid-cols-[0px_1fr_220px]'
+            ? 'grid-cols-1 md:grid-cols-[220px_1fr_200px] xl:grid-cols-[240px_1fr_220px]'
+            : 'grid-cols-1 md:grid-cols-[0px_1fr_200px] xl:grid-cols-[0px_1fr_220px]'
         }`}>
           {/* ── Left: Task Pool ───────────────────────────────────────────── */}
-          <div className={`flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${poolOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className={`hidden md:flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${poolOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
             {/* Pool header with + button */}
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 flex items-center gap-1.5">
@@ -355,6 +507,28 @@ export const DailyPlanView: React.FC = () => {
             {quickAddOpen && (
               <div className="flex-shrink-0 mb-2">
                 <div className="flex items-center gap-1.5 p-2 rounded-xl border border-gray-300 dark:border-primary/30 bg-white dark:bg-primary/10 shadow-sm">
+                  <Popover open={quickAddEmojiOpen} onOpenChange={setQuickAddEmojiOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Insert emoji"
+                        className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors"
+                      >
+                        😊
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto p-0 border-white/10 bg-zinc-950/90 backdrop-blur-md">
+                      <EmojiPicker
+                        theme={Theme.DARK}
+                        onEmojiClick={handleQuickAddEmoji}
+                        width={290}
+                        height={340}
+                        previewConfig={{ showPreview: false }}
+                        lazyLoadEmojis
+                      />
+                    </PopoverContent>
+                  </Popover>
+
                   <input
                     ref={quickAddInputRef}
                     value={quickAddTitle}
@@ -366,6 +540,22 @@ export const DailyPlanView: React.FC = () => {
                     placeholder="Task title…"
                     className="flex-1 min-w-0 bg-transparent text-[12px] font-medium text-foreground placeholder:text-muted-foreground/40 outline-none"
                   />
+                  <Select value={String(quickAddDuration)} onValueChange={(value) => setQuickAddDuration(Number(value))}>
+                    <SelectTrigger
+                      aria-label="Task duration"
+                      className="flex-none h-7 w-[62px] rounded-md border-white/10 bg-white/[0.03] px-1.5 text-[10px] text-zinc-200"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="w-[72px] border-white/10 bg-zinc-950/95 text-zinc-100 backdrop-blur-md">
+                      <SelectItem className="text-[11px]" value="15">15m</SelectItem>
+                      <SelectItem className="text-[11px]" value="30">30m</SelectItem>
+                      <SelectItem className="text-[11px]" value="45">45m</SelectItem>
+                      <SelectItem className="text-[11px]" value="60">60m</SelectItem>
+                      <SelectItem className="text-[11px]" value="90">90m</SelectItem>
+                      <SelectItem className="text-[11px]" value="120">120m</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <button
                     type="button"
                     onClick={commitQuickAdd}
@@ -446,17 +636,20 @@ export const DailyPlanView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <div className="flex-1 min-h-0 flex flex-col px-2 py-2">
+            <div className="flex-1 min-h-0 flex flex-col px-2 md:px-3 py-2">
               <TodayTimeline
                 todayEvents={todayEvents}
-                planItems={planItems}
+                planItems={visiblePlanItems}
                 taskMap={taskMap}
+                revealPlanItemDelays={revealPlanItemDelays}
                 onRemovePlanItem={handleRemovePlanItem}
+                onMarkTaskDone={handleMarkTaskDone}
                 onUpdatePlanItemTime={handleUpdatePlanItemTime}
                 scrollContainerRef={timelineScrollRef as React.RefObject<HTMLDivElement>}
+                gridBodyRef={timelineGridBodyRef as React.RefObject<HTMLDivElement>}
               />
             </div>
-            {planItems.length === 0 && poolTasks.length > 0 && (
+            {visiblePlanItems.length === 0 && poolTasks.length > 0 && (
               <div className="px-4 pb-4 flex-shrink-0">
                 <p className="text-center text-[11px] text-muted-foreground/40 py-2">
                   Drag tasks from the left into the timeline
@@ -466,7 +659,7 @@ export const DailyPlanView: React.FC = () => {
           </div>
 
           {/* ── Right: Summary ────────────────────────────────────────────── */}
-          <div className="flex flex-col min-h-0 overflow-y-auto no-scrollbar">
+          <div className="hidden md:flex flex-col min-h-0 overflow-y-auto no-scrollbar">
             <FreeTimePanel summary={summary} />
           </div>
         </div>
@@ -476,6 +669,8 @@ export const DailyPlanView: React.FC = () => {
       <DragOverlay dropAnimation={{ duration: 150, easing: 'ease' }}>
         {activeDragTask && <TaskPoolCardOverlay task={activeDragTask} />}
       </DragOverlay>
+
+      <PlanningModal open={isPlanningDay} phase={planningPhase} onClose={() => setIsPlanningDay(false)} />
     </DndContext>
   );
 };

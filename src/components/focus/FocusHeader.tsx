@@ -1,21 +1,13 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
-import { useFocusStore } from '../../store/useFocusStore';
 
 interface FocusHeaderProps {
   taskTitle: string;
+  onAttemptClose: () => void;
 }
 
-export const FocusHeader: React.FC<FocusHeaderProps> = ({ taskTitle }) => {
-  const cancelSession = useFocusStore((s) => s.cancelSession);
-  const router = useRouter();
-
-  const handleCancel = () => {
-    cancelSession();
-    router.push('/tasks');
-  };
+export const FocusHeader: React.FC<FocusHeaderProps> = ({ taskTitle, onAttemptClose }) => {
 
   return (
     <div className="w-full flex items-center justify-between">
@@ -38,7 +30,7 @@ export const FocusHeader: React.FC<FocusHeaderProps> = ({ taskTitle }) => {
       {/* Right: end button */}
       <button
         type="button"
-        onClick={handleCancel}
+        onClick={onAttemptClose}
         className="text-[11px] font-semibold text-muted-foreground/50 hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-accent"
       >
         End session

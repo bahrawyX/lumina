@@ -113,6 +113,10 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ─── iOS/Android safe-area helpers ─────────────────────────────────────── */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
 /* ─── Thin scrollbar (time picker columns) ───────────────────────────────── */
 .thin-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(120,120,140,0.35) transparent; }
 .thin-scrollbar::-webkit-scrollbar { width: 4px; }

@@ -73,7 +73,7 @@ interface CalendarState {
   updateProfile: (profile: Partial<UserProfile>) => void;
 
   // ── Ignite Flow Actions ────────────────────────────────
-  startFocusSession: (mode: FocusMode) => void;
+  startFocusSession: (mode: FocusMode, durationMinutesOverride?: number) => void;
   completeFocusSession: () => void;
   cancelFocusSession: () => void;
   setTimerExpanded: (expanded: boolean) => void;
@@ -268,8 +268,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   // No phases, no gamification, no auto-chaining.
   // ────────────────────────────────────────────────────────────────────────────
 
-  startFocusSession: (mode: FocusMode) => {
-    const durationMinutes = FOCUS_DURATIONS[mode];
+  startFocusSession: (mode: FocusMode, durationMinutesOverride) => {
+    const durationMinutes =
+      durationMinutesOverride !== undefined
+        ? Math.max(5, Math.min(240, Math.round(durationMinutesOverride)))
+        : FOCUS_DURATIONS[mode];
     const session: FocusSession = {
       id: Math.random().toString(36).substring(2, 9),
       mode,

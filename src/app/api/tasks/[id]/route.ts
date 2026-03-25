@@ -4,6 +4,17 @@ import { getDatabase } from '@/lib/db';
 import { tasks } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+function normalizeTimeString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return /^\d{2}:\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+function normalizeRemainingFocusTime(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.round(value));
+}
+
 function normalizeTaskStatusForDb(status: unknown): 'todo' | 'in_progress' | 'done' | 'archived' | null {
   if (status === 'doing') return 'in_progress';
   if (status === 'todo' || status === 'in_progress' || status === 'done' || status === 'archived') return status;
@@ -44,6 +55,21 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
     if (typeof body.priority === 'string' && validPriorities.includes(body.priority)) patch.priority = body.priority;
     if (typeof body.durationMinutes === 'number') patch.estimatedMinutes = body.durationMinutes;
+    if (body.scheduledStart === null) patch.scheduledStart = null;
+    else if (typeof body.scheduledStart === 'string') {
+      const normalizedTime = normalizeTimeString(body.scheduledStart);
+      if (normalizedTime !== null) patch.scheduledStart = normalizedTime;
+    }
+    if (body.scheduledEnd === null) patch.scheduledEnd = null;
+    else if (typeof body.scheduledEnd === 'string') {
+      const normalizedTime = normalizeTimeString(body.scheduledEnd);
+      if (normalizedTime !== null) patch.scheduledEnd = normalizedTime;
+    }
+    if (body.remainingFocusTime === null) patch.remainingFocusTime = null;
+    else if (typeof body.remainingFocusTime === 'number') {
+      const normalizedRemaining = normalizeRemainingFocusTime(body.remainingFocusTime);
+      if (normalizedRemaining !== null) patch.remainingFocusTime = normalizedRemaining;
+    }
     if (body.dueDate === null) patch.dueDate = null;
     else if (typeof body.dueDate === 'string') {
       const ts = new Date(body.dueDate);

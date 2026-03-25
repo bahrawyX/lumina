@@ -71,8 +71,9 @@ interface TaskBoardState {
   hydrateFromDb: (tasks: Task[]) => void;
   hydrateFromDbFailed: () => void;
   setUserId: (userId: string) => void;
-  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; dueDate?: string | null; durationMinutes?: number }) => void;
+  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; dueDate?: string | null; durationMinutes?: number }) => Task | null;
   updateTask: (id: string, patch: Partial<Omit<Task, 'id' | 'createdAt'>>) => void;
+  rollOverTasks: (taskIds: string[], nextDate: string) => void;
   deleteTask: (id: string) => void;
   unlinkEvent: (eventId: string) => void;
   renameContextReference: (fromContext: string, toContext: string) => void;
@@ -107,7 +108,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
 
   addTask: ({ title, description, status, priority = 'medium', dueDate, durationMinutes }) => {
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
 
     const nextStatus = isTaskStatus(status) ? status : 'todo';
     const nextPriority = isTaskPriority(priority) ? priority : 'medium';
@@ -131,6 +132,9 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       dueDate: normalizeDueDateString(dueDate),
       durationMinutes: durationMinutes ?? 30,
       linkedEventId: null,
+      scheduledStart: null,
+      scheduledEnd: null,
+      remainingFocusTime: null,
     };
 
     set((state) => {
@@ -140,6 +144,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     });
     // Fire-and-forget DB persistence
     tasksPersistence.createOne(task);
+    return task;
   },
 
   updateTask: (id, patch) => {
@@ -168,6 +173,15 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       const nextLinkedEventId = patch.linkedEventId !== undefined
         ? patch.linkedEventId ?? null
         : existing.linkedEventId ?? null;
+      const nextScheduledStart = patch.scheduledStart !== undefined
+        ? patch.scheduledStart ?? null
+        : existing.scheduledStart ?? null;
+      const nextScheduledEnd = patch.scheduledEnd !== undefined
+        ? patch.scheduledEnd ?? null
+        : existing.scheduledEnd ?? null;
+      const nextRemainingFocusTime = patch.remainingFocusTime !== undefined
+        ? (patch.remainingFocusTime === null ? null : Math.max(0, Math.round(patch.remainingFocusTime)))
+        : existing.remainingFocusTime ?? null;
       const now = new Date().toISOString();
 
       if (nextStatus === existing.status) {
@@ -181,6 +195,9 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
                 priority: nextPriority,
                 dueDate: nextDueDate,
                 linkedEventId: nextLinkedEventId,
+                scheduledStart: nextScheduledStart,
+                scheduledEnd: nextScheduledEnd,
+                remainingFocusTime: nextRemainingFocusTime,
                 updatedAt: now,
               }
             : task
@@ -209,6 +226,9 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
         priority: nextPriority,
         dueDate: nextDueDate,
         linkedEventId: nextLinkedEventId,
+        scheduledStart: nextScheduledStart,
+        scheduledEnd: nextScheduledEnd,
+        remainingFocusTime: nextRemainingFocusTime,
         order: nextOrder,
         updatedAt: now,
       };
@@ -221,6 +241,27 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     });
     // Fire-and-forget DB persistence after updateTask resolves
     tasksPersistence.updateOne(id, { ...patch });
+  },
+
+  rollOverTasks: (taskIds, nextDate) => {
+    if (taskIds.length === 0) return;
+    const taskIdSet = new Set(taskIds);
+    const normalizedDueDate = normalizeDueDateString(nextDate);
+    const now = new Date().toISOString();
+
+    set((state) => {
+      const next = state.tasks.map((task) => {
+        if (!taskIdSet.has(task.id)) return task;
+        return {
+          ...task,
+          dueDate: normalizedDueDate,
+          updatedAt: now,
+        };
+      });
+
+      saveTasks(next, state.userId);
+      return { tasks: next };
+    });
   },
 
   deleteTask: (id) => {

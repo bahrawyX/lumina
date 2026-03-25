@@ -8,6 +8,7 @@ interface PlannedTaskCardProps {
   planItem: PlannedTaskItem;
   task: Task | undefined;
   onRemove: (planItemId: string) => void;
+  onMarkDone?: (taskId: string) => void;
   onDragHandlePointerDown: (e: React.PointerEvent) => void;
   isDragging?: boolean;
 }
@@ -25,20 +26,43 @@ const XIcon: React.FC = () => (
   </svg>
 );
 
-export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ planItem, task, onRemove, onDragHandlePointerDown, isDragging }) => {
+export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ planItem, task, onRemove, onMarkDone, onDragHandlePointerDown, isDragging }) => {
   const durmins = durationMinutes(planItem.startTime, planItem.endTime);
   const timeLabel = formatTimeRange(planItem.startTime, planItem.endTime);
+  const isDone = task?.status === 'done';
 
   return (
     <div
       onPointerDown={onDragHandlePointerDown}
-      className={`group flex items-start gap-2 px-3 py-2.5 rounded-xl border select-none h-full overflow-hidden cursor-grab active:cursor-grabbing touch-none transition-all duration-[120ms] ease-out
+      className={`group flex items-start gap-1 px-1.5 py-1 rounded-xl border select-none h-full overflow-hidden cursor-grab active:cursor-grabbing touch-none transition-all duration-[120ms] ease-out
         ${isDragging
           ? 'shadow-elevated scale-[1.02] border-primary/40 bg-primary/10 dark:bg-primary/12 ring-1 ring-primary/20'
           : 'shadow-soft hover:-translate-y-[1px] hover:shadow-md border-primary/20 bg-primary/5 dark:bg-primary/8'}`}
     >
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => {
+          if (task?.id && !isDone) {
+            onMarkDone?.(task.id);
+          }
+        }}
+        disabled={!task?.id || isDone}
+        className={`mt-[1px] flex-shrink-0 w-5 h-5 md:w-4 md:h-4 rounded-md md:rounded-full border transition-colors ${
+          isDone
+            ? 'bg-emerald-500 border-emerald-500 text-white cursor-default'
+            : 'border-primary/35 text-transparent hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600'
+        }`}
+        aria-label={isDone ? 'Task completed' : 'Mark task as done'}
+        title={isDone ? 'Task completed' : 'Mark done'}
+      >
+        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="mx-auto">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </button>
+
       {/* Grip icon — visual only, drag is on the whole card */}
-      <div className="mt-[2px] flex-shrink-0 p-0.5 pointer-events-none">
+      <div className="mt-[1px] flex-shrink-0 p-0.5 pointer-events-none">
         <GripIcon />
       </div>
 
@@ -47,7 +71,7 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <p className="text-[13px] font-semibold text-foreground leading-snug truncate cursor-default">
+                <p className={`text-[11px] font-medium leading-snug truncate cursor-default ${isDone ? 'text-muted-foreground/60 line-through' : 'text-foreground'}`}>
                   {task?.title ?? <span className="text-muted-foreground/40 italic">Deleted task</span>}
                 </p>
               </TooltipTrigger>
@@ -58,13 +82,13 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
           </TooltipProvider>
         ) : (
           <>
-            <p className="text-[13px] font-semibold text-foreground leading-snug truncate">
+            <p className={`text-[11px] font-medium leading-snug truncate ${isDone ? 'text-muted-foreground/60 line-through' : 'text-foreground'}`}>
               {task?.title ?? <span className="text-muted-foreground/40 italic">Deleted task</span>}
             </p>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-[10px] font-medium text-primary/70 tabular-nums">{timeLabel}</span>
-              <span className="text-[10px] text-muted-foreground/50">·</span>
-              <span className="text-[10px] text-muted-foreground/60">{formatMinutes(durmins)}</span>
+              <span className="text-[8px] font-medium text-primary/70 tabular-nums">{timeLabel}</span>
+              <span className="text-[8px] text-muted-foreground/50">·</span>
+              <span className="text-[8px] text-muted-foreground/60">{formatMinutes(durmins)}</span>
             </div>
           </>
         )}
@@ -74,7 +98,7 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => onRemove(planItem.id)}
-        className="mt-0.5 flex-shrink-0 p-1 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+        className="mt-0.5 flex-shrink-0 w-5 h-5 md:w-4 md:h-4 p-0 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
         aria-label="Remove from plan"
       >
         <XIcon />

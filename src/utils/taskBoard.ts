@@ -13,6 +13,7 @@ import type { Task, TaskPriority, TaskStatus } from '../types/task';
 const VALID_STATUSES = new Set<TaskStatus>(['todo', 'doing', 'done']);
 const VALID_PRIORITIES = new Set<TaskPriority>(['low', 'medium', 'high']);
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_ONLY_REGEX = /^\d{2}:\d{2}$/;
 
 type PersistedTaskRecord = Record<string, unknown>;
 
@@ -80,6 +81,14 @@ export function getDueDatePresentation(dueDate: string | null | undefined, statu
       label: 'Overdue',
       title: `Due ${fullDate}`,
       className: 'border-rose-300/70 bg-rose-50/90 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/45 dark:text-rose-300',
+    };
+  }
+
+  if (status === 'done') {
+    return {
+      label: format(parsed, 'EEE, MMM d'),
+      title: `Completed task due ${fullDate}`,
+      className: 'border-zinc-300/40 bg-zinc-100/60 text-zinc-600 dark:border-zinc-700/60 dark:bg-zinc-800/55 dark:text-zinc-300',
     };
   }
 
@@ -177,6 +186,15 @@ function normalizePersistedTask(rawTask: PersistedTaskRecord, index: number): Ta
     updatedAt,
     dueDate: normalizeDueDateString(rawTask.dueDate),
     linkedEventId: typeof rawTask.linkedEventId === 'string' ? rawTask.linkedEventId : null,
+    scheduledStart: typeof rawTask.scheduledStart === 'string' && TIME_ONLY_REGEX.test(rawTask.scheduledStart)
+      ? rawTask.scheduledStart
+      : null,
+    scheduledEnd: typeof rawTask.scheduledEnd === 'string' && TIME_ONLY_REGEX.test(rawTask.scheduledEnd)
+      ? rawTask.scheduledEnd
+      : null,
+    remainingFocusTime: typeof rawTask.remainingFocusTime === 'number' && Number.isFinite(rawTask.remainingFocusTime)
+      ? Math.max(0, Math.round(rawTask.remainingFocusTime))
+      : null,
   };
 }
 

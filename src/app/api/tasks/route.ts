@@ -4,6 +4,17 @@ import { getDatabase } from '@/lib/db';
 import { tasks } from '@/db/schema';
 import { and, eq, ne } from 'drizzle-orm';
 
+function normalizeTimeString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return /^\d{2}:\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+function normalizeRemainingFocusTime(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.round(value));
+}
+
 function normalizeTaskStatusForDb(status: unknown): 'todo' | 'in_progress' | 'done' | 'archived' {
   if (status === 'doing') return 'in_progress';
   if (status === 'in_progress' || status === 'done' || status === 'archived') return status;
@@ -49,6 +60,9 @@ export async function GET(req: NextRequest) {
       priority: row.priority as 'low' | 'medium' | 'high',
       dueDate: row.dueDate ? row.dueDate.toISOString().slice(0, 10) : null,
       durationMinutes: row.estimatedMinutes,
+      scheduledStart: row.scheduledStart ?? null,
+      scheduledEnd: row.scheduledEnd ?? null,
+      remainingFocusTime: row.remainingFocusTime ?? null,
       order: index,
       context: null,
       linkedEventId: null,
@@ -78,13 +92,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, dueDate, durationMinutes } = body as {
+  const { title, description, status, priority, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime } = body as {
     title?: string;
     description?: string;
     status?: string;
     priority?: string;
     dueDate?: string | null;
     durationMinutes?: number;
+    scheduledStart?: string | null;
+    scheduledEnd?: string | null;
+    remainingFocusTime?: number | null;
   };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -105,6 +122,9 @@ export async function POST(req: NextRequest) {
         priority: (validPriorities.includes(priority ?? '') ? priority : 'medium') as 'low' | 'medium' | 'high',
         dueDate: dueDate ? new Date(dueDate) : null,
         estimatedMinutes: typeof durationMinutes === 'number' ? durationMinutes : 30,
+        scheduledStart: normalizeTimeString(scheduledStart),
+        scheduledEnd: normalizeTimeString(scheduledEnd),
+        remainingFocusTime: normalizeRemainingFocusTime(remainingFocusTime),
       })
       .returning({ id: tasks.id });
 

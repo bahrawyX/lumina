@@ -9,7 +9,8 @@ import {
   DragOverlay,
   DragStartEvent,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   useSensor,
   useSensors,
@@ -20,7 +21,7 @@ import { useCalendarStore } from '../../store/useCalendarStore';
 import { useCalendarEventsStore } from '../../store/useCalendarEventsStore';
 import { useTaskBoardStore } from '../../store/useTaskBoardStore';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskStatus } from '../../types/task';
+import type { Task, TaskPriority, TaskStatus } from '../../types/task';
 import { COLUMNS } from '../../types/task';
 import { EVENT_COLORS } from '../../constants';
 import { addMinutesToTime } from '../../utils/taskBoard';
@@ -92,7 +93,13 @@ export const TaskBoard: React.FC = () => {
 
   // ── Sensors ───────────────────────────────────────────────────────────────
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -144,17 +151,102 @@ export const TaskBoard: React.FC = () => {
   }, []);
 
   const handleSave = useCallback((payload: TaskDialogPayload) => {
+    const scheduleDate = payload.dueDate ?? format(new Date(), 'yyyy-MM-dd');
+    const hasManualTimes = Boolean(payload.startTime && payload.endTime);
+
     if (editingTask) {
       updateTask(editingTask.id, payload);
+
+      if (hasManualTimes) {
+        const startTime = payload.startTime as string;
+        const endTime = payload.endTime as string;
+        const linkedEvent = editingTask.linkedEventId
+          ? linkedEvents[editingTask.linkedEventId] ?? null
+          : null;
+
+        if (linkedEvent) {
+          updateEvent({
+            ...linkedEvent,
+            title: payload.title,
+            description: payload.description ?? '',
+            category: 'Focus',
+            color: EVENT_COLORS.Focus,
+            date: scheduleDate,
+            startTime,
+            endTime,
+            linkedTaskId: editingTask.id,
+            source: 'lumina',
+          });
+          updateTask(editingTask.id, {
+            dueDate: scheduleDate,
+            scheduledStart: startTime,
+            scheduledEnd: endTime,
+          });
+        } else {
+          const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+          addEvent({
+            id: eventId,
+            title: payload.title,
+            description: payload.description ?? '',
+            category: 'Focus',
+            date: scheduleDate,
+            startTime,
+            endTime,
+            linkedTaskId: editingTask.id,
+            source: 'lumina',
+            timezone,
+            color: EVENT_COLORS.Focus,
+          });
+          updateTask(editingTask.id, {
+            linkedEventId: eventId,
+            dueDate: scheduleDate,
+            scheduledStart: startTime,
+            scheduledEnd: endTime,
+          });
+        }
+      }
     } else {
-      addTask(payload);
+      const createdTask = addTask(payload);
+
+      if (createdTask && hasManualTimes) {
+        const startTime = payload.startTime as string;
+        const endTime = payload.endTime as string;
+        const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+        addEvent({
+          id: eventId,
+          title: payload.title,
+          description: payload.description ?? '',
+          category: 'Focus',
+          date: scheduleDate,
+          startTime,
+          endTime,
+          linkedTaskId: createdTask.id,
+          source: 'lumina',
+          timezone,
+          color: EVENT_COLORS.Focus,
+        });
+
+        updateTask(createdTask.id, {
+          linkedEventId: eventId,
+          status: createdTask.status === 'todo' ? 'doing' : createdTask.status,
+          dueDate: scheduleDate,
+          scheduledStart: startTime,
+          scheduledEnd: endTime,
+        });
+      }
     }
     closeDialog();
-  }, [editingTask, updateTask, addTask, closeDialog]);
+  }, [editingTask, linkedEvents, updateEvent, addEvent, timezone, updateTask, addTask, closeDialog]);
 
   const handleDelete = useCallback((id: string) => {
     deleteTask(id);
   }, [deleteTask]);
+
+  const handlePriorityChange = useCallback((task: Task, priority: TaskPriority) => {
+    if (task.priority === priority) return;
+    updateTask(task.id, { priority });
+  }, [updateTask]);
 
   const router = useRouter();
   const startFocusSession = useFocusStore((s) => s.startSession);
@@ -162,7 +254,11 @@ export const TaskBoard: React.FC = () => {
     if (task.status === 'todo') {
       updateTask(task.id, { status: 'doing' });
     }
-    startFocusSession(task.id, task.title);
+    const defaultFocusTime = 25 * 60;
+    const initialTime = task.remainingFocusTime && task.remainingFocusTime > 0
+      ? task.remainingFocusTime
+      : defaultFocusTime;
+    startFocusSession(task.id, task.title, initialTime);
     router.push('/focus');
   }, [startFocusSession, router, updateTask]);
 
@@ -210,8 +306,57 @@ export const TaskBoard: React.FC = () => {
     }
 
     addPlanItem(task.id, today, result.startTime, result.endTime);
+
+    const linkedEvent = task.linkedEventId
+      ? linkedEvents[task.linkedEventId] ?? null
+      : null;
+
+    if (linkedEvent) {
+      updateEvent({
+        ...linkedEvent,
+        title: task.title,
+        description: task.description ?? '',
+        category: 'Focus',
+        color: EVENT_COLORS.Focus,
+        date: today,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        linkedTaskId: task.id,
+        source: 'lumina',
+      });
+      updateTask(task.id, {
+        status: task.status === 'todo' ? 'doing' : task.status,
+        dueDate: today,
+        linkedEventId: linkedEvent.id,
+        scheduledStart: result.startTime,
+        scheduledEnd: result.endTime,
+      });
+    } else {
+      const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      addEvent({
+        id: eventId,
+        title: task.title,
+        description: task.description ?? '',
+        category: 'Focus',
+        date: today,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        linkedTaskId: task.id,
+        source: 'lumina',
+        timezone,
+        color: EVENT_COLORS.Focus,
+      });
+      updateTask(task.id, {
+        status: task.status === 'todo' ? 'doing' : task.status,
+        dueDate: today,
+        linkedEventId: eventId,
+        scheduledStart: result.startTime,
+        scheduledEnd: result.endTime,
+      });
+    }
+
     notify(`✓ "${task.title}" scheduled at ${result.startTime}`);
-  }, [events, addPlanItem, getPlanItemsForDate]);
+  }, [events, addPlanItem, getPlanItemsForDate, linkedEvents, updateEvent, updateTask, addEvent, timezone]);
 
   const handleSchedule = useCallback((payload: TaskSchedulePayload) => {
     if (!schedulingTask) return;
@@ -234,7 +379,12 @@ export const TaskBoard: React.FC = () => {
         linkedTaskId: schedulingTask.id,
         source: 'lumina',
       });
-      updateTask(schedulingTask.id, { linkedEventId: linkedEvent.id });
+      updateTask(schedulingTask.id, {
+        linkedEventId: linkedEvent.id,
+        dueDate: payload.date,
+        scheduledStart: payload.startTime,
+        scheduledEnd: endTime,
+      });
     } else {
       const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
       addEvent({
@@ -253,6 +403,9 @@ export const TaskBoard: React.FC = () => {
       updateTask(schedulingTask.id, {
         linkedEventId: eventId,
         status: schedulingTask.status === 'todo' ? 'doing' : schedulingTask.status,
+        dueDate: payload.date,
+        scheduledStart: payload.startTime,
+        scheduledEnd: endTime,
       });
     }
 
@@ -396,12 +549,12 @@ export const TaskBoard: React.FC = () => {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex gap-4 h-full overflow-x-auto overflow-y-hidden pb-4 items-start">
+        <div className="flex gap-3 h-full overflow-x-auto overflow-y-hidden pb-4 items-start no-scrollbar snap-x snap-mandatory px-1 md:px-0">
           {COLUMNS.map(col => (
             <motion.div
               key={col.id}
               layout
-              className="flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full"
+              className="w-[85vw] snap-center shrink-0 md:w-auto md:snap-none md:shrink md:flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full"
             >
               <TaskColumn
                 id={col.id}
@@ -409,6 +562,7 @@ export const TaskBoard: React.FC = () => {
                 tasks={columnTasks[col.id]}
                 linkedEvents={linkedEvents}
                 isDragOver={overId !== null && findContainerForId(overId, tasks) === col.id && activeTask?.status !== col.id}
+                onPriorityChange={handlePriorityChange}
                 onAddTask={openCreateDialog}
                 onEditTask={openEditDialog}
                 onScheduleTask={openScheduleDialog}
@@ -426,6 +580,7 @@ export const TaskBoard: React.FC = () => {
             <TaskCard
               task={activeTask}
               linkedEvent={activeTask.linkedEventId ? linkedEvents[activeTask.linkedEventId] ?? null : null}
+              onPriorityChange={handlePriorityChange}
               onEdit={() => {}}
               onSchedule={() => {}}
               onAutoSchedule={() => {}}
@@ -441,6 +596,7 @@ export const TaskBoard: React.FC = () => {
       <TaskDialog
         open={dialogOpen}
         task={editingTask}
+        linkedEvent={editingTask?.linkedEventId ? linkedEvents[editingTask.linkedEventId] ?? null : null}
         defaultStatus={defaultStatus}
         onSave={handleSave}
         onClose={closeDialog}

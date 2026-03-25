@@ -15,15 +15,19 @@ interface TodayTimelineProps {
   todayEvents: CalendarEvent[];
   planItems: PlannedTaskItem[];
   taskMap: Map<string, Task>;
+  revealPlanItemDelays?: Map<string, number>;
   onRemovePlanItem: (planItemId: string) => void;
+  onMarkTaskDone?: (taskId: string) => void;
   onUpdatePlanItemTime: (planItemId: string, startTime: string, endTime: string) => void;
   /** Forwarded to DayCalendarTimeline so DailyPlanView can measure scroll position on drop. */
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
+  gridBodyRef?: React.RefObject<HTMLDivElement>;
 }
 
 export const TodayTimeline: React.FC<TodayTimelineProps> = React.memo(({
-  todayEvents, planItems, taskMap, onRemovePlanItem, onUpdatePlanItemTime,
+  todayEvents, planItems, taskMap, revealPlanItemDelays, onRemovePlanItem, onMarkTaskDone, onUpdatePlanItemTime,
   scrollContainerRef,
+  gridBodyRef,
 }) => {
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: 'timeline-drop',
@@ -45,11 +49,14 @@ export const TodayTimeline: React.FC<TodayTimelineProps> = React.memo(({
       calendarEvents={calendarEvents}
       planItems={planItems}
       taskMap={taskMap}
+      revealPlanItemDelays={revealPlanItemDelays}
       onRemovePlanItem={onRemovePlanItem}
+      onMarkTaskDone={onMarkTaskDone}
       onUpdatePlanItemTime={onUpdatePlanItemTime}
       dropRef={setDropRef}
       isDropOver={isOver}
       scrollContainerRef={scrollContainerRef}
+      gridBodyRef={gridBodyRef}
     />
   );
 });

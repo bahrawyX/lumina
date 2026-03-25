@@ -5,12 +5,12 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import type { CalendarEvent } from '../../types';
-import type { Task } from '../../types/task';
+import type { Task, TaskPriority } from '../../types/task';
 import { useDailyPlanStore } from '../../store/useDailyPlanStore';
 import {
   getDueDatePresentation,
+  formatDateOnly,
   getScheduledEventLabel,
-  getPriorityBadgeClassName,
 } from '../../utils/taskBoard';
 import {
   DropdownMenu,
@@ -63,6 +63,7 @@ const AutoScheduleIcon: React.FC = () => (
 export interface TaskCardProps {
   task: Task;
   linkedEvent?: CalendarEvent | null;
+  onPriorityChange: (task: Task, priority: TaskPriority) => void;
   onEdit: (task: Task) => void;
   onSchedule: (task: Task) => void;
   onAutoSchedule: (task: Task) => void;
@@ -71,7 +72,27 @@ export interface TaskCardProps {
   isDragOverlay?: boolean;
 }
 
-export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false }) => {
+const PRIORITY_META: Record<TaskPriority, { label: string; className: string; itemClassName: string }> = {
+  high: {
+    label: 'High',
+    className: 'border-red-400/30 bg-red-500/12 text-red-200 backdrop-blur-md hover:bg-red-500/18',
+    itemClassName: 'text-red-200 focus:text-red-100 focus:bg-red-500/15',
+  },
+  medium: {
+    label: 'Medium',
+    className: 'border-amber-300/25 bg-amber-400/12 text-amber-200 backdrop-blur-md hover:bg-amber-400/18',
+    itemClassName: 'text-amber-200 focus:text-amber-100 focus:bg-amber-500/15',
+  },
+  low: {
+    label: 'Low',
+    className: 'border-cyan-300/25 bg-cyan-400/12 text-cyan-200 backdrop-blur-md hover:bg-cyan-400/18',
+    itemClassName: 'text-cyan-200 focus:text-cyan-100 focus:bg-cyan-500/15',
+  },
+};
+
+const PRIORITY_OPTIONS: TaskPriority[] = ['high', 'medium', 'low'];
+
+export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false }) => {
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
   const todayKey = new Date().toISOString().slice(0, 10);
   const plannedTask = useMemo(
@@ -102,7 +123,15 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onEdit, 
     () => getDueDatePresentation(task.dueDate, task.status),
     [task.dueDate, task.status]
   );
-  const scheduledLabel = useMemo(() => getScheduledEventLabel(linkedEvent), [linkedEvent]);
+  const scheduledLabel = useMemo(() => {
+    const linkedLabel = getScheduledEventLabel(linkedEvent);
+    if (linkedLabel) return linkedLabel;
+    if (task.scheduledStart && task.scheduledEnd) {
+      const dateLabel = formatDateOnly(task.dueDate ?? null, 'MMM d') ?? 'Today';
+      return `${dateLabel} · ${task.scheduledStart}-${task.scheduledEnd}`;
+    }
+    return null;
+  }, [linkedEvent, task.scheduledStart, task.scheduledEnd, task.dueDate]);
 
   return (
     <div
@@ -162,7 +191,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onEdit, 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    className="min-h-11 min-w-11 p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                     aria-label="Task options"
                   >
                     <MoreIcon />
@@ -223,11 +252,50 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onEdit, 
           )}
 
           {/* Footer: metadata chips */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pl-[14px]">
-            {task.priority !== 'medium' && (
-              <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium capitalize ${getPriorityBadgeClassName(task.priority)}`}>
-                {task.priority}
+          <div className="flex flex-wrap items-center gap-1.5 pl-[14px]">
+            {isDragOverlay ? (
+              <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${PRIORITY_META[task.priority].className}`}>
+                {PRIORITY_META[task.priority].label}
               </span>
+            ) : (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="inline-flex"
+              >
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={`inline-flex items-center min-h-11 rounded-xl border px-3 py-1 text-[11px] font-medium transition-colors md:min-h-0 md:rounded-md md:px-2 md:py-0.5 ${PRIORITY_META[task.priority].className}`}
+                      aria-label={`${PRIORITY_META[task.priority].label} priority. Click to change`}
+                    >
+                      {PRIORITY_META[task.priority].label}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    sideOffset={6}
+                    className="w-36 border-white/10 bg-zinc-950/85 backdrop-blur-md"
+                    onCloseAutoFocus={(e) => e.preventDefault()}
+                  >
+                    {PRIORITY_OPTIONS.map((priority) => {
+                      const selected = task.priority === priority;
+                      return (
+                        <DropdownMenuItem
+                          key={priority}
+                          onClick={() => onPriorityChange(task, priority)}
+                          className={`text-xs font-medium ${PRIORITY_META[priority].itemClassName}`}
+                        >
+                          <span className="mr-1.5 inline-block w-2 h-2 rounded-full bg-current/70" />
+                          {PRIORITY_META[priority].label}
+                          {selected && <span className="ml-auto text-[10px] opacity-80">Current</span>}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
             {linkedEvent && (
               <span className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary dark:border-primary/25 dark:bg-primary/15 dark:text-primary-foreground/90">

@@ -1,12 +1,16 @@
 import React from 'react';
 import { format } from 'date-fns';
+import { RollOverButton } from './RollOverButton';
 
 interface DailyPlanHeaderProps {
   date: Date;
   plannedCount: number;
   unplannedCount: number;
+  rolloverCount?: number;
   onAutoPlan?: () => void;
+  onRollOver?: () => void;
   isPlanning?: boolean;
+  isRollingOver?: boolean;
 }
 
 const SunIcon: React.FC = () => (
@@ -23,7 +27,7 @@ const SunIcon: React.FC = () => (
   </svg>
 );
 
-export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ date, plannedCount, unplannedCount, onAutoPlan, isPlanning }) => {
+export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ date, plannedCount, unplannedCount, rolloverCount = 0, onAutoPlan, onRollOver, isPlanning, isRollingOver }) => {
   const dayLabel = format(date, 'EEEE');
   const dateLabel = format(date, 'MMMM d, yyyy');
 
@@ -42,6 +46,14 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
       </div>
 
       <div className="flex items-center gap-3 text-right">
+        {onRollOver && (
+          <RollOverButton
+            onClick={onRollOver}
+            disabled={Boolean(isRollingOver) || rolloverCount === 0}
+            isRolling={isRollingOver}
+            rolloverCount={rolloverCount}
+          />
+        )}
         {onAutoPlan && (
           <button
             type="button"

@@ -13,6 +13,9 @@ export interface Task {
   updatedAt: string;
   dueDate?: string | null;
   linkedEventId?: string | null;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
+  remainingFocusTime?: number | null;
   /** Estimated work duration in minutes. Defaults to 30 when not set. */
   durationMinutes?: number;
 }

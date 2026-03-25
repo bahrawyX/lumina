@@ -7,8 +7,6 @@ import { useFocusStore } from '../../store/useFocusStore';
 import { useTaskBoardStore } from '../../store/useTaskBoardStore';
 import { FocusProgress } from './FocusProgress';
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
 const PauseIcon: React.FC = () => (
   <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor">
     <rect x="6" y="4" width="4" height="16" rx="1" />
@@ -28,8 +26,6 @@ const CheckIcon: React.FC = () => (
   </svg>
 );
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function formatSecs(secs: number): string {
   const s = Math.max(0, Math.floor(secs));
   const m = Math.floor(s / 60);
@@ -37,24 +33,19 @@ function formatSecs(secs: number): string {
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
-// ── FocusTimer ────────────────────────────────────────────────────────────────
+interface FocusTimerProps {
+  onRequestInterruption: () => void;
+}
 
-/**
- * Timer display is driven by a local setInterval that calls getElapsedSecs()
- * (a pure computation on refs) — so ticking does NOT cause store or app rerenders.
- * Only the FocusTimer component itself re-renders every second.
- */
-export const FocusTimer: React.FC = () => {
+export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption }) => {
   const timerState = useFocusStore((s) => s.timerState);
   const activeSession = useFocusStore((s) => s.activeSession);
-  const pauseSession = useFocusStore((s) => s.pauseSession);
   const resumeSession = useFocusStore((s) => s.resumeSession);
   const finishSession = useFocusStore((s) => s.finishSession);
   const getElapsedSecs = useFocusStore((s) => s.getElapsedSecs);
   const updateTask = useTaskBoardStore((s) => s.updateTask);
   const router = useRouter();
 
-  // Local display state — only this component re-renders every second
   const [displaySecs, setDisplaySecs] = useState(() => getElapsedSecs());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const didAutoFinish = useRef(false);
@@ -69,7 +60,7 @@ export const FocusTimer: React.FC = () => {
       duration: 10000,
       action: {
         label: 'Mark as Done',
-        onClick: () => updateTask(taskId, { status: 'done' }),
+        onClick: () => updateTask(taskId, { status: 'done', remainingFocusTime: null }),
       },
     });
   }, [updateTask]);
@@ -82,36 +73,45 @@ export const FocusTimer: React.FC = () => {
       const taskId = useFocusStore.getState().activeSession?.taskId ?? '';
       const taskTitle = useFocusStore.getState().activeSession?.taskTitle ?? '';
       finishSession();
+      if (taskId) {
+        updateTask(taskId, { remainingFocusTime: null });
+      }
       showCompletionToast(taskId, taskTitle);
       router.push('/tasks');
     }
-  }, [getElapsedSecs, totalSecs, finishSession, showCompletionToast, router]);
+  }, [getElapsedSecs, totalSecs, finishSession, showCompletionToast, router, updateTask]);
 
-  // Start/stop interval based on timerState — no global rerender side-effects
   useEffect(() => {
     if (timerState === 'running') {
       intervalRef.current = setInterval(tick, 1000);
     } else {
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       setDisplaySecs(getElapsedSecs());
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [timerState, tick, getElapsedSecs]);
 
   const handleFinish = () => {
     const taskId = activeSession?.taskId ?? '';
     const taskTitle = activeSession?.taskTitle ?? '';
     finishSession();
+    if (taskId) {
+      updateTask(taskId, { remainingFocusTime: null });
+    }
     showCompletionToast(taskId, taskTitle);
     router.push('/tasks');
   };
 
   return (
     <div className="flex flex-col items-center gap-10">
-      {/* Ring + countdown */}
       <div className="relative flex items-center justify-center">
         <FocusProgress progress={progress} size={280} strokeWidth={4} />
-        {/* Subtle glow behind ring when running */}
         {timerState === 'running' && (
           <div className="absolute w-40 h-40 rounded-full bg-primary/8 blur-2xl pointer-events-none" />
         )}
@@ -127,19 +127,16 @@ export const FocusTimer: React.FC = () => {
         </div>
       </div>
 
-      {/* Controls */}
       <div className="flex items-center gap-5">
-        {/* Pause / Resume */}
         <button
           type="button"
-          onClick={timerState === 'running' ? pauseSession : resumeSession}
+          onClick={timerState === 'running' ? onRequestInterruption : resumeSession}
           className="flex items-center justify-center w-12 h-12 rounded-2xl border border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
           aria-label={timerState === 'running' ? 'Pause' : 'Resume'}
         >
           {timerState === 'running' ? <PauseIcon /> : <PlayIcon />}
         </button>
 
-        {/* Finish */}
         <button
           type="button"
           onClick={handleFinish}
@@ -150,7 +147,6 @@ export const FocusTimer: React.FC = () => {
         </button>
       </div>
 
-      {/* Progress bar */}
       <div className="w-48 flex flex-col items-center gap-2">
         <div className="w-full h-[3px] rounded-full bg-border/40 overflow-hidden">
           <div
