@@ -27,7 +27,7 @@ function normalizeGoogleEvents(rawEvents: GoogleRawEventWithColor[]): ApiExterna
         meetingUrl: mapped.meetingUrl,
       };
     })
-    .filter((item): item is ApiExternalEvent => item !== null);
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 }
 
 function normalizeMicrosoftEvents(rawEvents: MicrosoftRawEventWithColor[]): ApiExternalEvent[] {
@@ -50,7 +50,7 @@ function normalizeMicrosoftEvents(rawEvents: MicrosoftRawEventWithColor[]): ApiE
         meetingUrl: mapped.meetingUrl,
       };
     })
-    .filter((item): item is ApiExternalEvent => item !== null);
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 }
 
 export function normalizeExternalEvents(

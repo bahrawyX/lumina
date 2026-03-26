@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function OAuthPopupCompletePage() {
+function PopupCompleteInner() {
   const searchParams = useSearchParams();
   const provider = searchParams.get('provider') ?? 'oauth';
   const hasError = searchParams.get('error') === 'true';
@@ -34,5 +34,13 @@ export default function OAuthPopupCompletePage() {
         <p className="text-sm text-muted-foreground">You can close this window and continue onboarding.</p>
       </div>
     </main>
+  );
+}
+
+export default function OAuthPopupCompletePage() {
+  return (
+    <Suspense>
+      <PopupCompleteInner />
+    </Suspense>
   );
 }
