@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -38,6 +38,7 @@ import { TaskCard } from './TaskCard';
 import { TaskDialog, TaskDialogPayload } from './TaskDialog';
 import { TaskScheduleDialog, TaskSchedulePayload } from './TaskScheduleDialog';
 import { Button } from '../ui/button';
+import { Skeleton } from '../ui/skeleton';
 import { useFocusStore } from '../../store/useFocusStore';
 
 // ── Plus icon ─────────────────────────────────────────────────────────────────
@@ -76,6 +77,10 @@ export const TaskBoard: React.FC = () => {
 
   const addPlanItem   = useDailyPlanStore(s => s.addPlanItem);
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
+
+  // ── Hydration guard — prevents SSR mismatch flash ─────────────────────────
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // ── Dialog state (local: no global store needed) ───────────────────────────
   const [dialogOpen, setDialogOpen]       = useState(false);
@@ -547,7 +552,35 @@ export const TaskBoard: React.FC = () => {
       </div>
 
       {/* Board columns */}
-      <DndContext
+      {!mounted && (
+        <div className="flex gap-3 h-full overflow-hidden pb-4 items-start px-1 md:px-0">
+          {COLUMNS.map(col => (
+            <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full">
+              {/* column header skeleton */}
+              <div className="mb-3 px-1 flex items-center gap-2.5 py-1">
+                <Skeleton className="w-2 h-2 rounded-full flex-shrink-0" />
+                <Skeleton className="h-4 w-16 rounded-md" />
+                <Skeleton className="ml-auto h-4 w-6 rounded-full" />
+              </div>
+              {/* column body skeleton */}
+              <div className="flex-1 rounded-2xl border border-white/5 bg-white/[0.02] p-1.5 flex flex-col gap-2">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="rounded-xl border border-border/30 bg-card p-3 flex flex-col gap-2">
+                    <div className="flex items-start gap-2">
+                      <Skeleton className="flex-1 h-4 rounded" />
+                      <Skeleton className="h-6 w-6 rounded-lg flex-shrink-0" />
+                    </div>
+                    <div className="flex gap-1.5 pl-[14px]">
+                      <Skeleton className="h-4 w-14 rounded-md" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {mounted && <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
@@ -596,7 +629,7 @@ export const TaskBoard: React.FC = () => {
             />
           ) : null}
         </DragOverlay>
-      </DndContext>
+      </DndContext>}
 
       {/* Task dialog (create / edit) */}
       <TaskDialog

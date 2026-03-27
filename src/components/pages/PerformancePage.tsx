@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isWithinInterval, parseISO } from 'date-fns';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
@@ -8,6 +8,7 @@ import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { timeToMinutes } from '@/utils/time/timeUtils';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // ── Metric card ───────────────────────────────────────────────────────────────
 
@@ -63,6 +64,9 @@ const ContextPill: React.FC<{ name: string; count: number; total: number }> = ({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const PerformancePage: React.FC = () => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const events = useCalendarEventsStore((s) => s.events);
   const tasks = useTaskBoardStore((s) => s.tasks);
   const focusHistory = useFocusStore((s) => s.sessionHistory);
@@ -156,6 +160,45 @@ const PerformancePage: React.FC = () => {
 
   const weekLabel = `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
   const noData = weekEvents.length === 0 && completedTasks.length === 0 && weekFocusSessions.length === 0;
+
+  if (!mounted) {
+    return (
+      <>
+        <header className="flex items-center justify-between mb-6 lg:mb-10 px-2 lg:px-4">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-8 w-48 rounded-lg" />
+            <Skeleton className="h-4 w-36 rounded" />
+          </div>
+        </header>
+        <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-2 lg:px-4 pb-10">
+          <div className="space-y-8 max-w-6xl">
+            {/* Heatmap skeleton */}
+            <Skeleton className="h-28 w-full rounded-2xl" />
+            {/* Metric cards skeleton */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="flex flex-col gap-2 p-4 rounded-2xl bg-card border border-border/60">
+                  <Skeleton className="h-3 w-20 rounded" />
+                  <Skeleton className="h-8 w-16 rounded-md" />
+                  <Skeleton className="h-3 w-24 rounded" />
+                </div>
+              ))}
+            </div>
+            {/* Day bars skeleton */}
+            <div className="flex flex-col gap-2">
+              {[1, 2, 3, 4, 5, 6, 7].map(i => (
+                <div key={i} className="flex items-end gap-2">
+                  <Skeleton className="w-8 h-4 rounded" />
+                  <Skeleton className="flex-1 h-6 rounded-md" />
+                  <Skeleton className="w-12 h-4 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

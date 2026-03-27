@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -44,6 +44,7 @@ import { FreeTimePanel } from './FreeTimePanel';
 import { PlanningModal } from './PlanningModal';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Skeleton } from '../ui/skeleton';
 
 const POOL_ROW_ESTIMATE_PX = 78;
 
@@ -60,6 +61,9 @@ interface DailyPlanViewProps {
 }
 
 export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, insightsOpen }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const today = todayKey();
   const todayDate = useMemo(() => new Date(), []);
 
@@ -452,6 +456,63 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col h-full gap-5">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-6 w-40 rounded-lg" />
+            <Skeleton className="h-4 w-24 rounded" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-28 rounded-xl" />
+            <Skeleton className="h-9 w-28 rounded-xl" />
+          </div>
+        </div>
+        {/* Body skeleton */}
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr_200px] gap-3 md:gap-4 min-h-0">
+          {/* Task pool skeleton */}
+          <div className="hidden md:flex flex-col gap-2">
+            <Skeleton className="h-4 w-20 rounded" />
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-border/30">
+                <Skeleton className="w-3 h-10 rounded" />
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <Skeleton className="h-3.5 w-full rounded" />
+                  <Skeleton className="h-2.5 w-2/3 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Timeline skeleton */}
+          <div className="flex flex-col border border-border/50 rounded-2xl overflow-hidden bg-background">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
+              <Skeleton className="h-4 w-32 rounded" />
+            </div>
+            <div className="flex-1 px-3 py-2 flex flex-col gap-2">
+              {[1, 2, 3, 5, 6].map(i => (
+                <div key={i} className="flex gap-3 items-start">
+                  <Skeleton className="w-10 h-3 rounded mt-1 flex-shrink-0" />
+                  <Skeleton className="flex-1 h-12 rounded-xl" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Summary panel skeleton */}
+          <div className="hidden md:flex flex-col gap-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="rounded-xl border border-border/40 p-3 flex flex-col gap-2">
+                <Skeleton className="h-3 w-16 rounded" />
+                <Skeleton className="h-6 w-12 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DndContext

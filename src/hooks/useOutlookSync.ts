@@ -162,9 +162,6 @@ export function useOutlookSync() {
       isFetchingRef.current = true;
       setIsSyncing(true);
       setSyncError(null);
-      if (showLoader) {
-        toast.loading('Syncing calendars...', { id: loaderToastId });
-      }
       let syncFailed = false;
       const providerErrors: string[] = [];
       try {
@@ -183,6 +180,17 @@ export function useOutlookSync() {
         }
 
         if (!googleConnected && !outlookConnected) return;
+
+        // Now we know which providers are active — show a specific toast label
+        if (showLoader) {
+          const providerLabel =
+            googleConnected && outlookConnected
+              ? 'Google & Outlook Calendars'
+              : googleConnected
+              ? 'Google Calendar'
+              : 'Outlook Calendar';
+          toast.loading(`Syncing ${providerLabel}…`, { id: loaderToastId });
+        }
 
         if (googleConnected) {
           if (cachedGoogle !== null) {
@@ -265,7 +273,7 @@ export function useOutlookSync() {
         }
       } finally {
         if (showLoader && !syncFailed) {
-          toast.success('Calendars synced.', { id: loaderToastId, duration: 2_000 });
+          toast.success('Calendar synced ✓', { id: loaderToastId, duration: 2_000 });
         }
         isFetchingRef.current = false;
         setIsSyncing(false);

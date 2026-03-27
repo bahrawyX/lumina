@@ -89,10 +89,17 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
         )}
       </button>
 
-      {/* Drop zone + card list */}
+      {/* Drop zone + card list — clicking the background opens the add-task dialog */}
       <div
         ref={setNodeRef}
-        className={`flex-1 rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 ${
+        onClick={(e) => {
+          if (isDragOver) return;
+          // Fire only when clicking the column background, not on a task card
+          if (!(e.target as Element).closest('[data-task-card-wrapper]')) {
+            onAddTask(id);
+          }
+        }}
+        className={`flex-1 rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 cursor-pointer ${
           isDragOver
             ? 'border-primary/30 bg-primary/10'
             : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'
@@ -112,7 +119,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
             >
               <div className="flex flex-col gap-2">
                 {visibleTasks.map(task => (
-                <motion.div key={task.id} layout>
+                <motion.div key={task.id} layout data-task-card-wrapper>
                   <TaskCard
                     task={task}
                     linkedEvent={task.linkedEventId ? linkedEvents[task.linkedEventId] ?? null : null}
@@ -130,13 +137,10 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
           </div>
         </SortableContext>
 
-        {/* Empty state — clickable to add a task */}
+        {/* Empty state hint */}
         {tasks.length === 0 && (
-          <button
-            type="button"
-            onClick={() => !isDragOver && onAddTask(id)}
-            aria-label={`Add task to ${label}`}
-            className="w-full flex flex-col items-center justify-center h-[80px] gap-2 rounded-xl hover:bg-white/[0.03] transition-colors group/empty"
+          <div
+            className="w-full flex flex-col items-center justify-center h-[80px] gap-2 rounded-xl group/empty pointer-events-none"
           >
             {isDragOver ? (
               <p className="text-[11px] text-muted-foreground/50 select-none">Drop here</p>
@@ -147,12 +151,12 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
                 </div>
-                <p className="text-[11px] text-muted-foreground/40 group-hover/empty:text-muted-foreground/60 select-none transition-colors">
+                <p className="text-[11px] text-muted-foreground/40 select-none transition-colors">
                   Click to add a task
                 </p>
               </>
             )}
-          </button>
+          </div>
         )}
       </div>
 
