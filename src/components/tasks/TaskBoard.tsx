@@ -525,20 +525,20 @@ export const TaskBoard: React.FC = () => {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Board header */}
-      <div className="flex items-center justify-between mb-6 flex-shrink-0">
+      <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0">
         <div>
-          <h1 className="font-display text-xl font-semibold text-foreground tracking-[-0.02em]">
+          <h1 className="font-display text-lg md:text-xl font-semibold text-foreground tracking-[-0.02em]">
             Task Board
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {tasks.length === 0 ? 'No tasks yet — create one to get started' : `${tasks.length} task${tasks.length !== 1 ? 's' : ''} across ${COLUMNS.length} columns`}
+          <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5 hidden sm:block">
+            {tasks.length === 0 ? 'Create a task to get started' : `${tasks.length} task${tasks.length !== 1 ? 's' : ''} across ${COLUMNS.length} columns`}
           </p>
         </div>
 
         <Button
           size="sm"
           onClick={() => openCreateDialog('todo')}
-          className="gap-1.5 rounded-xl h-8 text-xs"
+          className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
           aria-label="Create new task"
         >
           <PlusIcon />

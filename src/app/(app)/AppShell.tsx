@@ -19,11 +19,51 @@ import PersistenceBootstrap from "@/components/PersistenceBootstrap";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 
 const MOBILE_NAV_ITEMS = [
-  { href: '/', label: 'Home' },
-  { href: '/tasks', label: 'Tasks' },
-  { href: '/plan', label: 'Plan' },
-  { href: '/performance', label: 'Stats' },
-  { href: '/focus', label: 'Focus' },
+  {
+    href: '/',
+    label: 'Home',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/tasks',
+    label: 'Tasks',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="8" rx="1"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/plan',
+    label: 'Plan',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/performance',
+    label: 'Stats',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/focus',
+    label: 'Focus',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
+      </svg>
+    ),
+  },
 ] as const;
 
 /* ─── Reads ?connected= after OAuth redirect and fires a branded Sonner toast ───── */
@@ -207,7 +247,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sidebar />
         </div>
         <main className="flex-1 flex flex-col min-w-0 transition-all duration-500 overflow-hidden relative">
-          <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-safe pb-[calc(env(safe-area-inset-bottom)+80px)] md:pb-0 relative">
+          <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 relative">
             {children}
           </div>
         </main>
@@ -232,8 +272,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/50 backdrop-blur-lg border-t border-white/10 pb-safe">
-          <div className="grid grid-cols-5 px-2 pt-2 pb-2">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-xl border-t border-white/8 pb-safe">
+          <div className="grid grid-cols-5 px-1 pt-1.5 pb-1.5">
             {MOBILE_NAV_ITEMS.map((item) => {
               const active = pathname === item.href;
               return (
@@ -241,10 +281,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   prefetch
-                  className={`min-h-11 rounded-xl text-[11px] font-semibold transition-colors flex items-center justify-center ${active ? 'text-white bg-white/12' : 'text-white/70 hover:text-white hover:bg-white/8'}`}
+                  className={`min-h-[52px] rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${
+                    active
+                      ? 'text-primary'
+                      : 'text-white/45 active:text-white/70'
+                  }`}
                   aria-label={item.label}
                 >
-                  {item.label}
+                  <span className={`transition-transform ${active ? 'scale-110' : ''}`}>
+                    {item.icon}
+                  </span>
+                  <span className={`text-[10px] font-medium leading-none tracking-wide ${active ? 'text-primary' : 'text-white/40'}`}>
+                    {item.label}
+                  </span>
                 </Link>
               );
             })}

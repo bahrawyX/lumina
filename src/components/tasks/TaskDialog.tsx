@@ -218,10 +218,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                         if (timeError) setTimeError(false);
                       }}
                     >
-                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
                         <SelectValue placeholder="Set time" />
                       </SelectTrigger>
-                      <SelectContent className="max-h-[200px]">
+                      <SelectContent className="max-h-[240px]">
                         {TIME_OPTIONS.map(t => (
                           <SelectItem key={t} value={t}>{t}</SelectItem>
                         ))}
@@ -240,10 +240,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                         if (timeError) setTimeError(false);
                       }}
                     >
-                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
                         <SelectValue placeholder="Set time" />
                       </SelectTrigger>
-                      <SelectContent className="max-h-[200px]">
+                      <SelectContent className="max-h-[240px]">
                         {TIME_OPTIONS.map(t => (
                           <SelectItem key={t} value={t}>{t}</SelectItem>
                         ))}
@@ -260,7 +260,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground">Status</Label>
                     <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
-                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -274,7 +274,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground">Duration</Label>
                     <Select value={String(durationMinutes)} onValueChange={(v) => setDurationMinutes(Number(v))}>
-                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

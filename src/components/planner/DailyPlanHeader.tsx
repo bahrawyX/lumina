@@ -34,26 +34,43 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
   const dateLabel = format(date, 'MMMM d, yyyy');
 
   return (
-    <div className="flex items-start justify-between pb-4 border-b border-border/50">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10 text-primary">
-          <SunIcon />
+    <div className="flex flex-col gap-3 pb-4 border-b border-border/50 md:flex-row md:items-center md:justify-between md:gap-0">
+      {/* Row 1: date info */}
+      <div className="flex items-center justify-between md:justify-start md:gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10 text-primary flex-shrink-0">
+            <SunIcon />
+          </div>
+          <div>
+            <h1 className="font-display text-lg md:text-xl font-semibold tracking-tight text-foreground leading-none">
+              {dayLabel}
+            </h1>
+            <p className="text-[12px] text-muted-foreground mt-0.5 font-sans">{dateLabel}</p>
+          </div>
         </div>
-        <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight text-foreground leading-none">
-            {dayLabel}
-          </h1>
-          <p className="text-[12px] text-muted-foreground mt-0.5 font-sans">{dateLabel}</p>
+
+        {/* Stats — inline on mobile next to date, hidden on desktop (shown in right cluster) */}
+        <div className="flex items-center gap-2 md:hidden">
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="font-display text-xl font-semibold text-foreground tabular-nums leading-none">{plannedCount}</span>
+            <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">Done</span>
+          </div>
+          <div className="w-px h-6 bg-border/60" />
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="font-display text-xl font-semibold text-muted-foreground tabular-nums leading-none">{unplannedCount}</span>
+            <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">Left</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 text-right">
+      {/* Row 2 on mobile / right cluster on desktop: action buttons + stats */}
+      <div className="flex items-center gap-2 md:gap-3">
         {onToggleInsights && (
           <button
             type="button"
             onClick={onToggleInsights}
             title={insightsOpen ? 'Close AI insights' : 'Open AI insights'}
-            className={`flex items-center justify-center w-8 h-8 rounded-xl border transition-colors ${
+            className={`flex items-center justify-center w-9 h-9 md:w-8 md:h-8 rounded-xl border transition-colors flex-shrink-0 ${
               insightsOpen
                 ? 'border-primary/40 bg-primary/15 text-primary'
                 : 'border-white/10 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
@@ -78,7 +95,7 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
             type="button"
             onClick={onAutoPlan}
             disabled={isPlanning || unplannedCount === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 md:py-1.5 rounded-xl text-xs md:text-[11px] font-semibold bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             title={unplannedCount === 0 ? 'No unscheduled tasks' : 'Auto-schedule unscheduled tasks'}
           >
             {isPlanning ? (
@@ -93,14 +110,18 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
             )}
           </button>
         )}
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="font-display text-2xl font-semibold text-foreground tabular-nums leading-none">{plannedCount}</span>
-          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">Planned</span>
-        </div>
-        <div className="w-px h-8 bg-border/60" />
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="font-display text-2xl font-semibold text-muted-foreground tabular-nums leading-none">{unplannedCount}</span>
-          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">Remaining</span>
+
+        {/* Stats — only visible on desktop */}
+        <div className="hidden md:flex items-center gap-3">
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="font-display text-2xl font-semibold text-foreground tabular-nums leading-none">{plannedCount}</span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">Planned</span>
+          </div>
+          <div className="w-px h-8 bg-border/60" />
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="font-display text-2xl font-semibold text-muted-foreground tabular-nums leading-none">{unplannedCount}</span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">Remaining</span>
+          </div>
         </div>
       </div>
     </div>

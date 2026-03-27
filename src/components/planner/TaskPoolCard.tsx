@@ -50,15 +50,16 @@ export const TaskPoolCard: React.FC<TaskPoolCardProps> = React.memo(({ task, onD
           <span className="text-[10px] text-muted-foreground/50 mt-1 block">{task.dueDate}</span>
         )}
       </div>
-      {/* Delete button — visible on hover */}
+      {/* Delete button — always visible on mobile, hover-only on desktop */}
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
         title="Remove task"
-        className="flex-shrink-0 mt-[2px] flex items-center justify-center w-5 h-5 rounded-md opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all duration-100"
+        aria-label="Remove task"
+        className="flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-5 md:h-5 rounded-lg md:rounded-md opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 active:bg-rose-500/10 transition-all duration-100"
       >
-        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+        <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>

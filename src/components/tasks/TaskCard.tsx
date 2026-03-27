@@ -186,12 +186,12 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
             <div
               onClick={e => e.stopPropagation()}
               onPointerDown={e => e.stopPropagation()}
-              className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mt-0.5 -mr-0.5"
+              className="flex-shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity -mt-0.5 -mr-0.5"
             >
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="h-7 w-7 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
+                    className="h-8 w-8 md:h-7 md:w-7 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
                     aria-label="Task options"
                   >
                     <MoreIcon />

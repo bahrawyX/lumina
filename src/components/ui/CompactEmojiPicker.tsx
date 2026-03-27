@@ -72,7 +72,7 @@ export const CompactEmojiPicker: React.FC<CompactEmojiPickerProps> = ({ onSelect
     : GROUPS.find((g) => g.id === activeGroup)!.emojis;
 
   return (
-    <div className="flex flex-col w-[272px] rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+    <div className="flex flex-col w-[min(272px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur-xl shadow-2xl overflow-hidden">
 
       {/* Search bar */}
       <div className="px-3 pt-3 pb-2.5">
@@ -110,7 +110,7 @@ export const CompactEmojiPicker: React.FC<CompactEmojiPickerProps> = ({ onSelect
               type="button"
               onClick={() => setActiveGroup(group.id)}
               title={group.label}
-              className={`flex flex-1 items-center justify-center h-7 rounded-lg text-[15px] transition-all ${
+              className={`flex flex-1 items-center justify-center h-9 rounded-lg text-[15px] transition-all ${
                 activeGroup === group.id
                   ? 'bg-primary/20 scale-110'
                   : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
@@ -125,17 +125,17 @@ export const CompactEmojiPicker: React.FC<CompactEmojiPickerProps> = ({ onSelect
       {/* Divider */}
       <div className="mx-2.5 mb-2 h-px bg-white/[0.06]" />
 
-      {/* Emoji grid */}
-      <div className="grid grid-cols-8 gap-0.5 px-2 pb-2.5 max-h-[168px] overflow-y-auto no-scrollbar">
+      {/* Emoji grid — 6 cols on narrow, 8 on wider */}
+      <div className="grid grid-cols-6 sm:grid-cols-8 gap-0.5 px-2 pb-2.5 max-h-[180px] overflow-y-auto no-scrollbar">
         {emojis.length === 0 ? (
-          <div className="col-span-8 py-4 text-center text-[11px] text-zinc-600">No results</div>
+          <div className="col-span-6 sm:col-span-8 py-4 text-center text-[11px] text-zinc-600">No results</div>
         ) : (
           emojis.map((emoji, i) => (
             <button
               key={i}
               type="button"
               onClick={() => onSelect(emoji)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg text-[17px] leading-none hover:bg-white/[0.07] active:scale-90 transition-all"
+              className="h-9 w-full flex items-center justify-center rounded-lg text-[18px] leading-none hover:bg-white/[0.07] active:scale-90 transition-all"
             >
               {emoji}
             </button>

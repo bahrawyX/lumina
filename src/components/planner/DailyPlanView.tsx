@@ -518,7 +518,8 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                 type="button"
                 onClick={openQuickAdd}
                 title="Add task"
-                className="flex items-center justify-center w-5 h-5 rounded-md text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
+                aria-label="Add task to pool"
+                className="flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
               >
                 <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -629,7 +630,8 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                   type="button"
                   onClick={() => setPoolOpen((v) => !v)}
                   title={poolOpen ? 'Hide task pool' : 'Show task pool'}
-                  className="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
+                  aria-label={poolOpen ? 'Hide task pool' : 'Show task pool'}
+                  className="flex items-center justify-center w-8 h-8 md:w-6 md:h-6 rounded-lg md:rounded-md text-muted-foreground/50 hover:text-primary hover:bg-primary/10 active:bg-primary/10 transition-colors"
                 >
                   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                     {poolOpen
