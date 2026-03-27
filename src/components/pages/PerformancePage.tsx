@@ -136,7 +136,8 @@ const PerformancePage: React.FC = () => {
     return best;
   }, [dayProductivity]);
 
-  const maxDayMins = useMemo(() => Math.max(...dayProductivity.map((d) => d.mins), 1), [dayProductivity]);
+  // Cap scale at 8 h — a full bar = 8 h worked; anything over 8 h still fills 100%
+  const maxDayMins = 8 * 60;
 
   // Deep work: focus sessions >= 25 minutes
   const deepWorkMins = useMemo(
