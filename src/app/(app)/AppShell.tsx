@@ -11,7 +11,7 @@ import { motion } from "framer-motion";
 import { Toaster as SonnerToaster } from "sonner";
 import { useCalendarStore } from "@/store/useCalendarStore";
 import { useCalendarEventsStore } from "@/store/useCalendarEventsStore";
-import { useOnboardingStore } from "@/store/useOnboardingStore";
+import { useOnboardingStore, useOnboardingHydrated } from "@/store/useOnboardingStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
@@ -72,6 +72,7 @@ function OAuthRedirectToast() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
+  const onboardingHydrated = useOnboardingHydrated();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -93,12 +94,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [calculateIntelligence]);
 
   useEffect(() => {
+    // Wait until the persist middleware has read localStorage.
+    // Without this guard the default `completed: false` fires a redirect
+    // for a single frame even when onboarding was already done.
+    if (!onboardingHydrated) return;
+
     if (!onboardingCompleted && pathname !== "/onboarding") {
       router.replace("/onboarding");
     } else if (onboardingCompleted && pathname === "/onboarding") {
       router.replace("/");
     }
-  }, [onboardingCompleted, pathname, router]);
+  }, [onboardingHydrated, onboardingCompleted, pathname, router]);
 
   useEffect(() => {
     let gPending = false;
@@ -182,6 +188,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router,
     setView,
   ]);
+
+  // Render nothing until onboarding hydration is confirmed.
+  // This eliminates the one-frame flash of the app shell before the redirect fires.
+  if (!onboardingHydrated) return null;
 
   return (
     <>

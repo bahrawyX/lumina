@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useEffect, useState } from 'react';
 
 export type FocusPreference = 'morning' | 'midday' | 'evening' | 'none';
 export type FocusSessionLength = '25/5' | '50/10' | '90/20' | 'custom';
@@ -115,3 +116,24 @@ export const useOnboardingStore = create<OnboardingState>()(
     }
   )
 );
+
+/**
+ * Returns true once the persist middleware has finished reading localStorage.
+ * Use this to gate any redirect logic so it never runs against the un-hydrated
+ * default state (which always has `completed: false`).
+ */
+export function useOnboardingHydrated(): boolean {
+  const [hydrated, setHydrated] = useState(
+    () => useOnboardingStore.persist.hasHydrated()
+  );
+
+  useEffect(() => {
+    if (hydrated) return;
+    const unsub = useOnboardingStore.persist.onFinishHydration(() => setHydrated(true));
+    // Re-check synchronously in case hydration finished between the useState init and here
+    if (useOnboardingStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, [hydrated]);
+
+  return hydrated;
+}
