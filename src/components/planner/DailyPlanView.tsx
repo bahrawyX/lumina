@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -54,7 +54,12 @@ const DROP_SNAP_MINS = 5;
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
-export const DailyPlanView: React.FC = () => {
+interface DailyPlanViewProps {
+  onToggleInsights?: () => void;
+  insightsOpen?: boolean;
+}
+
+export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, insightsOpen }) => {
   const today = todayKey();
   const todayDate = useMemo(() => new Date(), []);
 
@@ -121,6 +126,21 @@ export const DailyPlanView: React.FC = () => {
     ],
     [todayEvents, planItems],
   );
+
+  // ── Auto-sync: tasks with today's due date + scheduled times → plan ─────────
+  useEffect(() => {
+    const todayScheduled = allTasks.filter(
+      (t) =>
+        t.status !== 'done' &&
+        t.dueDate === today &&
+        t.scheduledStart &&
+        t.scheduledEnd &&
+        !plannedTaskIds.has(t.id),
+    );
+    for (const task of todayScheduled) {
+      addPlanItem(task.id, today, task.scheduledStart as string, task.scheduledEnd as string);
+    }
+  }, [allTasks, today, plannedTaskIds, addPlanItem]);
 
   // ── Drag state (local) ────────────────────────────────────────────────────
   const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
@@ -450,6 +470,8 @@ export const DailyPlanView: React.FC = () => {
           rolloverCount={rolloverCandidates.length}
           onRollOver={handleRollOverTasks}
           onAutoPlan={handleAutoPlanDay}
+          onToggleInsights={onToggleInsights}
+          insightsOpen={insightsOpen}
           isPlanning={isPlanningDay}
           isRollingOver={isRollingOver}
         />

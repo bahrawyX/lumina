@@ -9,6 +9,8 @@ interface DailyPlanHeaderProps {
   rolloverCount?: number;
   onAutoPlan?: () => void;
   onRollOver?: () => void;
+  onToggleInsights?: () => void;
+  insightsOpen?: boolean;
   isPlanning?: boolean;
   isRollingOver?: boolean;
 }
@@ -27,7 +29,7 @@ const SunIcon: React.FC = () => (
   </svg>
 );
 
-export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ date, plannedCount, unplannedCount, rolloverCount = 0, onAutoPlan, onRollOver, isPlanning, isRollingOver }) => {
+export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ date, plannedCount, unplannedCount, rolloverCount = 0, onAutoPlan, onRollOver, onToggleInsights, insightsOpen, isPlanning, isRollingOver }) => {
   const dayLabel = format(date, 'EEEE');
   const dateLabel = format(date, 'MMMM d, yyyy');
 
@@ -46,6 +48,23 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
       </div>
 
       <div className="flex items-center gap-3 text-right">
+        {onToggleInsights && (
+          <button
+            type="button"
+            onClick={onToggleInsights}
+            title={insightsOpen ? 'Close AI insights' : 'Open AI insights'}
+            className={`flex items-center justify-center w-8 h-8 rounded-xl border transition-colors ${
+              insightsOpen
+                ? 'border-primary/40 bg-primary/15 text-primary'
+                : 'border-white/10 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
+            }`}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.7-3.3 6l-.7 3H9l-.7-3A7 7 0 0 1 5 9a7 7 0 0 1 7-7z"/>
+              <line x1="9" y1="21" x2="15" y2="21"/>
+            </svg>
+          </button>
+        )}
         {onRollOver && (
           <RollOverButton
             onClick={onRollOver}
