@@ -23,12 +23,12 @@ function ConflictAlerts() {
           key={`${conflict.type}-${conflict.start}-${idx}`}
           className="rounded-xl p-[1px] bg-gradient-to-r from-amber-500/35 via-orange-400/20 to-rose-500/30"
         >
-          <div className="rounded-xl bg-[#0a0a0a]/80 px-3 py-2 border border-white/5">
+          <div className="rounded-xl bg-card/80 px-3 py-2 border border-border/40">
             <div className="flex items-start gap-2">
-              <span className="mt-0.5 text-amber-300">⚠</span>
+              <span className="mt-0.5 text-amber-500 dark:text-amber-300">⚠</span>
               <div>
-                <p className="text-[11px] uppercase tracking-[0.13em] text-amber-200/85">Conflict detected</p>
-                <p className="text-xs text-zinc-200/90 mt-0.5">{conflict.reason}</p>
+                <p className="text-[11px] uppercase tracking-[0.13em] text-amber-600 dark:text-amber-200/85">Conflict detected</p>
+                <p className="text-xs text-foreground/80 mt-0.5">{conflict.reason}</p>
               </div>
             </div>
           </div>
@@ -42,11 +42,11 @@ function LoadingSkeleton() {
   return (
     <div className="space-y-3">
       {skeletonRows.map((row) => (
-        <div key={row} className="rounded-xl border border-white/5 bg-white/[0.02] p-4 animate-pulse">
-          <div className="h-3 w-24 rounded bg-white/10" />
-          <div className="mt-3 h-3 w-full rounded bg-white/10" />
-          <div className="mt-2 h-3 w-3/4 rounded bg-white/10" />
-          <div className="mt-4 h-8 w-20 rounded-lg bg-white/10 ml-auto" />
+        <div key={row} className="rounded-xl border border-border/40 bg-muted/20 p-4 animate-pulse">
+          <div className="h-3 w-24 rounded bg-muted" />
+          <div className="mt-3 h-3 w-full rounded bg-muted" />
+          <div className="mt-2 h-3 w-3/4 rounded bg-muted" />
+          <div className="mt-4 h-8 w-20 rounded-lg bg-muted ml-auto" />
         </div>
       ))}
     </div>
@@ -79,7 +79,7 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 z-20 bg-black/40"
+            className="absolute inset-0 z-20 bg-black/30"
             aria-label="Close intelligence panel"
           />
 
@@ -88,26 +88,26 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-            className="absolute right-0 top-0 z-30 h-full w-full sm:w-[420px] bg-[#0a0a0a]/80 backdrop-blur-xl border-l border-white/10 text-white"
+            className="absolute right-0 top-0 z-30 h-full w-full sm:w-[420px] bg-card/95 backdrop-blur-xl border-l border-border text-foreground"
           >
             <div className="h-full flex flex-col">
-              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold tracking-wide">Explainability Panel</h3>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">Actionable intelligence for your day</p>
+                  <h3 className="text-sm font-semibold tracking-wide text-foreground">Explainability Panel</h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Actionable intelligence for your day</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => fetchIntelligence(true)}
-                    className="h-8 px-2.5 rounded-lg border border-white/15 bg-white/[0.03] text-xs hover:bg-white/[0.07]"
+                    className="h-8 px-2.5 rounded-lg border border-border/60 bg-muted/30 text-xs text-foreground hover:bg-muted/60 transition-colors"
                   >
                     Refresh
                   </button>
                   <button
                     type="button"
                     onClick={onClose}
-                    className="h-8 w-8 rounded-lg border border-white/15 bg-white/[0.03] hover:bg-white/[0.07]"
+                    className="h-8 w-8 rounded-lg border border-border/60 bg-muted/30 text-foreground hover:bg-muted/60 transition-colors"
                     aria-label="Close panel"
                   >
                     ✕
@@ -121,7 +121,7 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
                 {isLoading && <LoadingSkeleton />}
 
                 {!isLoading && error && (
-                  <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+                  <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-200">
                     {error}
                   </div>
                 )}
@@ -129,8 +129,8 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
                 {!isLoading && !error && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-400">Recommendations</p>
-                      <p className="text-[11px] text-zinc-500">{visibleRecommendations.length} active</p>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Recommendations</p>
+                      <p className="text-[11px] text-muted-foreground/70">{visibleRecommendations.length} active</p>
                     </div>
 
                     <AnimatePresence mode="popLayout">
@@ -143,7 +143,7 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
                     </AnimatePresence>
 
                     {visibleRecommendations.length === 0 && (
-                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-zinc-300">
+                      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 text-sm text-muted-foreground">
                         No pending recommendations right now.
                       </div>
                     )}

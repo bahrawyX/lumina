@@ -63,14 +63,14 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
                 }
               }}
               className={cn(
-                'pointer-events-auto w-full max-w-md bg-[#0a0a0a]/90 backdrop-blur-xl border-t border-white/10 md:border md:border-white/10',
+                'pointer-events-auto w-full max-w-md bg-card/95 backdrop-blur-xl border-t border-border md:border md:border-border',
                 'rounded-t-3xl md:rounded-2xl shadow-2xl',
                 className,
               )}
               onClick={(e) => e.stopPropagation()}
             >
               {isMobile && showHandle && (
-                <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mt-3" />
+                <div className="w-12 h-1.5 bg-muted-foreground/25 rounded-full mx-auto mt-3" />
               )}
 
               <div className={cn('px-4 md:px-6 py-4 md:py-6 pb-[max(1rem,env(safe-area-inset-bottom))]', contentClassName)}>

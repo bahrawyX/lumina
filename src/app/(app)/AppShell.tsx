@@ -274,7 +274,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <PersistenceBootstrap />
         <TutorialOverlay />
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-xl border-t border-white/8 pb-safe">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">
           <div className="grid grid-cols-5 px-1 pt-1.5 pb-1.5">
             {MOBILE_NAV_ITEMS.map((item) => {
               const active = pathname === item.href;
@@ -286,14 +286,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className={`min-h-[52px] rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${
                     active
                       ? 'text-primary'
-                      : 'text-white/45 active:text-white/70'
+                      : 'text-muted-foreground active:text-foreground'
                   }`}
                   aria-label={item.label}
                 >
                   <span className={`transition-transform ${active ? 'scale-110' : ''}`}>
                     {item.icon}
                   </span>
-                  <span className={`text-[10px] font-medium leading-none tracking-wide ${active ? 'text-primary' : 'text-white/40'}`}>
+                  <span className={`text-[10px] font-medium leading-none tracking-wide ${active ? 'text-primary' : 'text-muted-foreground'}`}>
                     {item.label}
                   </span>
                 </Link>
