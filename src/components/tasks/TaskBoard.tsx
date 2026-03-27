@@ -31,6 +31,7 @@ import { useToastStore } from '../../store/useToastStore';
 import { expandRecurrences } from '../../utils/dateUtils';
 import { TIMELINE_START_HOUR, TIMELINE_END_HOUR } from '../../utils/dailyPlanUtils';
 import { format } from 'date-fns';
+import { uid } from '../../lib/uid';
 import notify from '../../utils/notify';
 import { TaskColumn } from './TaskColumn';
 import { TaskCard } from './TaskCard';
@@ -183,7 +184,7 @@ export const TaskBoard: React.FC = () => {
             scheduledEnd: endTime,
           });
         } else {
-          const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+          const eventId = uid('ev_');
           addEvent({
             id: eventId,
             title: payload.title,
@@ -211,7 +212,7 @@ export const TaskBoard: React.FC = () => {
       if (createdTask && hasManualTimes) {
         const startTime = payload.startTime as string;
         const endTime = payload.endTime as string;
-        const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        const eventId = uid('ev_');
 
         addEvent({
           id: eventId,
@@ -337,7 +338,7 @@ export const TaskBoard: React.FC = () => {
         scheduledEnd: result.endTime,
       });
     } else {
-      const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const eventId = uid('ev_');
       addEvent({
         id: eventId,
         title: task.title,
@@ -391,7 +392,7 @@ export const TaskBoard: React.FC = () => {
         scheduledEnd: endTime,
       });
     } else {
-      const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const eventId = uid('ev_');
       addEvent({
         id: eventId,
         title: schedulingTask.title,

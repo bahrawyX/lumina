@@ -18,6 +18,7 @@ import { useDragStore } from '../store/useDragStore';
 import { useTaskBoardStore } from '../store/useTaskBoardStore';
 import { EVENT_COLORS } from '../constants';
 import notify from '../utils/notify';
+import { uid } from '../lib/uid';
 import TimeSlotCell, { TimelineSlotClickPayload } from './TimeSlotCell';
 import DragGhost from './DragGhost';
 import { calculateDragCollision } from '../engine/dragEngine';
@@ -332,7 +333,7 @@ const DayView: React.FC<DayViewProps> = ({ events }) => {
         notify(`Moved "${task.title}" to ${startStr}`);
         return;
       }
-      const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const eventId = uid('ev_');
       addEvent({
         id: eventId,
         title: task.title,

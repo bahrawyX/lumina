@@ -8,6 +8,7 @@ import { usePlannerStore } from "../store/usePlannerStore";
 import { CalendarEvent, EventCategory } from "../types";
 import { CATEGORIES } from "../constants";
 import { parseEventNaturalLanguage } from "../services/geminiService";
+import { uid } from "../lib/uid";
 import { timeToMinutes, minutesToTime } from "../utils/dateUtils";
 import { GoogleProviderIcon, OutlookProviderIcon, SparkIcon, TrashIcon } from "./icons";
 
@@ -110,7 +111,7 @@ const EventModal: React.FC = () => {
       setErrors(fe); return;
     }
     const finalEvent: CalendarEvent = {
-      id: localEvent?.id || Math.random().toString(36).substr(2, 9),
+      id: localEvent?.id || uid('ev_'),
       title: result.data.title,
       description: result.data.description || "",
       date: result.data.date,

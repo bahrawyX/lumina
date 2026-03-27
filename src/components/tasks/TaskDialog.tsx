@@ -15,10 +15,13 @@ import { Input } from '../ui/input';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
 
-// ── Time options (30-min intervals) ───────────────────────────────────────────
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2);
-  const m = i % 2 === 0 ? '00' : '30';
+// ── Time options (30-min intervals across 24 h = 48 slots) ───────────────────
+const INTERVAL_MINS = 30;
+const SLOTS_PER_DAY = (24 * 60) / INTERVAL_MINS; // 48
+
+const TIME_OPTIONS = Array.from({ length: SLOTS_PER_DAY }, (_, i) => {
+  const h = Math.floor(i * INTERVAL_MINS / 60);
+  const m = (i * INTERVAL_MINS) % 60 === 0 ? '00' : '30';
   return `${String(h).padStart(2, '0')}:${m}`;
 });
 

@@ -17,6 +17,7 @@ import { buildHourOccupancyMap } from '../engine/overlapEngine';
 import { makeSlotKey, minutesToHHMM } from '../engine/slotEngine';
 import { DAYS, EVENT_COLORS } from '../constants';
 import notify from '../utils/notify';
+import { uid } from '../lib/uid';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
 import { useDragStore } from '../store/useDragStore';
@@ -259,7 +260,7 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
         notify(`Moved "${task.title}" to ${startStr}`);
         return;
       }
-      const eventId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const eventId = uid('ev_');
       addEvent({
         id: eventId,
         title: task.title,

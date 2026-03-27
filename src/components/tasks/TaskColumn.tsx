@@ -135,6 +135,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
           <button
             type="button"
             onClick={() => !isDragOver && onAddTask(id)}
+            aria-label={`Add task to ${label}`}
             className="w-full flex flex-col items-center justify-center h-[80px] gap-2 rounded-xl hover:bg-white/[0.03] transition-colors group/empty"
           >
             {isDragOver ? (

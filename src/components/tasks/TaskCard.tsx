@@ -94,10 +94,10 @@ const PRIORITY_OPTIONS: TaskPriority[] = ['high', 'medium', 'low'];
 
 export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false }) => {
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
-  const todayKey = new Date().toISOString().slice(0, 10);
+  // Stable today string — changes only when the calendar day rolls over (memoised once per mount)
+  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const plannedTask = useMemo(
     () => getPlanItemsForDate(todayKey).find(p => p.taskId === task.id) ?? null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todayKey, task.id, getPlanItemsForDate]
   );
 

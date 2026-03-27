@@ -1,4 +1,5 @@
 import type { CalendarProvider, CalendarProviderEvent } from "./types";
+import { uid } from "../uid";
 
 /**
  * LocalCalendarProvider — reads/writes events from the Zustand store
@@ -22,8 +23,7 @@ export class LocalCalendarProvider implements CalendarProvider {
     _userId: string,
     event: Omit<CalendarProviderEvent, "id">
   ): Promise<CalendarProviderEvent> {
-    const id =
-      Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    const id = uid('ev_');
     return { ...event, id };
   }
 

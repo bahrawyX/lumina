@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { parseCommitment } from '../lib/parseCommitment';
 import { EVENT_COLORS } from '../constants';
 import notify from '../utils/notify';
+import { uid } from '../lib/uid';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Separator } from './ui/separator';
 
@@ -94,7 +95,7 @@ const Profile: React.FC = () => {
     const loadingId = toast.loading('Analyzing commitment…');
     try {
       const parsed = await parseCommitment(raw);
-      const id = Math.random().toString(36).substring(2, 9);
+      const id = uid('ev_');
       addEvent({
         id,
         title: parsed.title,

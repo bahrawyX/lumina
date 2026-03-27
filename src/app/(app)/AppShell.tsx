@@ -11,6 +11,7 @@ import Toaster from "@/components/ui/Toaster";
 import { motion } from "framer-motion";
 import { Toaster as SonnerToaster } from "sonner";
 import { useCalendarStore } from "@/store/useCalendarStore";
+import { ViewType } from "@/types";
 import { useCalendarEventsStore } from "@/store/useCalendarEventsStore";
 import { useOnboardingStore, useOnboardingHydrated } from "@/store/useOnboardingStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
@@ -169,9 +170,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setTab("calendar");
         router.push("/");
       }
-      if (key === "m") setView("month" as any);
-      if (key === "w") setView("week" as any);
-      if (key === "d") setView("day" as any);
+      if (key === "m") setView(ViewType.MONTH);
+      if (key === "w") setView(ViewType.WEEK);
+      if (key === "d") setView(ViewType.DAY);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
