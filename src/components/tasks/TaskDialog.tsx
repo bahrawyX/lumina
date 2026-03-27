@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
+import { CompactEmojiPicker } from '../ui/CompactEmojiPicker';
 import type { CalendarEvent } from '../../types';
 import type { Task, TaskStatus } from '../../types/task';
 import { COLUMNS } from '../../types/task';
@@ -87,8 +87,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
     }
   }, [open, task, linkedEvent, defaultStatus]);
 
-  const handleEmojiClick = (emojiData: EmojiClickData) => {
-    const emoji = emojiData.emoji;
+  const handleEmojiClick = (emoji: string) => {
     setTitle((prev) => {
       const trimmed = prev.trim();
       return trimmed ? `${emoji} ${trimmed}` : emoji;
@@ -178,15 +177,8 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                           😊
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent align="end" className="w-auto p-0 border-white/10 bg-zinc-950/90 backdrop-blur-md">
-                        <EmojiPicker
-                          theme={Theme.DARK}
-                          onEmojiClick={handleEmojiClick}
-                          width={300}
-                          height={360}
-                          previewConfig={{ showPreview: false }}
-                          lazyLoadEmojis
-                        />
+                      <PopoverContent align="end" sideOffset={6} className="w-auto p-0 border-0 bg-transparent shadow-none">
+                        <CompactEmojiPicker onSelect={handleEmojiClick} />
                       </PopoverContent>
                     </Popover>
                   </div>

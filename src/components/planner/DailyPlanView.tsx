@@ -16,7 +16,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { format } from 'date-fns';
 import { addDays } from 'date-fns';
 import { toast } from 'sonner';
-import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
+import { CompactEmojiPicker } from '../ui/CompactEmojiPicker';
 
 import { useCalendarStore } from '../../store/useCalendarStore';
 import { useCalendarEventsStore } from '../../store/useCalendarEventsStore';
@@ -407,8 +407,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
     setTimeout(() => quickAddInputRef.current?.focus(), 30);
   }, []);
 
-  const handleQuickAddEmoji = useCallback((emojiData: EmojiClickData) => {
-    const emoji = emojiData.emoji;
+  const handleQuickAddEmoji = useCallback((emoji: string) => {
     setQuickAddTitle((prev) => {
       const trimmed = prev.trim();
       return trimmed ? `${emoji} ${trimmed}` : emoji;
@@ -536,20 +535,13 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                       <button
                         type="button"
                         aria-label="Insert emoji"
-                        className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors"
+                        className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors text-[13px]"
                       >
                         😊
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-auto p-0 border-white/10 bg-zinc-950/90 backdrop-blur-md">
-                      <EmojiPicker
-                        theme={Theme.DARK}
-                        onEmojiClick={handleQuickAddEmoji}
-                        width={290}
-                        height={340}
-                        previewConfig={{ showPreview: false }}
-                        lazyLoadEmojis
-                      />
+                    <PopoverContent align="start" sideOffset={6} className="w-auto p-0 border-0 bg-transparent shadow-none">
+                      <CompactEmojiPicker onSelect={handleQuickAddEmoji} />
                     </PopoverContent>
                   </Popover>
 
