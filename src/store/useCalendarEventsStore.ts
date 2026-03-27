@@ -3,32 +3,14 @@ import { CalendarEvent } from '../types';
 import notify from '../utils/notify';
 import { useTaskBoardStore } from './useTaskBoardStore';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
+import { getStorageItem, setStorageItem } from '@/lib/storage';
 
-const canUseStorage = typeof window !== 'undefined';
 const isDev = process.env.NODE_ENV === 'development';
 
 /** Returns null when userId is unknown in production — callers must guard on null. */
 function storageKey(userId: string | null): string | null {
   if (userId) return `lumina_events_${userId}`;
   return isDev ? 'lumina_events' : null;
-}
-
-function getStorageItem(key: string | null): string | null {
-  if (!key || !canUseStorage) return null;
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function setStorageItem(key: string | null, value: string): void {
-  if (!key || !canUseStorage) return;
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Ignore storage write failures.
-  }
 }
 
 interface HistoryState {

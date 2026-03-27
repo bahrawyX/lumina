@@ -8,32 +8,15 @@ import {
 } from '../utils/taskBoard';
 import { useDailyPlanStore } from './useDailyPlanStore';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
+import { getStorageItem, setStorageItem } from '@/lib/storage';
+import { uid } from '@/lib/uid';
 
-const canUseStorage = typeof window !== 'undefined';
 const isDev = process.env.NODE_ENV === 'development';
 
 /** Returns null when userId is unknown in production — callers must guard on null. */
 function storageKey(userId: string | null): string | null {
   if (userId) return `lumina_tasks_${userId}`;
   return isDev ? 'lumina_tasks' : null;
-}
-
-function getStorageItem(key: string | null): string | null {
-  if (!key || !canUseStorage) return null;
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function setStorageItem(key: string | null, value: string): void {
-  if (!key || !canUseStorage) return;
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Ignore storage write failures.
-  }
 }
 
 function saveTasks(tasks: Task[], userId: string | null): void {
@@ -55,10 +38,6 @@ function loadTasks(userId: string | null): Task[] {
   } catch {
     return [];
   }
-}
-
-function uid(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
 // ── Store interface ──────────────────────────────────────────────────────────

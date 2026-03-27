@@ -93,12 +93,8 @@ export const expandRecurrences = (events: CalendarEvent[], startRange: Date, end
       if (endCondition.type === 'UNTIL' && currentISO > endCondition.untilDate) break;
       if (endCondition.type === 'COUNT' && count >= endCondition.count) break;
       
-      // Lazy range safety
-      if (currentISO > endISO) {
-          // Break if we passed range and endCondition won't bring us back
-          if (frequency === 'DAILY' || frequency === 'WEEKLY') break;
-          if (frequency === 'MONTHLY' && currentISO > endISO) break;
-      }
+      // Lazy range safety — all frequencies stop once we've passed the visible end.
+      if (currentISO > endISO) break;
 
       let matches = false;
       if (frequency === 'DAILY') matches = true;

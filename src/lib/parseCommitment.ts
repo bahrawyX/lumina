@@ -9,7 +9,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EventCategory } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyACcQnBiBRwFWDx-3nAigF9fHUYSY7nl8g" });
+const apiKey = process.env.GEMINI_API_KEY ?? process.env.NEXT_PUBLIC_GEMINI_API_KEY ?? '';
+const ai = new GoogleGenAI({ apiKey });
 
 export interface ParsedCommitment {
   title: string;
@@ -32,7 +33,9 @@ function addMinutesToTime(time: string, minutes: number): string {
 }
 
 function isValidTime(t: string): boolean {
-  return /^\d{2}:\d{2}$/.test(t);
+  if (!/^\d{2}:\d{2}$/.test(t)) return false;
+  const [h, m] = t.split(':').map(Number);
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 }
 
 function isValidDate(d: string): boolean {

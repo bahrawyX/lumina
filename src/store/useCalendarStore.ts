@@ -9,6 +9,8 @@ import { timeToMinutes, formatDateISO } from '../utils/dateUtils';
 import notify from '../utils/notify';
 import { useTaskBoardStore } from './useTaskBoardStore';
 import { useCalendarEventsStore } from './useCalendarEventsStore';
+import { uid } from '@/lib/uid';
+import { getStorageItem, setStorageItem, removeStorageItem, readStorageJSON } from '@/lib/storage';
 
 interface UserGoal {
   id: string;
@@ -110,43 +112,12 @@ const defaultProfile: UserProfile = {
   intelligence: initialIntelligence
 };
 
-const canUseStorage = typeof window !== 'undefined';
+/** Zero-padded string for time formatting (local to this store). */
+const pad = (n: number): string => String(n).padStart(2, '0');
 
-function getStorageItem(key: string): string | null {
-  if (!canUseStorage) return null;
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function setStorageItem(key: string, value: string): void {
-  if (!canUseStorage) return;
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Ignore storage write failures (private mode/quota) to keep UI functional.
-  }
-}
-
-function removeStorageItem(key: string): void {
-  if (!canUseStorage) return;
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    // Ignore storage remove failures.
-  }
-}
-
-function readStorageJSON<T>(key: string, fallback: T): T {
-  const raw = getStorageItem(key);
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+/** Returns a safe array of goals regardless of persisted schema. */
+function getGoals(profile: UserProfile): UserGoal[] {
+  return Array.isArray(profile.goals) ? profile.goals : [];
 }
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
@@ -274,7 +245,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
         ? Math.max(5, Math.min(240, Math.round(durationMinutesOverride)))
         : FOCUS_DURATIONS[mode];
     const session: FocusSession = {
-      id: Math.random().toString(36).substring(2, 9),
+      id: uid(),
       mode,
       startedAt: new Date().toISOString(),
       durationMinutes,
@@ -291,11 +262,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     const endedAt = new Date().toISOString();
     const start = new Date(session.startedAt);
     const end = new Date(endedAt);
-    const pad = (n: number) => String(n).padStart(2, '0');
     const completed: FocusSession = { ...session, status: 'completed', endedAt };
     // Log as a calendar event
     useCalendarEventsStore.getState().addEvent({
-      id: Math.random().toString(36).substring(2, 9),
+      id: uid(),
       title: session.mode === 'classic' ? 'Focus: Quick Session' : 'Focus: Deep Work',
       description: `${session.durationMinutes}m focus session`,
       date: formatDateISO(start),
@@ -393,7 +363,6 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     // ── 7. Best Focus Slot (next 3 days, 8–18, prefer peak hour) ─────────────
     const peakHour = sortedHours.length > 0 ? parseInt(sortedHours[0][0], 10) : 9;
     let suggestedFocusSlot: IntelligenceProfile['suggestedFocusSlot'];
-    const pad = (n: number) => String(n).padStart(2, '0');
     outer: for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
       const d = new Date();
       d.setDate(d.getDate() + dayOffset);
@@ -437,23 +406,23 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   },
 
   addGoal: (text) => set((state) => {
-    const newGoal = { id: Math.random().toString(36).substr(2, 9), text, completed: false };
-    const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
-    const next = { ...state.profile, goals: [...goals, newGoal] };
+    const newGoal: UserGoal = { id: uid(), text, completed: false };
+    const next = { ...state.profile, goals: [...getGoals(state.profile), newGoal] };
     setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
   toggleGoal: (id) => set((state) => {
-    const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
-    const next = { ...state.profile, goals: goals.map(g => g.id === id ? { ...g, completed: !g.completed } : g) };
+    const next = {
+      ...state.profile,
+      goals: getGoals(state.profile).map(g => g.id === id ? { ...g, completed: !g.completed } : g),
+    };
     setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
   deleteGoal: (id) => set((state) => {
-    const goals = Array.isArray(state.profile.goals) ? state.profile.goals : [];
-    const next = { ...state.profile, goals: goals.filter(g => g.id !== id) };
+    const next = { ...state.profile, goals: getGoals(state.profile).filter(g => g.id !== id) };
     setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
+import { uid } from '@/lib/uid';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -125,10 +126,6 @@ function saveHistory(sessions: FocusSession[], userId: string | null): void {
   } catch { /* quota errors — swallow */ }
 }
 
-function genId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-}
-
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
@@ -167,7 +164,7 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
     // Guard: if a session is already running, do nothing to prevent accidental loss
     if (get().activeSession) return;
     const session: ActiveSession = {
-      id: genId(),
+      id: uid(),
       taskId,
       taskTitle,
       startTime: new Date().toISOString(),

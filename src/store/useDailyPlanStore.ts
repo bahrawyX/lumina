@@ -1,25 +1,7 @@
 import { create } from 'zustand';
 import { format, parseISO, isValid } from 'date-fns';
-
-const canUseStorage = typeof window !== 'undefined';
-
-function getStorageItem(key: string): string | null {
-  if (!canUseStorage) return null;
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function setStorageItem(key: string, value: string): void {
-  if (!canUseStorage) return;
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Ignore storage write failures.
-  }
-}
+import { getStorageItem, setStorageItem } from '@/lib/storage';
+import { uid } from '@/lib/uid';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -123,12 +105,6 @@ function savePlans(plans: Record<string, PlannedTaskItem[]>): void {
   }
 }
 
-// ── uid ───────────────────────────────────────────────────────────────────────
-
-function uid(): string {
-  return 'plan_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-}
-
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
@@ -144,7 +120,7 @@ export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
 
     const now = new Date().toISOString();
     const newItem: PlannedTaskItem = {
-      id: uid(),
+      id: uid('plan_'),
       taskId,
       planDate,
       startTime,
@@ -177,7 +153,7 @@ export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
       if (!item.taskId.trim() || !isValidTime(item.startTime) || !isValidTime(item.endTime)) continue;
       if (existingTaskIds.has(item.taskId)) continue;
       newItems.push({
-        id: uid(),
+        id: uid('plan_'),
         taskId: item.taskId,
         planDate,
         startTime: item.startTime,
