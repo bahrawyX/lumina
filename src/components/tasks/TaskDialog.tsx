@@ -113,7 +113,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
     }
 
     onSave({
-      title: trimmed,
+      title: title.trim(),
       description: description.trim() || undefined,
       status,
       durationMinutes,
