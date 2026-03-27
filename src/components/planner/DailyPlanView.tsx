@@ -564,7 +564,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
             : 'grid-cols-1 md:grid-cols-[0px_1fr_200px] xl:grid-cols-[0px_1fr_220px]'
         }`}>
           {/* ── Left: Task Pool ───────────────────────────────────────────── */}
-          <div className={`hidden md:flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${poolOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div data-tutorial="plan-pool" className={`hidden md:flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${poolOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
             {/* Pool header with + button */}
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 flex items-center gap-1.5">

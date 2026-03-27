@@ -12,6 +12,8 @@ interface TutorialStep {
   title: string;
   desc: string;
   hint?: string;
+  /** If target element is not found within 1.5s, auto-advance */
+  optional?: boolean;
 }
 
 const STEPS: TutorialStep[] = [
@@ -32,25 +34,46 @@ const STEPS: TutorialStep[] = [
     target: 'nav-calendar',
     icon: '🗓',
     title: 'Your Calendar',
-    desc: 'Month, week, and day views in one place. Drag events to instantly reschedule anything.',
+    desc: 'Month, week, and day views. Click to explore — drag events to instantly reschedule anything.',
+  },
+  {
+    target: 'cal-view-tabs',
+    icon: '⊞',
+    title: 'Switch Views',
+    desc: 'Toggle between Month, Week, and Day views. Keyboard shortcuts: M, W, D.',
+    optional: true,
+  },
+  {
+    target: 'nav-tasks',
+    icon: '▦',
+    title: 'Task Board',
+    desc: 'Kanban-style board for everything on your list. Click to see your columns.',
+  },
+  {
+    target: 'task-board-header',
+    icon: '◫',
+    title: 'To Do → Doing → Done',
+    desc: 'Drag cards between columns as you make progress. Click any column to quickly add a task.',
+    optional: true,
+  },
+  {
+    target: 'nav-plan',
+    icon: '◎',
+    title: 'Plan Your Day',
+    desc: 'Pull tasks from your backlog into your daily timeline. Click to explore.',
+  },
+  {
+    target: 'plan-pool',
+    icon: '▤',
+    title: 'Task Pool',
+    desc: 'Drag tasks from the pool onto the timeline to block time for them on your calendar.',
+    optional: true,
   },
   {
     target: 'nav-intelligence',
     icon: '✦',
     title: 'Intelligence',
     desc: 'AI insights that learn your patterns and suggest smarter ways to structure your week.',
-  },
-  {
-    target: 'nav-tasks',
-    icon: '▦',
-    title: 'Task Board',
-    desc: 'Kanban-style board for everything on your list. Move cards through To Do → Doing → Done.',
-  },
-  {
-    target: 'nav-plan',
-    icon: '◎',
-    title: 'Plan Your Day',
-    desc: 'Pull tasks from your backlog and drop them into your calendar to build a realistic daily schedule.',
   },
   {
     target: 'nav-performance',
@@ -62,7 +85,7 @@ const STEPS: TutorialStep[] = [
     target: 'contexts',
     icon: '◈',
     title: 'Contexts',
-    desc: 'Tag everything by context — Work, Health, Personal — to filter your view in one click.',
+    desc: 'Tag tasks and events by context — Work, Health, Personal — to filter your view in one click.',
   },
 ];
 
@@ -78,11 +101,13 @@ function useTargetRect(target: string | null): DOMRect | null {
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
-    if (!target) return;
+    if (!target) { setRect(null); return; }
+
     const update = () => {
       const el = document.querySelector(`[data-tutorial="${target}"]`);
       setRect(el ? el.getBoundingClientRect() : null);
     };
+
     const id = setTimeout(update, 80);
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
@@ -178,50 +203,11 @@ const AnimatedCursor = ({ x, y }: { x: number; y: number }) => (
         />
       </svg>
     </motion.div>
-
-    {/* Click ripple */}
     <motion.div
       className="absolute rounded-full"
       style={{ top: 8, left: 6, border: '1.5px solid rgba(255,255,255,0.6)' }}
-      animate={{
-        width: [4, 22], height: [4, 22],
-        marginLeft: [-2, -11], marginTop: [-2, -11],
-        opacity: [0.9, 0],
-      }}
+      animate={{ width: [4, 22], height: [4, 22], marginLeft: [-2, -11], marginTop: [-2, -11], opacity: [0.9, 0] }}
       transition={{ duration: 1.1, repeat: Infinity, repeatDelay: 2.1, delay: 0.35, ease: 'easeOut' }}
-    />
-  </motion.div>
-);
-
-/* ── Beacon pulse ring ───────────────────────────────────────────── */
-
-const BeaconRing = ({ sx, sy, sw, sh }: { sx: number; sy: number; sw: number; sh: number }) => (
-  <motion.div
-    className="fixed pointer-events-none z-[9991]"
-    animate={{ left: sx, top: sy, width: sw, height: sh }}
-    transition={SPRING}
-    style={{ borderRadius: 14 }}
-  >
-    {/* Solid primary border + glow */}
-    <div
-      className="absolute inset-0 rounded-[14px]"
-      style={{ boxShadow: '0 0 0 1.5px rgba(109,89,224,0.9), 0 0 28px 5px rgba(109,89,224,0.18)' }}
-    />
-
-    {/* Pulsing ring 1 */}
-    <motion.div
-      className="absolute rounded-[14px]"
-      style={{ inset: -4, border: '2px solid rgba(109,89,224,0.45)' }}
-      animate={{ scale: [1, 1.08], opacity: [0.65, 0] }}
-      transition={{ duration: 1.9, repeat: Infinity, ease: 'easeOut', repeatDelay: 0.4 }}
-    />
-
-    {/* Pulsing ring 2 — staggered */}
-    <motion.div
-      className="absolute rounded-[14px]"
-      style={{ inset: -8, border: '1.5px solid rgba(109,89,224,0.2)' }}
-      animate={{ scale: [1, 1.12], opacity: [0.4, 0] }}
-      transition={{ duration: 1.9, repeat: Infinity, ease: 'easeOut', repeatDelay: 0.4, delay: 0.28 }}
     />
   </motion.div>
 );
@@ -259,11 +245,10 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
       className="relative rounded-2xl border border-border/50 bg-popover/95 shadow-2xl overflow-hidden"
       style={{ backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)' }}
     >
-      {/* Accent stripe */}
       <div className="h-[2px] bg-gradient-to-r from-primary via-primary/60 to-transparent" />
 
       <div className="p-5">
-        {/* Progress pills + counter */}
+        {/* Progress pills */}
         <div className="flex items-center gap-[3px] mb-4">
           {Array.from({ length: TOTAL }).map((_, i) => (
             <motion.div
@@ -280,7 +265,6 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
           </span>
         </div>
 
-        {/* Icon + title — staggered in */}
         <motion.div
           key={`title-${stepIndex}`}
           className="flex items-start gap-2.5 mb-2"
@@ -291,12 +275,9 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
           <span className="mt-0.5 text-base leading-none text-primary/80 select-none" aria-hidden>
             {step.icon}
           </span>
-          <h3 className="font-semibold text-[13.5px] leading-snug text-foreground">
-            {step.title}
-          </h3>
+          <h3 className="font-semibold text-[13.5px] leading-snug text-foreground">{step.title}</h3>
         </motion.div>
 
-        {/* Description */}
         <motion.p
           key={`desc-${stepIndex}`}
           className="text-[12px] leading-relaxed text-muted-foreground pl-[26px]"
@@ -307,7 +288,6 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
           {step.desc}
         </motion.p>
 
-        {/* Optional hint badge */}
         {step.hint && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -323,7 +303,6 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
 
         <div className="mt-4 mb-3 h-px bg-border/40" />
 
-        {/* Actions */}
         <div className="flex items-center justify-between">
           <button
             onClick={onSkip}
@@ -331,7 +310,6 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
           >
             Skip tour
           </button>
-
           <motion.button
             onClick={onNext}
             whileHover={{ scale: 1.04 }}
@@ -350,15 +328,91 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
   </motion.div>
 );
 
+/* ── Tour notification prompt ─────────────────────────────────────── */
+
+const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: () => void }) => (
+  <motion.div
+    className="fixed bottom-24 right-5 z-[9980] w-[300px] pointer-events-auto"
+    initial={{ opacity: 0, y: 24, scale: 0.95 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: 16, scale: 0.96 }}
+    transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+  >
+    <div
+      className="rounded-2xl border border-border/50 bg-popover/95 shadow-2xl overflow-hidden"
+      style={{ backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)' }}
+    >
+      <div className="h-[2px] bg-gradient-to-r from-primary via-primary/60 to-transparent" />
+      <div className="p-4">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary text-sm">
+            ✦
+          </div>
+          <div>
+            <p className="font-semibold text-[13px] text-foreground leading-snug">New to Lumina?</p>
+            <p className="text-[11.5px] text-muted-foreground mt-0.5 leading-relaxed">
+              Take a 2-minute tour and discover everything your workspace can do.
+            </p>
+          </div>
+        </div>
+        <div className="h-px bg-border/40 mb-3" />
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={onDismiss}
+            className="text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors font-medium"
+          >
+            Maybe later
+          </button>
+          <motion.button
+            onClick={onStart}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-[12px] font-semibold hover:opacity-90 transition-opacity"
+          >
+            Show me around <span aria-hidden className="opacity-70">→</span>
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  </motion.div>
+);
+
+/* ── Floating tour trigger button ────────────────────────────────── */
+
+const FloatingTourButton = ({ onClick }: { onClick: () => void }) => (
+  <motion.button
+    onClick={onClick}
+    className="fixed bottom-24 right-5 z-[9980] w-10 h-10 rounded-full bg-primary/10 border border-primary/30 text-primary flex items-center justify-center shadow-lg hover:bg-primary/20 transition-colors pointer-events-auto"
+    initial={{ opacity: 0, scale: 0.8 }}
+    animate={{ opacity: 1, scale: 1 }}
+    exit={{ opacity: 0, scale: 0.8 }}
+    whileHover={{ scale: 1.08 }}
+    whileTap={{ scale: 0.94 }}
+    transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+    title="Take a tour"
+    aria-label="Take a tour of Lumina"
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth={2.5} />
+    </svg>
+  </motion.button>
+);
+
 /* ── Main overlay ────────────────────────────────────────────────── */
 
 export default function TutorialOverlay() {
-  const { isActive, currentStep, nextStep, skipTutorial } = useTutorialStore();
+  const {
+    isActive, currentStep, nextStep, skipTutorial,
+    hasCompletedTutorial, hasSeenPrompt,
+    startTutorial, dismissPrompt,
+  } = useTutorialStore();
 
   const step = STEPS[currentStep];
   const rawRect = useTargetRect(isActive && step ? step.target : null);
 
-  // Retain last valid rect so spotlight doesn't vanish on step change
+  // Retain last valid rect so spotlight doesn't vanish mid-transition
   const [rect, setRect] = useState<DOMRect | null>(null);
   useEffect(() => {
     if (rawRect) setRect(rawRect);
@@ -366,7 +420,17 @@ export default function TutorialOverlay() {
 
   const handleNext = useCallback(() => nextStep(TOTAL), [nextStep]);
 
-  // Keyboard shortcuts: → / Enter = next, Escape = skip
+  // Auto-advance optional steps whose target element isn't found after 1.5s
+  useEffect(() => {
+    if (!isActive || !step?.optional) return;
+    if (rawRect) return; // element found — no need to skip
+    const id = setTimeout(() => {
+      if (!rawRect) handleNext();
+    }, 1500);
+    return () => clearTimeout(id);
+  }, [isActive, step, rawRect, handleNext]);
+
+  // Keyboard: → / Enter = next, Escape = skip
   useEffect(() => {
     if (!isActive) return;
     const onKey = (e: KeyboardEvent) => {
@@ -377,10 +441,24 @@ export default function TutorialOverlay() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isActive, handleNext, skipTutorial]);
 
-  if (!isActive || !rect) return null;
+  const winW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const winH = typeof window !== 'undefined' ? window.innerHeight : 800;
 
-  const winW = window.innerWidth;
-  const winH = window.innerHeight;
+  // ── Notification prompt & floating button (not active, not completed) ──
+  if (!isActive) {
+    if (hasCompletedTutorial) return null;
+    return (
+      <AnimatePresence>
+        {!hasSeenPrompt ? (
+          <TourPrompt key="tour-prompt" onStart={startTutorial} onDismiss={dismissPrompt} />
+        ) : (
+          <FloatingTourButton key="tour-btn" onClick={startTutorial} />
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  if (!rect) return null;
 
   const sx = rect.left - PAD;
   const sy = rect.top - PAD;
@@ -391,16 +469,26 @@ export default function TutorialOverlay() {
   const cursorX = sx + sw - 16;
   const cursorY = sy + sh - 16;
 
+  // Four surrounding rects — block clicks everywhere EXCEPT the spotlight area
+  const blockers = [
+    { left: 0, top: 0, width: winW, height: sy },
+    { left: 0, top: sy, width: sx, height: sh },
+    { left: sx + sw, top: sy, width: Math.max(0, winW - (sx + sw)), height: sh },
+    { left: 0, top: sy + sh, width: winW, height: Math.max(0, winH - (sy + sh)) },
+  ];
+
   return (
     <>
-      {/* Interaction blocker — prevents clicks reaching the app */}
-      <div className="fixed inset-0 z-[9988]" />
+      {/* Surrounding click blockers — spotlight area remains fully interactive */}
+      {blockers.map((b, i) => (
+        <div
+          key={i}
+          className="fixed z-[9988]"
+          style={{ left: b.left, top: b.top, width: b.width, height: b.height }}
+        />
+      ))}
 
-      {/*
-        SVG spotlight overlay — reliable cross-browser spotlight via mask.
-        The mask is white everywhere (visible) except the animated black rect
-        (transparent), creating a precise cutout at the target element.
-      */}
+      {/* SVG spotlight — SVG mask guarantees a clean cutout in all browsers */}
       <motion.svg
         className="fixed inset-0 z-[9990] pointer-events-none"
         style={{ position: 'fixed', top: 0, left: 0 }}
@@ -431,10 +519,7 @@ export default function TutorialOverlay() {
         />
       </motion.svg>
 
-      {/* Beacon ring tracks spotlight position */}
-      <BeaconRing sx={sx} sy={sy} sw={sw} sh={sh} />
-
-      {/* Tooltip card — re-mounts on step change for enter/exit animation */}
+      {/* Tooltip card */}
       <AnimatePresence mode="wait">
         <TooltipCard
           key={currentStep}
@@ -448,7 +533,7 @@ export default function TutorialOverlay() {
         />
       </AnimatePresence>
 
-      {/* Animated cursor — springs to target element corner */}
+      {/* Animated cursor */}
       <AnimatePresence>
         <AnimatedCursor key={`cursor-${currentStep}`} x={cursorX} y={cursorY} />
       </AnimatePresence>

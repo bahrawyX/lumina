@@ -70,7 +70,7 @@ const CalendarPage: React.FC = () => {
       <header className="flex flex-col md:flex-row items-center justify-between mb-6 lg:mb-10 gap-4 lg:gap-6 px-2 lg:px-4 py-4">
         <div className="flex items-center gap-6 lg:gap-10">
           <Tabs value={view} onValueChange={(v) => setView(v as ViewType)}>
-            <TabsList className="h-9">
+            <TabsList className="h-9" data-tutorial="cal-view-tabs">
               <TabsTrigger value={ViewType.MONTH} className="text-xs gap-1.5">
                 <LayoutGridIcon size={14} className="opacity-70" />
                 Month

@@ -530,7 +530,7 @@ export const TaskBoard: React.FC = () => {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Board header */}
-      <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0">
+      <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0" data-tutorial="task-board-header">
         <div>
           <h1 className="font-display text-lg md:text-xl font-semibold text-foreground tracking-[-0.02em]">
             Task Board
