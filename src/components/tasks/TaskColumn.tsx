@@ -67,7 +67,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
       <button
         type="button"
         onClick={() => onAddTask(id)}
-        className="mb-3 px-1 w-full text-left group/col-header rounded-xl hover:bg-accent/30 transition-colors py-1 -mt-1"
+        className="mb-3 px-1 w-full text-left group/col-header rounded-xl transition-colors py-1 -mt-1"
         aria-label={`Add task to ${label}`}
       >
         <div className="flex items-center gap-2.5">

@@ -129,7 +129,7 @@ const TimerCallout: React.FC = () => {
           whileHover={{ scale: 1.05, y: -3 }}
           whileTap={{ scale: 0.96 }}
           onClick={() => startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength)}
-          className="w-16 h-16 bg-primary text-white rounded-full flex items-center justify-center shadow-layered border-4 border-white dark:border-neutral-dark relative"
+          className="w-14 h-14 bg-primary text-white rounded-2xl flex items-center justify-center shadow-lg relative"
           aria-label="Ignite Flow"
         >
           <TimerIcon size={22} />

@@ -20,7 +20,7 @@ export const SURFACE_CLS =
 export const CELL_CLS = [
   'bg-white/60 dark:bg-neutral-panel/60',
   'rounded-xl overflow-hidden',
-  'border-b-2 border border-gray-200 dark:border-neutral-border/40',
+  'border border-gray-200 dark:border-neutral-border/40',
   'shadow-[0_1px_3px_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.06)]',
   'dark:shadow-[0_1px_4px_rgba(0,0,0,0.22),0_0_0_1px_rgba(255,255,255,0.03)]',
 ].join(' ');
