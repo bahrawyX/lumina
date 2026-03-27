@@ -16,6 +16,7 @@ import { useCalendarEventsStore } from "@/store/useCalendarEventsStore";
 import { useOnboardingStore, useOnboardingHydrated } from "@/store/useOnboardingStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
+import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 
 const MOBILE_NAV_ITEMS = [
@@ -271,6 +272,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
+        <TutorialOverlay />
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-xl border-t border-white/8 pb-safe">
           <div className="grid grid-cols-5 px-1 pt-1.5 pb-1.5">

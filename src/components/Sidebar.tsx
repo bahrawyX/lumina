@@ -28,6 +28,7 @@ import {
   OutlookProviderIcon,
 } from './icons';
 import { useLuminaAuthClient } from './AuthProvider';
+import { useTutorialStore } from '../store/useTutorialStore';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -134,6 +135,7 @@ const AppSidebar: React.FC = () => {
   const { data: _session } = authClient.useSession();
   const _userId = _session?.user?.id ?? null;
   const resetOnboarding = useOnboardingStore((s) => s.reset);
+  const startTutorial = useTutorialStore((s) => s.startTutorial);
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const tasks = useTaskBoardStore((s) => s.tasks);
   const {
@@ -682,6 +684,7 @@ const AppSidebar: React.FC = () => {
                     router.push('/');
                     openModal();
                   }}
+                  data-tutorial="new-entry"
                   className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-muted/50 hover:bg-muted border border-border/50 text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
                     }`}
                 >
@@ -725,6 +728,7 @@ const AppSidebar: React.FC = () => {
                     onClick={() => {
                       startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength);
                     }}
+                    data-tutorial="ignite-flow"
                     className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-transparent hover:bg-muted/60 border border-border/50 text-muted-foreground hover:text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
                       }`}
                   >
@@ -780,6 +784,7 @@ const AppSidebar: React.FC = () => {
                   collapsed={isSidebarCollapsed}
                   href="/"
                   onClick={() => router.push('/')}
+                  dataTutorial="nav-calendar"
                 />
                 <WorkspaceItem
                   icon={SparklesIcon}
@@ -788,6 +793,7 @@ const AppSidebar: React.FC = () => {
                   collapsed={isSidebarCollapsed}
                   href="/intelligence"
                   onClick={() => router.push('/intelligence')}
+                  dataTutorial="nav-intelligence"
                 />
                 <WorkspaceItem
                   icon={KanbanIcon}
@@ -796,6 +802,7 @@ const AppSidebar: React.FC = () => {
                   collapsed={isSidebarCollapsed}
                   href="/tasks"
                   onClick={() => router.push('/tasks')}
+                  dataTutorial="nav-tasks"
                 />
                 <WorkspaceItem
                   icon={PlanDayIcon}
@@ -804,6 +811,7 @@ const AppSidebar: React.FC = () => {
                   collapsed={isSidebarCollapsed}
                   href="/plan"
                   onClick={() => router.push('/plan')}
+                  dataTutorial="nav-plan"
                 />
                 <WorkspaceItem
                   icon={BarChart3Icon}
@@ -812,13 +820,14 @@ const AppSidebar: React.FC = () => {
                   collapsed={isSidebarCollapsed}
                   href="/performance"
                   onClick={() => router.push('/performance')}
+                  dataTutorial="nav-performance"
                 />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
 
           {/* Contexts */}
-          <SidebarGroup className="px-2 mt-1">
+          <SidebarGroup className="px-2 mt-1" data-tutorial="contexts">
             {!isSidebarCollapsed && (
               <div className="flex items-center justify-between px-2 mb-2">
                 <SidebarGroupLabel>Contexts</SidebarGroupLabel>
@@ -949,6 +958,13 @@ const AppSidebar: React.FC = () => {
               <DropdownMenuItem>
                 <SettingsIcon size={14} className="text-muted-foreground" />
                 Settings
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={startTutorial}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                  <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Take a tour
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -1165,10 +1181,11 @@ interface WorkspaceItemProps {
   collapsed: boolean;
   href: string;
   onClick: () => void;
+  dataTutorial?: string;
 }
 
 const WorkspaceItem = React.memo<WorkspaceItemProps>(
-  ({ icon: Icon, label, isActive, collapsed, href, onClick }) => (
+  ({ icon: Icon, label, isActive, collapsed, href, onClick, dataTutorial }) => (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1176,6 +1193,7 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             isActive={isActive}
             onClick={onClick}
             className={`relative ${collapsed ? 'justify-center' : ''}`}
+            {...(dataTutorial ? { 'data-tutorial': dataTutorial } : {})}
           >
             {/* Invisible Link for prefetching — pointer-events-none so button click wins */}
             <Link href={href} prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
