@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
+import { getFieldError, contextNameSchema } from '../lib/validation';
 
 interface CustomContextDialogProps {
   open: boolean;
@@ -56,8 +57,10 @@ const CustomContextDialog: React.FC<CustomContextDialogProps> = ({
   }, [open, initialName, initialColor]);
 
   const handleSave = () => {
+    const schemaError = getFieldError(contextNameSchema, name);
+    if (schemaError) { setError(schemaError); return; }
+
     const trimmed = name.trim();
-    if (!trimmed) return;
     const saved = onSave(trimmed, selectedColor);
     if (saved === false) {
       setError('A context with this name already exists.');
@@ -92,10 +95,13 @@ const CustomContextDialog: React.FC<CustomContextDialogProps> = ({
               <input
                 ref={inputRef}
                 value={name}
-                onChange={(e) => { setName(e.target.value); setError(''); }}
+                onChange={(e) => { setName(e.target.value); if (error) setError(''); }}
                 onKeyDown={(e) => e.key === 'Enter' && handleSave()}
                 placeholder="e.g., Deep Work, Client, Exercise"
-                className="w-full pl-8 pr-3 h-9 rounded-xl bg-muted/50 border border-border/60 text-sm font-medium text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/50 focus:bg-background transition-colors duration-150"
+                maxLength={50}
+                className={`w-full pl-8 pr-3 h-9 rounded-xl bg-muted/50 border text-sm font-medium text-foreground placeholder:text-muted-foreground/40 outline-none focus:bg-background transition-colors duration-150 ${
+                  error ? 'border-destructive focus:border-destructive' : 'border-border/60 focus:border-primary/50'
+                }`}
               />
             </div>
             {error && (
@@ -146,7 +152,6 @@ const CustomContextDialog: React.FC<CustomContextDialogProps> = ({
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={!name.trim()}
             className="h-8 px-4 text-xs font-semibold"
           >
             {mode === 'edit' ? 'Save' : 'Create'}

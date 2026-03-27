@@ -14,6 +14,7 @@ import { Calendar } from '../ui/calendar';
 import { Input } from '../ui/input';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
+import { titleSchema, getFieldError } from '../../lib/validation';
 
 // ── Time options (30-min intervals across 24 h = 48 slots) ───────────────────
 const INTERVAL_MINS = 30;
@@ -68,8 +69,8 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [dueDate, setDueDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [titleError, setTitleError] = useState(false);
-  const [timeError, setTimeError] = useState(false);
+  const [titleError, setTitleError] = useState('');
+  const [timeError, setTimeError] = useState('');
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
@@ -83,8 +84,8 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setDueDate(normalizeDueDateString(task?.dueDate) ?? '');
       setStartTime(linkedEvent?.startTime ?? '');
       setEndTime(linkedEvent?.endTime ?? '');
-      setTitleError(false);
-      setTimeError(false);
+      setTitleError('');
+      setTimeError('');
       setDatePickerOpen(false);
       setEmojiPickerOpen(false);
     }
@@ -99,19 +100,15 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   };
 
   const handleSave = () => {
-    const trimmed = title.trim();
-    if (!trimmed) {
-      setTitleError(true);
-      return;
-    }
+    const titleErr = getFieldError(titleSchema, title);
+    if (titleErr) { setTitleError(titleErr); return; }
 
     if ((startTime && !endTime) || (!startTime && endTime)) {
-      setTimeError(true);
+      setTimeError('Both start and end time are required if one is set.');
       return;
     }
-
     if (startTime && endTime && endTime <= startTime) {
-      setTimeError(true);
+      setTimeError('End time must be after start time.');
       return;
     }
 
@@ -167,8 +164,8 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       autoFocus
                       placeholder="What needs to be done?"
                       value={title}
-                      onChange={e => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
-                      className={`h-9 pr-10 text-sm rounded-xl ${titleError ? 'border-destructive ring-destructive/30' : ''}`}
+                      onChange={e => { setTitle(e.target.value); if (titleError) setTitleError(''); }}
+                      className={`h-9 pr-10 text-sm rounded-xl ${titleError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}
                     />
                     <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
                       <PopoverTrigger asChild>
@@ -186,7 +183,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                     </Popover>
                   </div>
                   {titleError && (
-                    <p className="text-[11px] text-destructive">Title is required.</p>
+                    <p className="text-[11px] text-destructive">{titleError}</p>
                   )}
                 </div>
 
@@ -215,10 +212,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       value={startTime || undefined}
                       onValueChange={(v) => {
                         setStartTime(v);
-                        if (timeError) setTimeError(false);
+                        if (timeError) setTimeError('');
                       }}
                     >
-                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
+                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-xl ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
                         <SelectValue placeholder="Set time" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[240px]">
@@ -237,10 +234,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       value={endTime || undefined}
                       onValueChange={(v) => {
                         setEndTime(v);
-                        if (timeError) setTimeError(false);
+                        if (timeError) setTimeError('');
                       }}
                     >
-                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
+                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-xl ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
                         <SelectValue placeholder="Set time" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[240px]">
@@ -252,7 +249,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   </div>
                 </div>
                 {timeError && (
-                  <p className="text-[11px] text-destructive">End time must be after start time, and both times are required if one is set.</p>
+                  <p className="text-[11px] text-destructive">{timeError}</p>
                 )}
 
                 {/* Status + Duration row */}

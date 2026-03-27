@@ -52,6 +52,7 @@ export const TaskScheduleDialog: React.FC<TaskScheduleDialogProps> = ({
   const [startTime, setStartTime] = useState('09:00');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateError, setDateError] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -62,6 +63,7 @@ export const TaskScheduleDialog: React.FC<TaskScheduleDialogProps> = ({
     setStartTime(linkedEvent?.startTime ?? '09:00');
     setDurationMinutes(linkedEvent ? getDurationMinutes(linkedEvent.startTime, linkedEvent.endTime) : 60);
     setDatePickerOpen(false);
+    setDateError('');
   }, [open, linkedEvent?.date, linkedEvent?.startTime, linkedEvent?.endTime]);
 
   const selectedDate = useMemo(() => parseDateOnly(date) ?? undefined, [date]);
@@ -86,7 +88,9 @@ export const TaskScheduleDialog: React.FC<TaskScheduleDialogProps> = ({
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="h-9 w-full rounded-xl border border-input bg-background px-3 text-left text-sm hover:bg-accent/40 transition-colors"
+                    className={`h-9 w-full rounded-xl border bg-background px-3 text-left text-sm hover:bg-accent/40 transition-colors ${
+                      dateError ? 'border-destructive' : 'border-input'
+                    }`}
                   >
                     <span className={date ? 'text-foreground' : 'text-muted-foreground'}>
                       {formatDateOnly(date) ?? 'Pick a date'}
@@ -100,6 +104,7 @@ export const TaskScheduleDialog: React.FC<TaskScheduleDialogProps> = ({
                     onSelect={(nextDate) => {
                       if (nextDate) {
                         setDate(format(nextDate, 'yyyy-MM-dd'));
+                        setDateError('');
                       }
                       setDatePickerOpen(false);
                     }}
@@ -108,6 +113,8 @@ export const TaskScheduleDialog: React.FC<TaskScheduleDialogProps> = ({
                 </PopoverContent>
               </Popover>
             </div>
+
+            {dateError && <p className="text-xs text-destructive -mt-2">{dateError}</p>}
 
             <TimePicker label="Start time" value={startTime} onChange={setStartTime} />
 
@@ -138,9 +145,11 @@ export const TaskScheduleDialog: React.FC<TaskScheduleDialogProps> = ({
             Cancel
           </Button>
           <Button
-            onClick={() => onSchedule({ date, startTime, durationMinutes })}
+            onClick={() => {
+              if (!date) { setDateError('Please select a date.'); return; }
+              onSchedule({ date, startTime, durationMinutes });
+            }}
             className="rounded-xl"
-            disabled={!date}
           >
             {linkedEvent ? 'Reschedule' : 'Schedule'}
           </Button>

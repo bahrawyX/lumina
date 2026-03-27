@@ -271,24 +271,26 @@ const EventModal: React.FC = () => {
           </div>
 
           {/* Times */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Start Time</Label>
-              <TimePicker
-                value={formData.startTime || "09:00"}
-                onChange={(v) => setFormData({ ...formData, startTime: v })}
-                disabled={isExternalEvent}
-              />
+          <div className="space-y-1.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Start Time</Label>
+                <TimePicker
+                  value={formData.startTime || "09:00"}
+                  onChange={(v) => setFormData({ ...formData, startTime: v })}
+                  disabled={isExternalEvent}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>End Time</Label>
+                <TimePicker
+                  value={formData.endTime || "10:00"}
+                  onChange={(v) => { setFormData({ ...formData, endTime: v }); setErrors((p) => ({ ...p, endTime: "" })); }}
+                  disabled={isExternalEvent}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>End Time</Label>
-              <TimePicker
-                value={formData.endTime || "10:00"}
-                onChange={(v) => { setFormData({ ...formData, endTime: v }); setErrors((p) => ({ ...p, endTime: "" })); }}
-                disabled={isExternalEvent}
-              />
-              {errors.endTime && <p className="text-xs text-destructive col-span-2">{errors.endTime}</p>}
-            </div>
+            {errors.endTime && <p className="text-xs text-destructive">{errors.endTime}</p>}
           </div>
 
           {/* Category */}
