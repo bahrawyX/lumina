@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, Suspense } from "react";
+import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
@@ -235,15 +236,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {MOBILE_NAV_ITEMS.map((item) => {
               const active = pathname === item.href;
               return (
-                <button
+                <Link
                   key={item.href}
-                  type="button"
-                  onClick={() => router.push(item.href)}
-                  className={`min-h-11 rounded-xl text-[11px] font-semibold transition-colors ${active ? 'text-white bg-white/12' : 'text-white/70 hover:text-white hover:bg-white/8'}`}
+                  href={item.href}
+                  prefetch
+                  className={`min-h-11 rounded-xl text-[11px] font-semibold transition-colors flex items-center justify-center ${active ? 'text-white bg-white/12' : 'text-white/70 hover:text-white hover:bg-white/8'}`}
                   aria-label={item.label}
                 >
                   {item.label}
-                </button>
+                </Link>
               );
             })}
           </div>

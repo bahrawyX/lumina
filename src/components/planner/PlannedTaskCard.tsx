@@ -43,18 +43,18 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => {
-          if (task?.id && !isDone) {
+          if (task?.id) {
             onMarkDone?.(task.id);
           }
         }}
-        disabled={!task?.id || isDone}
+        disabled={!task?.id}
         className={`mt-[1px] flex-shrink-0 w-5 h-5 md:w-4 md:h-4 rounded-md md:rounded-full border transition-colors ${
           isDone
-            ? 'bg-emerald-500 border-emerald-500 text-white cursor-default'
+            ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600 hover:border-emerald-600'
             : 'border-primary/35 text-transparent hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600'
         }`}
-        aria-label={isDone ? 'Task completed' : 'Mark task as done'}
-        title={isDone ? 'Task completed' : 'Mark done'}
+        aria-label={isDone ? 'Mark task as not done' : 'Mark task as done'}
+        title={isDone ? 'Click to undo' : 'Mark done'}
       >
         <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="mx-auto">
           <polyline points="20 6 9 17 4 12" />

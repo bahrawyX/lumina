@@ -234,10 +234,15 @@ export const TaskBoard: React.FC = () => {
           scheduledStart: startTime,
           scheduledEnd: endTime,
         });
+
+        // Auto-add to today's daily plan
+        if (scheduleDate === format(new Date(), 'yyyy-MM-dd')) {
+          addPlanItem(createdTask.id, scheduleDate, startTime, endTime);
+        }
       }
     }
     closeDialog();
-  }, [editingTask, linkedEvents, updateEvent, addEvent, timezone, updateTask, addTask, closeDialog]);
+  }, [editingTask, linkedEvents, updateEvent, addEvent, timezone, updateTask, addTask, closeDialog, addPlanItem]);
 
   const handleDelete = useCallback((id: string) => {
     deleteTask(id);

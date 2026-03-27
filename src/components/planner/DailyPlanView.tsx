@@ -363,8 +363,10 @@ export const DailyPlanView: React.FC = () => {
   }, [removePlanItem, today]);
 
   const handleMarkTaskDone = useCallback((taskId: string) => {
-    updateTask(taskId, { status: 'done' });
-  }, [updateTask]);
+    const task = taskMap.get(taskId);
+    if (!task) return;
+    updateTask(taskId, { status: task.status === 'done' ? 'doing' : 'done' });
+  }, [updateTask, taskMap]);
 
   const handleUpdatePlanItemTime = useCallback((planItemId: string, startTime: string, endTime: string) => {
     updatePlanItem(planItemId, today, { startTime, endTime });

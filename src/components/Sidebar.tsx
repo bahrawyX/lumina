@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { CATEGORIES } from '../constants';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -777,6 +778,7 @@ const AppSidebar: React.FC = () => {
                   label="Calendar"
                   isActive={isCalendarPage}
                   collapsed={isSidebarCollapsed}
+                  href="/"
                   onClick={() => router.push('/')}
                 />
                 <WorkspaceItem
@@ -784,6 +786,7 @@ const AppSidebar: React.FC = () => {
                   label="Intelligence"
                   isActive={isIntelligencePage}
                   collapsed={isSidebarCollapsed}
+                  href="/intelligence"
                   onClick={() => router.push('/intelligence')}
                 />
                 <WorkspaceItem
@@ -791,6 +794,7 @@ const AppSidebar: React.FC = () => {
                   label="Tasks"
                   isActive={isTasksPage}
                   collapsed={isSidebarCollapsed}
+                  href="/tasks"
                   onClick={() => router.push('/tasks')}
                 />
                 <WorkspaceItem
@@ -798,6 +802,7 @@ const AppSidebar: React.FC = () => {
                   label="Plan Day"
                   isActive={isPlanPage}
                   collapsed={isSidebarCollapsed}
+                  href="/plan"
                   onClick={() => router.push('/plan')}
                 />
                 <WorkspaceItem
@@ -805,6 +810,7 @@ const AppSidebar: React.FC = () => {
                   label="Performance"
                   isActive={pathname === '/performance'}
                   collapsed={isSidebarCollapsed}
+                  href="/performance"
                   onClick={() => router.push('/performance')}
                 />
               </SidebarMenu>
@@ -1157,11 +1163,12 @@ interface WorkspaceItemProps {
   label: string;
   isActive: boolean;
   collapsed: boolean;
+  href: string;
   onClick: () => void;
 }
 
 const WorkspaceItem = React.memo<WorkspaceItemProps>(
-  ({ icon: Icon, label, isActive, collapsed, onClick }) => (
+  ({ icon: Icon, label, isActive, collapsed, href, onClick }) => (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1170,6 +1177,8 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             onClick={onClick}
             className={`relative ${collapsed ? 'justify-center' : ''}`}
           >
+            {/* Invisible Link for prefetching — pointer-events-none so button click wins */}
+            <Link href={href} prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
             {isActive && (
               <motion.div
                 layoutId="sidebar-active-nav"

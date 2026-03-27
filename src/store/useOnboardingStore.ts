@@ -124,14 +124,14 @@ export const useOnboardingStore = create<OnboardingState>()(
  */
 export function useOnboardingHydrated(): boolean {
   const [hydrated, setHydrated] = useState(
-    () => useOnboardingStore.persist.hasHydrated()
+    () => typeof window !== 'undefined' && (useOnboardingStore.persist?.hasHydrated() ?? false)
   );
 
   useEffect(() => {
     if (hydrated) return;
-    const unsub = useOnboardingStore.persist.onFinishHydration(() => setHydrated(true));
+    const unsub = useOnboardingStore.persist?.onFinishHydration(() => setHydrated(true));
     // Re-check synchronously in case hydration finished between the useState init and here
-    if (useOnboardingStore.persist.hasHydrated()) setHydrated(true);
+    if (useOnboardingStore.persist?.hasHydrated()) setHydrated(true);
     return unsub;
   }, [hydrated]);
 

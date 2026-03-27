@@ -191,7 +191,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="min-h-11 min-w-11 p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    className="h-7 w-7 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
                     aria-label="Task options"
                   >
                     <MoreIcon />

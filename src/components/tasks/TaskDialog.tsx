@@ -15,6 +15,13 @@ import { Input } from '../ui/input';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
 
+// ── Time options (30-min intervals) ───────────────────────────────────────────
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
+  const m = i % 2 === 0 ? '00' : '30';
+  return `${String(h).padStart(2, '0')}:${m}`;
+});
+
 // ── Close icon ────────────────────────────────────────────────────────────────
 
 const XIcon: React.FC = () => (
@@ -166,7 +173,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                         <button
                           type="button"
                           aria-label="Insert emoji"
-                          className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors text-[13px]"
                         >
                           😊
                         </button>
@@ -206,35 +213,47 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                 {/* Manual schedule times */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="task-start-time" className="text-xs font-medium text-muted-foreground">
+                    <Label className="text-xs font-medium text-muted-foreground">
                       Start Time
                     </Label>
-                    <Input
-                      id="task-start-time"
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => {
-                        setStartTime(e.target.value);
+                    <Select
+                      value={startTime || undefined}
+                      onValueChange={(v) => {
+                        setStartTime(v);
                         if (timeError) setTimeError(false);
                       }}
-                      className="h-9 text-sm rounded-xl bg-white/[0.02]"
-                    />
+                    >
+                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                        <SelectValue placeholder="Set time" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {TIME_OPTIONS.map(t => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="task-end-time" className="text-xs font-medium text-muted-foreground">
+                    <Label className="text-xs font-medium text-muted-foreground">
                       End Time
                     </Label>
-                    <Input
-                      id="task-end-time"
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => {
-                        setEndTime(e.target.value);
+                    <Select
+                      value={endTime || undefined}
+                      onValueChange={(v) => {
+                        setEndTime(v);
                         if (timeError) setTimeError(false);
                       }}
-                      className="h-9 text-sm rounded-xl bg-white/[0.02]"
-                    />
+                    >
+                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                        <SelectValue placeholder="Set time" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {TIME_OPTIONS.map(t => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 {timeError && (
@@ -346,9 +365,6 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                 </Button>
               </div>
 
-              <p className="text-[10px] text-muted-foreground/50 text-right -mt-3">
-                Ctrl+Enter to save
-              </p>
       </div>
     </MobileBottomSheet>
   );
