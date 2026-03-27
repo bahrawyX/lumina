@@ -3,7 +3,8 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import type { Task } from '../../types/task';
+import type { Task, TaskPriority } from '../../types/task';
+import { getDueDatePresentation } from '../../utils/taskBoard';
 
 interface TaskPoolCardProps {
   task: Task;
@@ -17,6 +18,22 @@ const GripIcon: React.FC = () => (
   </svg>
 );
 
+// ── Priority chip ─────────────────────────────────────────────────────────────
+
+const PRIORITY_META: Record<TaskPriority, { label: string; className: string }> = {
+  high:   { label: 'High',   className: 'border-red-400/30 bg-red-500/12 text-red-300' },
+  medium: { label: 'Mid',    className: 'border-amber-300/25 bg-amber-400/12 text-amber-300' },
+  low:    { label: 'Low',    className: 'border-cyan-300/25 bg-cyan-400/12 text-cyan-300' },
+};
+
+const Chip: React.FC<{ children: React.ReactNode; className: string }> = ({ children, className }) => (
+  <span className={`inline-flex items-center rounded border px-1.5 py-px text-[10px] font-medium leading-none ${className}`}>
+    {children}
+  </span>
+);
+
+// ── Card ─────────────────────────────────────────────────────────────────────
+
 export const TaskPoolCard: React.FC<TaskPoolCardProps> = React.memo(({ task, onDelete }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `pool-${task.id}`,
@@ -29,6 +46,10 @@ export const TaskPoolCard: React.FC<TaskPoolCardProps> = React.memo(({ task, onD
     touchAction: 'none',
   };
 
+  const priority = PRIORITY_META[task.priority];
+  const dueDate = getDueDatePresentation(task.dueDate, task.status);
+  const isScheduled = Boolean(task.scheduledStart && task.scheduledEnd);
+
   return (
     <div
       ref={setNodeRef}
@@ -37,20 +58,43 @@ export const TaskPoolCard: React.FC<TaskPoolCardProps> = React.memo(({ task, onD
         border-border/60 hover:border-primary/30 hover:bg-accent/30 focus-within:ring-2 focus-within:ring-primary/40
         ${isDragging ? 'shadow-elevated scale-[1.02]' : 'shadow-soft hover:-translate-y-[1px] hover:shadow-md'}`}
     >
-      {/* Drag handle — only this part is draggable */}
+      {/* Drag handle */}
       <div className="mt-[3px] flex-shrink-0 cursor-grab" {...attributes} {...listeners}>
         <GripIcon />
       </div>
+
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground leading-snug truncate">{task.title}</p>
+
         {task.description && (
-          <p className="text-[11px] text-muted-foreground/70 mt-0.5 leading-relaxed line-clamp-1">{task.description}</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-0.5 leading-relaxed line-clamp-1">{task.description}</p>
         )}
-        {task.dueDate && (
-          <span className="text-[10px] text-muted-foreground/50 mt-1 block">{task.dueDate}</span>
-        )}
+
+        {/* Chips row */}
+        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+          {/* Priority */}
+          <Chip className={priority.className}>{priority.label}</Chip>
+
+          {/* Scheduled */}
+          {isScheduled && (
+            <Chip className="border-primary/20 bg-primary/10 text-primary/80">
+              {task.scheduledStart}–{task.scheduledEnd}
+            </Chip>
+          )}
+
+          {/* Due date */}
+          {dueDate && (
+            <Chip className={dueDate.className}>{dueDate.label}</Chip>
+          )}
+
+          {/* Context */}
+          {task.context && (
+            <Chip className="border-border/40 bg-muted/30 text-muted-foreground">{task.context}</Chip>
+          )}
+        </div>
       </div>
-      {/* Delete button — always visible on mobile, hover-only on desktop */}
+
+      {/* Delete button */}
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
@@ -69,13 +113,20 @@ export const TaskPoolCard: React.FC<TaskPoolCardProps> = React.memo(({ task, onD
 
 TaskPoolCard.displayName = 'TaskPoolCard';
 
-// ── Drag ghost overlay (shown while dragging) ─────────────────────────────────
-export const TaskPoolCardOverlay: React.FC<{ task: Task }> = React.memo(({ task }) => (
-  <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-primary/40 bg-background shadow-elevated cursor-grabbing select-none opacity-95 max-w-[220px]">
-    <div className="min-w-0 flex-1">
-      <p className="text-sm font-medium text-foreground leading-snug truncate">{task.title}</p>
+// ── Drag ghost overlay ────────────────────────────────────────────────────────
+
+export const TaskPoolCardOverlay: React.FC<{ task: Task }> = React.memo(({ task }) => {
+  const priority = PRIORITY_META[task.priority];
+  return (
+    <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-primary/40 bg-background shadow-elevated cursor-grabbing select-none opacity-95 max-w-[220px]">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground leading-snug truncate">{task.title}</p>
+        <div className="mt-1">
+          <Chip className={priority.className}>{priority.label}</Chip>
+        </div>
+      </div>
     </div>
-  </div>
-));
+  );
+});
 
 TaskPoolCardOverlay.displayName = 'TaskPoolCardOverlay';
