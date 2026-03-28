@@ -12,6 +12,14 @@ import { cn } from '../lib/utils';
 import TimePicker from './TimePicker';
 import { useLuminaAuthClient } from './AuthProvider';
 import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
+import { useGuestStore } from '../store/useGuestStore';
+import {
+  getFieldError,
+  nameSchema,
+  emailSchema,
+  passwordCreateSchema,
+  passwordSchema,
+} from '../lib/validation';
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 const TOTAL_STEPS = 7; // 0..6
@@ -213,6 +221,36 @@ StepWelcome.displayName = 'StepWelcome';
 /* ═══════════════════════════════════════════════════════════════════════════════
    STEP 1 — Account
 ══════════════════════════════════════════════════════════════════════════════ */
+
+/** Label-above-field wrapper with inline error message. */
+const AuthField: React.FC<{
+  label: string;
+  htmlFor?: string;
+  error?: string;
+  children: React.ReactNode;
+}> = ({ label, htmlFor, error, children }) => (
+  <div className="flex flex-col gap-1">
+    <label htmlFor={htmlFor} className="text-xs font-medium text-foreground/60 select-none">
+      {label}{' '}
+      <span className="text-destructive/50" aria-hidden="true">*</span>
+    </label>
+    {children}
+    <AnimatePresence>
+      {error && (
+        <motion.p
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.14 }}
+          className="text-xs text-destructive overflow-hidden leading-tight"
+        >
+          {error}
+        </motion.p>
+      )}
+    </AnimatePresence>
+  </div>
+);
+
 const StepAuth = memo<{
   authStatus: 'loading' | 'logged out' | 'logged in';
   authUserEmail: string | null;
@@ -231,6 +269,7 @@ const StepAuth = memo<{
   onSignOut: () => void;
   onSwitchToSignUp: () => void;
   onSwitchToSignIn: () => void;
+  onContinueAsGuest: () => void;
 }>(({
   authStatus,
   authUserEmail,
@@ -249,118 +288,286 @@ const StepAuth = memo<{
   onSignOut,
   onSwitchToSignUp,
   onSwitchToSignIn,
-}) => (
-  <StepShell
-    title="Secure your workspace"
-    description="Sign in once and your settings follow you across sessions and devices."
-  >
-    {authStatus === 'logged in' ? (
-      <div className="space-y-3">
-        <div className="rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3.5">
-          <p className="text-xs text-muted-foreground mb-1">Connected account</p>
-          <p className="text-sm font-medium text-foreground break-all">{authUserEmail ?? 'user'}</p>
+  onContinueAsGuest,
+}) => {
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [guestExpanded, setGuestExpanded] = useState(false);
+
+  const clearErr = (field: string) =>
+    setFieldErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
+
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (authMode === 'signup') {
+      const e = getFieldError(nameSchema, authName);
+      if (e) errors.name = e;
+    }
+    const ee = getFieldError(emailSchema, authEmail);
+    if (ee) errors.email = ee;
+    const pe = getFieldError(
+      authMode === 'signup' ? passwordCreateSchema : passwordSchema,
+      authPassword,
+    );
+    if (pe) errors.password = pe;
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = () => {
+    if (!validate()) return;
+    if (authMode === 'signup') onSignUp();
+    else onSignIn();
+  };
+
+  const inputCls = (field: string) =>
+    cn(
+      'w-full px-3.5 py-2.5 rounded-lg bg-background border text-sm text-foreground',
+      'outline-none focus-visible:ring-2 transition-colors duration-150 placeholder:text-muted-foreground/40',
+      fieldErrors[field]
+        ? 'border-destructive focus-visible:ring-destructive/20'
+        : 'border-border/60 focus-visible:ring-primary/20 focus-visible:border-primary/50',
+    );
+
+  /* ── Logged-in state ─────────────────────────────────────────────── */
+  if (authStatus === 'logged in') {
+    return (
+      <StepShell
+        title="Secure your workspace"
+        description="Your account is connected. Continue to finish setup."
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-primary/20 bg-primary/[0.04] px-4 py-3">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.1em] mb-0.5">
+              Connected account
+            </p>
+            <p className="text-sm font-medium text-foreground break-all">
+              {authUserEmail ?? 'user'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            disabled={Boolean(authBusy)}
+            className="w-full rounded-lg border border-border/60 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-50 transition-colors"
+          >
+            {authBusy === 'signout' ? 'Signing out…' : 'Sign out'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onSignOut}
-          disabled={Boolean(authBusy)}
-          className="w-full rounded-lg border border-border/70 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
-        >
-          {authBusy === 'signout' ? 'Signing out…' : 'Sign out'}
-        </button>
-      </div>
-    ) : (
-      <div className="space-y-3">
-        <div className="space-y-2">
-          {authMode === 'signup' && (
-            <input
-              type="text"
-              name="onboarding-auth-name"
-              value={authName}
-              onChange={(e) => onAuthNameChange(e.target.value)}
-              placeholder="Full name"
-              autoComplete="name"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
-            />
-          )}
-          <input
-            type="email"
-            name="onboarding-auth-email"
-            value={authEmail}
-            onChange={(e) => onAuthEmailChange(e.target.value)}
-            placeholder="Email"
-            autoComplete="email"
-            className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
-          />
-          <input
-            type="password"
-            name="onboarding-auth-password"
-            value={authPassword}
-            onChange={(e) => onAuthPasswordChange(e.target.value)}
-            placeholder="Password"
-            autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/50"
-          />
+      </StepShell>
+    );
+  }
+
+  /* ── Sign-in / Create account state ──────────────────────────────── */
+  return (
+    <StepShell
+      title="Secure your workspace"
+      description="Sign in once and your settings follow you across sessions and devices."
+    >
+      <div className="space-y-5">
+        {/* Mode tab strip */}
+        <div className="flex p-0.5 rounded-lg border border-border/60 bg-muted/30">
+          <button
+            type="button"
+            onClick={onSwitchToSignIn}
+            disabled={Boolean(authBusy)}
+            className={cn(
+              'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
+              authMode === 'signin'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={onSwitchToSignUp}
+            disabled={Boolean(authBusy)}
+            className={cn(
+              'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
+              authMode === 'signup'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Create account
+          </button>
         </div>
 
-        {/* Primary action */}
+        {/* Fields */}
+        <div className="space-y-3.5">
+          <AnimatePresence initial={false}>
+            {authMode === 'signup' && (
+              <motion.div
+                key="name-field"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.18 }}
+                className="overflow-hidden"
+              >
+                <AuthField label="Full name" htmlFor="auth-name" error={fieldErrors.name}>
+                  <input
+                    id="auth-name"
+                    type="text"
+                    name="onboarding-auth-name"
+                    value={authName}
+                    onChange={(e) => { onAuthNameChange(e.target.value); clearErr('name'); }}
+                    placeholder="Jane Smith"
+                    autoComplete="name"
+                    autoFocus={authMode === 'signup'}
+                    disabled={Boolean(authBusy)}
+                    className={inputCls('name')}
+                  />
+                </AuthField>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AuthField label="Email address" htmlFor="auth-email" error={fieldErrors.email}>
+            <input
+              id="auth-email"
+              type="email"
+              name="onboarding-auth-email"
+              value={authEmail}
+              onChange={(e) => { onAuthEmailChange(e.target.value); clearErr('email'); }}
+              placeholder="you@example.com"
+              autoComplete="email"
+              disabled={Boolean(authBusy)}
+              className={inputCls('email')}
+            />
+          </AuthField>
+
+          <AuthField
+            label={authMode === 'signup' ? 'Create password' : 'Password'}
+            htmlFor="auth-password"
+            error={fieldErrors.password}
+          >
+            <input
+              id="auth-password"
+              type="password"
+              name="onboarding-auth-password"
+              value={authPassword}
+              onChange={(e) => { onAuthPasswordChange(e.target.value); clearErr('password'); }}
+              placeholder={authMode === 'signup' ? 'Min. 8 characters' : '••••••••'}
+              autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+              disabled={Boolean(authBusy)}
+              className={inputCls('password')}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+            />
+          </AuthField>
+        </div>
+
+        {/* Server-level error (only shown when there are no field-level errors) */}
+        {authMessage && Object.keys(fieldErrors).length === 0 && (
+          <p className="text-xs text-destructive -mt-1">{authMessage}</p>
+        )}
+
+        {/* Primary submit */}
         <button
           type="button"
-          onClick={authMode === 'signup' ? onSignUp : onSignIn}
-          disabled={
-            Boolean(authBusy)
-            || !authEmail.trim()
-            || !authPassword
-            || (authMode === 'signup' && !authName.trim())
-          }
-          className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={handleSubmit}
+          disabled={Boolean(authBusy)}
+          className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {authMode === 'signup'
-            ? (authBusy === 'signup' ? 'Signing up…' : 'Sign Up')
-            : (authBusy === 'signin' ? 'Signing in…' : 'Sign In')}
+            ? (authBusy === 'signup' ? 'Creating account…' : 'Create account')
+            : (authBusy === 'signin' ? 'Signing in…' : 'Sign in')}
         </button>
 
-        <div className="relative py-0.5">
-          <div className="h-px bg-border/60" />
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60 bg-card">
+        {/* Divider */}
+        <div className="relative">
+          <div className="h-px bg-border/50" />
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/50 bg-card">
             or
           </span>
         </div>
 
-        {/* Secondary actions */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={onGoogleSignIn}
-            disabled={Boolean(authBusy)}
-            className="w-full flex items-center justify-center gap-2.5 rounded-lg border border-border/70 px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
-          >
-            {authBusy === 'google' ? (
-              'Redirecting…'
-            ) : (
-              <>
-                <GoogleProviderIcon size={16} />
-                Continue with Google
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={authMode === 'signup' ? onSwitchToSignIn : onSwitchToSignUp}
-            disabled={Boolean(authBusy)}
-            className="w-full rounded-lg border border-border/50 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-          >
-            {authMode === 'signup' ? 'Back to sign in' : 'Create account'}
-          </button>
+        {/* Google */}
+        <button
+          type="button"
+          onClick={onGoogleSignIn}
+          disabled={Boolean(authBusy)}
+          className="w-full flex items-center justify-center gap-2.5 rounded-lg border border-border/70 bg-background px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-50 transition-colors"
+        >
+          {authBusy === 'google' ? 'Redirecting…' : (
+            <>
+              <GoogleProviderIcon size={16} />
+              Continue with Google
+            </>
+          )}
+        </button>
+
+        {/* ── Guest path ────────────────────────────────────────────── */}
+        <div className="border-t border-border/40 pt-4">
+          {!guestExpanded ? (
+            <button
+              type="button"
+              onClick={() => setGuestExpanded(true)}
+              className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors underline-offset-2 hover:underline"
+            >
+              Continue as Guest
+            </button>
+          ) : (
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="space-y-3"
+              >
+                {/* Warning card */}
+                <div className="rounded-lg border border-amber-200/80 dark:border-amber-800/40 bg-amber-50/80 dark:bg-amber-950/20 p-3">
+                  <div className="flex items-start gap-2.5">
+                    <svg
+                      width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                      className="flex-shrink-0 text-amber-600 dark:text-amber-400 mt-px"
+                      aria-hidden="true"
+                    >
+                      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11.5px] font-semibold text-amber-900 dark:text-amber-200 mb-1">
+                        Guest data is browser-local only
+                      </p>
+                      <p className="text-[11px] text-amber-800/70 dark:text-amber-300/60 leading-relaxed">
+                        Your events, tasks, and settings will be permanently lost on sign-out,
+                        storage clear, account switch, or when using a different device.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGuestExpanded(false)}
+                      aria-label="Dismiss"
+                      className="flex-shrink-0 p-0.5 text-amber-600/50 hover:text-amber-900 dark:hover:text-amber-200 transition-colors mt-px"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Confirm guest button */}
+                <button
+                  type="button"
+                  onClick={onContinueAsGuest}
+                  className="w-full rounded-lg border border-border/60 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                >
+                  I understand — continue as Guest
+                </button>
+              </motion.div>
+            </AnimatePresence>
+          )}
         </div>
       </div>
-    )}
-
-    {authMessage && (
-      <p className="text-xs text-muted-foreground/80 pt-1">{authMessage}</p>
-    )}
-  </StepShell>
-));
+    </StepShell>
+  );
+});
 StepAuth.displayName = 'StepAuth';
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -702,7 +909,7 @@ StepFocusGoals.displayName = 'StepFocusGoals';
 /* ═══════════════════════════════════════════════════════════════════════════════
    STEP 7 — Completion
 ══════════════════════════════════════════════════════════════════════════════ */
-const StepCompletion = memo<{ name?: string }>(({ name }) => (
+const StepCompletion = memo<{ name?: string; isGuest?: boolean }>(({ name, isGuest }) => (
   <div className="space-y-6">
     <motion.div
       initial={{ scale: 0.8, opacity: 0 }}
@@ -723,6 +930,31 @@ const StepCompletion = memo<{ name?: string }>(({ name }) => (
         Open your calendar, add your first event, and start your first focus session.
       </p>
     </div>
+
+    {isGuest && (
+      <div className="rounded-lg border border-amber-200/80 dark:border-amber-800/40 bg-amber-50/80 dark:bg-amber-950/20 p-3">
+        <div className="flex items-start gap-2.5">
+          <svg
+            width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+            className="flex-shrink-0 text-amber-600 dark:text-amber-400 mt-px"
+            aria-hidden="true"
+          >
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <p className="text-[11px] text-amber-800/80 dark:text-amber-300/70 leading-relaxed">
+            <span className="font-semibold text-amber-900 dark:text-amber-200">Guest mode active — </span>
+            your data is saved in this browser only. To keep it permanently,{' '}
+            <a href="/onboarding" className="underline underline-offset-2 font-medium hover:opacity-70 transition-opacity">
+              create a free account
+            </a>
+            {' '}at any time.
+          </p>
+        </div>
+      </div>
+    )}
   </div>
 ));
 StepCompletion.displayName = 'StepCompletion';
@@ -737,6 +969,8 @@ const OnboardingFlow: React.FC = () => {
   const calStore = useCalendarStore();
   const plannerStore = usePlannerStore();
   const authClient = useLuminaAuthClient();
+  const isGuest = useGuestStore((s) => s.isGuest);
+  const setGuest = useGuestStore((s) => s.setGuest);
   const {
     data: authData,
     isPending: authSessionPending,
@@ -1258,11 +1492,18 @@ const OnboardingFlow: React.FC = () => {
     syncIntegrationState,
   ]);
 
+  const handleContinueAsGuest = useCallback(() => {
+    setGuest(true);
+    setDirection(1);
+    setStep((s) => s + 1);
+  }, [setGuest]);
+
   const canContinue = useCallback((): boolean => {
+    if (step === 1) return authStatus === 'logged in' || isGuest;
     if (step === 2) return store.userName.trim().length > 0;
     if (step === 7) return store.focusGoals.length > 0;
     return true;
-  }, [step, store.userName, store.focusGoals.length]);
+  }, [step, authStatus, isGuest, store.userName, store.focusGoals.length]);
 
   const handleSessionLengthChange = useCallback((selection: FocusSessionLength) => {
     store.setFocusSessionLength(selection);
@@ -1333,6 +1574,7 @@ const OnboardingFlow: React.FC = () => {
             onSignOut={handleAuthSignOut}
             onSwitchToSignUp={switchToSignUp}
             onSwitchToSignIn={switchToSignIn}
+            onContinueAsGuest={handleContinueAsGuest}
           />
         );
       case 2:
@@ -1390,7 +1632,7 @@ const OnboardingFlow: React.FC = () => {
           />
         );
       case 8:
-        return <StepCompletion name={store.userName || calStore.profile.name} />;
+        return <StepCompletion name={store.userName || calStore.profile.name} isGuest={isGuest} />;
     }
   };
 

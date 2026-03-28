@@ -1,0 +1,87 @@
+'use client';
+
+import React from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import Link from 'next/link';
+import { useGuestStore } from '@/store/useGuestStore';
+
+/**
+ * Slim top-of-content warning shown while the user operates in guest mode.
+ * Dismissible — dismissal is persisted so it doesn't reappear on refresh.
+ * Links to /onboarding to convert the guest to a registered user.
+ */
+export const GuestBanner: React.FC = () => {
+  const isGuest = useGuestStore((s) => s.isGuest);
+  const bannerDismissed = useGuestStore((s) => s.bannerDismissed);
+  const dismissBanner = useGuestStore((s) => s.dismissBanner);
+
+  return (
+    <AnimatePresence>
+      {isGuest && !bannerDismissed && (
+        <motion.div
+          key="guest-banner"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          className="overflow-hidden flex-shrink-0"
+        >
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-200/70 dark:border-amber-800/35 bg-amber-50/90 dark:bg-amber-950/25">
+            {/* Icon */}
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="flex-shrink-0 text-amber-600 dark:text-amber-400"
+              aria-hidden
+            >
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+
+            {/* Message */}
+            <p className="text-xs text-amber-900 dark:text-amber-200 flex-1 leading-snug">
+              <span className="font-semibold">Guest mode — </span>
+              data is stored in this browser only and will be lost on sign-out or device change.{' '}
+              <Link
+                href="/onboarding"
+                className="font-semibold underline underline-offset-2 hover:opacity-70 transition-opacity"
+              >
+                Create an account to save permanently →
+              </Link>
+            </p>
+
+            {/* Dismiss */}
+            <button
+              type="button"
+              onClick={dismissBanner}
+              aria-label="Dismiss guest warning"
+              className="flex-shrink-0 p-0.5 text-amber-600/50 dark:text-amber-400/50 hover:text-amber-900 dark:hover:text-amber-100 transition-colors"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};

@@ -18,6 +18,8 @@ import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
 import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
+import { GuestBanner } from "@/components/auth/GuestBanner";
+import { useGuestStore } from "@/store/useGuestStore";
 
 const MOBILE_NAV_ITEMS = [
   {
@@ -116,6 +118,7 @@ function OAuthRedirectToast() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
   const onboardingHydrated = useOnboardingHydrated();
+  const isGuest = useGuestStore((s) => s.isGuest);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -232,6 +235,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setView,
   ]);
 
+  // Warn guest users before closing/refreshing the tab so they don't lose data.
+  useEffect(() => {
+    if (!isGuest) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers show their own generic message; the return value is ignored
+      // but required by some older engines.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isGuest]);
+
   // Render nothing until onboarding hydration is confirmed.
   // This eliminates the one-frame flash of the app shell before the redirect fires.
   if (!onboardingHydrated) return null;
@@ -248,6 +264,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sidebar />
         </div>
         <main className="flex-1 flex flex-col min-w-0 transition-all duration-500 overflow-hidden relative">
+          <GuestBanner />
           <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 relative">
             {children}
           </div>
