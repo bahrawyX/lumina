@@ -28,6 +28,7 @@ import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useStreakStore } from '@/store/useStreakStore';
 import { authClient } from '@/lib/auth-client';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
@@ -121,6 +122,9 @@ export default function PersistenceBootstrap() {
             .catch(() => {
               if (isDev) hydrateFocusFailed();
             }),
+
+      // Hydrate streak store from API
+      useStreakStore.getState().hydrateFromAPI().catch(() => {}),
     ]).catch((err) => {
       if (isDev) {
         console.warn('[PersistenceBootstrap] Unexpected hydration error:', err);

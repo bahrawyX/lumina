@@ -1,4 +1,4 @@
-import { boolean, index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -10,6 +10,13 @@ export const users = pgTable(
     image: text('image'),
     avatar: text('avatar'),
     focusSessionLength: integer('focus_session_length').notNull().default(25),
+    coins: integer('coins').notNull().default(0),
+    dailyStreak: integer('daily_streak').notNull().default(0),
+    bestDailyStreak: integer('best_daily_streak').notNull().default(0),
+    sessionStreak: integer('session_streak').notNull().default(0),
+    bestSessionStreak: integer('best_session_streak').notNull().default(0),
+    lastFocusDate: date('last_focus_date'),
+    lastSessionAt: timestamp('last_session_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

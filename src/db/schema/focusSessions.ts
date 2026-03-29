@@ -21,6 +21,7 @@ export const focusSessions = pgTable(
     startTime: timestamp('start_time', { withTimezone: true }).notNull(),
     endTime: timestamp('end_time', { withTimezone: true }).notNull(),
     durationMinutes: integer('duration_minutes').notNull(),
+    coinsEarned: integer('coins_earned').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

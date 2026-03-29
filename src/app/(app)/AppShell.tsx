@@ -6,8 +6,9 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
 import EventModal from "@/components/EventModal";
-import TimerCallout from "@/components/TimerCallout";
 import Toaster from "@/components/ui/Toaster";
+import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
+import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
 import { motion } from "framer-motion";
 import { Toaster as SonnerToaster } from "sonner";
 import { useCalendarStore } from "@/store/useCalendarStore";
@@ -269,7 +270,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {children}
           </div>
         </main>
-        <TimerCallout />
         <EventModal />
         <Toaster />
         <SonnerToaster
@@ -290,6 +290,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
         <TutorialOverlay />
+        <AmbientSoundDrawer />
+        <FloatingAmbientPlayer />
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">
           <div className="grid grid-cols-5 px-1 pt-1.5 pb-1.5">

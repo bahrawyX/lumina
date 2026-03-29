@@ -50,6 +50,13 @@
       "when": 1774460925086,
       "tag": "0006_magenta_cargill",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774900000000,
+      "tag": "0007_streaks_achievements_mood",
+      "breakpoints": true
     }
   ]
 }

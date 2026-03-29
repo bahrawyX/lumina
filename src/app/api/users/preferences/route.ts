@@ -24,7 +24,14 @@ export async function GET(req: NextRequest) {
   try {
     const db = getDatabase();
     const rows = await db
-      .select({ focusSessionLength: users.focusSessionLength })
+      .select({
+        focusSessionLength: users.focusSessionLength,
+        coins: users.coins,
+        dailyStreak: users.dailyStreak,
+        bestDailyStreak: users.bestDailyStreak,
+        sessionStreak: users.sessionStreak,
+        bestSessionStreak: users.bestSessionStreak,
+      })
       .from(users)
       .where(eq(users.id, session.user.id))
       .limit(1);
@@ -33,8 +40,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const row = rows[0];
     return NextResponse.json({
-      focusSessionLength: rows[0].focusSessionLength ?? DEFAULT_FOCUS_MINUTES,
+      focusSessionLength: row.focusSessionLength ?? DEFAULT_FOCUS_MINUTES,
+      coins: row.coins,
+      dailyStreak: row.dailyStreak,
+      bestDailyStreak: row.bestDailyStreak,
+      sessionStreak: row.sessionStreak,
+      bestSessionStreak: row.bestSessionStreak,
     });
   } catch (err) {
     console.error('[GET /api/users/preferences]', err);

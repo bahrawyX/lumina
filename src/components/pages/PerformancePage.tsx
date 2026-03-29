@@ -6,9 +6,12 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, isWithinInterval, pa
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
+import { useStreakStore } from '@/store/useStreakStore';
 import { timeToMinutes } from '@/utils/time/timeUtils';
+import { computeBestDay } from '@/utils/performance/bestDay';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 // ── Metric card ───────────────────────────────────────────────────────────────
 
@@ -58,6 +61,97 @@ const ContextPill: React.FC<{ name: string; count: number; total: number }> = ({
       <span className="text-xs font-medium text-foreground truncate">{name}</span>
       <span className="text-[11px] tabular-nums text-muted-foreground">{count} <span className="text-muted-foreground/40">({pct}%)</span></span>
     </div>
+  );
+};
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+// ── Streak stats row ──────────────────────────────────────────────────────────
+
+const StreakStatsRow: React.FC = () => {
+  const { dailyStreak, sessionStreak, coins, bestDailyStreak } = useStreakStore();
+  const focusHistory = useFocusStore((s) => s.sessionHistory);
+  const best = useMemo(() => computeBestDay(focusHistory), [focusHistory]);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const showRecovery = dailyStreak === 0 && bestDailyStreak > 3;
+
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Daily Streak</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-lg select-none">🔥</span>
+            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
+              {dailyStreak}
+            </span>
+            <span className="text-xs text-muted-foreground">days</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Session Streak</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-lg select-none">⚡</span>
+            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
+              {sessionStreak}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Best Day</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-lg select-none">🏆</span>
+            <span className="font-display text-lg font-bold leading-none text-foreground">
+              {best ? best.label : '—'}
+            </span>
+          </div>
+          {best && <span className="text-[11px] text-muted-foreground/50">{Math.floor(best.totalMinutes / 60)}h {best.totalMinutes % 60}m focused</span>}
+        </div>
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Coins</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-lg select-none">🪙</span>
+            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
+              {coins}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {showRecovery && (
+        <div className="rounded-2xl bg-card border border-border/60 p-4 flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">Lost your streak?</p>
+            <p className="text-xs text-muted-foreground">You had a {bestDailyStreak}-day streak. Restore it to keep going.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRecoveryOpen(true)}
+            className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary/10 border border-primary/30 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
+          >
+            Restore Streak 💎
+          </button>
+        </div>
+      )}
+
+      <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
+        <DialogContent className="sm:max-w-[380px] bg-card border-border rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Streak Recovery</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Streak restore is a premium feature. Coming soon.
+            </DialogDescription>
+          </DialogHeader>
+          <button
+            type="button"
+            disabled
+            className="w-full py-2.5 rounded-xl bg-muted text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60"
+          >
+            Restore for 50 coins
+          </button>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -219,6 +313,7 @@ const PerformancePage: React.FC = () => {
           transition={{ duration: 0.25 }}
           className="space-y-8 max-w-6xl"
         >
+          <StreakStatsRow />
           <ContributionHeatmap />
 
           {noData ? (

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { focusSessions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { focusSessions, users, achievements } from '@/db/schema';
+import { computeStreakUpdate } from '@/utils/streaks/streakUtils';
+import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 
 /** GET /api/focus-sessions — return session history for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
     const mapped = rows.map((row) => ({
       id: row.id,
       taskId: row.taskId ?? '',
-      taskTitle: '',            // not stored in DB — client fills from task store
+      taskTitle: '',
       startTime: row.startTime.toISOString(),
       endTime: row.endTime.toISOString(),
       duration: row.durationMinutes * 60,
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/focus-sessions — record a completed/cancelled session */
+/** POST /api/focus-sessions — record a completed session with streak/coin/achievement updates */
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
@@ -70,9 +72,45 @@ export async function POST(req: NextRequest) {
   }
 
   const durationMinutes = Math.max(1, Math.round(duration / 60));
+  const timezone = typeof body.timezone === 'string' ? body.timezone : 'UTC';
 
   try {
     const db = getDatabase();
+
+    // Fetch current user streak data
+    const [userRow] = await db
+      .select({
+        coins: users.coins,
+        dailyStreak: users.dailyStreak,
+        bestDailyStreak: users.bestDailyStreak,
+        sessionStreak: users.sessionStreak,
+        bestSessionStreak: users.bestSessionStreak,
+        lastFocusDate: users.lastFocusDate,
+        lastSessionAt: users.lastSessionAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!userRow) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Compute streak + coin updates
+    const previousCoins = userRow.coins;
+    const streakUpdate = computeStreakUpdate(
+      {
+        ...userRow,
+        lastFocusDate: userRow.lastFocusDate ?? null,
+        lastSessionAt: userRow.lastSessionAt ?? null,
+      },
+      durationMinutes,
+      timezone,
+    );
+
+    const coinsEarned = streakUpdate.coins - previousCoins;
+
+    // Insert focus session
     const [row] = await db
       .insert(focusSessions)
       .values({
@@ -81,10 +119,62 @@ export async function POST(req: NextRequest) {
         startTime: startTs,
         endTime: endTs,
         durationMinutes,
+        coinsEarned,
       })
       .returning({ id: focusSessions.id });
 
-    return NextResponse.json({ id: row.id }, { status: 201 });
+    // Update user streak + coin fields
+    await db
+      .update(users)
+      .set({
+        coins: streakUpdate.coins,
+        dailyStreak: streakUpdate.dailyStreak,
+        bestDailyStreak: streakUpdate.bestDailyStreak,
+        sessionStreak: streakUpdate.sessionStreak,
+        bestSessionStreak: streakUpdate.bestSessionStreak,
+        lastFocusDate: streakUpdate.lastFocusDate,
+        lastSessionAt: streakUpdate.lastSessionAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+
+    // Check for new achievements
+    const existingAchievements = await db
+      .select({ type: achievements.type })
+      .from(achievements)
+      .where(eq(achievements.userId, userId));
+
+    const existingTypes = new Set(existingAchievements.map((a) => a.type));
+    const newTypes = checkNewAchievements(
+      {
+        sessionStreak: streakUpdate.sessionStreak,
+        dailyStreak: streakUpdate.dailyStreak,
+        coins: streakUpdate.coins,
+      },
+      previousCoins,
+      existingTypes,
+    );
+
+    const newAchievements: { type: string; unlockedAt: string }[] = [];
+    for (const type of newTypes) {
+      const [ach] = await db
+        .insert(achievements)
+        .values({ userId, type })
+        .returning({ unlockedAt: achievements.unlockedAt });
+      newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
+    }
+
+    return NextResponse.json(
+      {
+        id: row.id,
+        coinsEarned,
+        newCoins: streakUpdate.coins,
+        dailyStreak: streakUpdate.dailyStreak,
+        sessionStreak: streakUpdate.sessionStreak,
+        newAchievements,
+      },
+      { status: 201 },
+    );
   } catch (err) {
     console.error('[POST /api/focus-sessions]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

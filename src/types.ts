@@ -154,3 +154,37 @@ export interface DragState {
     toWidthPx?: number;
   } | null;
 }
+
+// ─── Streak / Gamification ────────────────────────────────────────────────────
+
+export interface Achievement {
+  id: string;
+  userId: string;
+  type: string;
+  unlockedAt: string; // ISO
+  seen: boolean;
+}
+
+export interface MoodLog {
+  id: string;
+  userId: string;
+  focusSessionId: string | null;
+  mood: 'great' | 'good' | 'okay' | 'tired' | 'bad';
+  note?: string;
+  loggedAt: string; // ISO
+}
+
+export type AmbientTrack = 'white' | 'brown' | 'rainfall' | 'forest' | 'ocean';
+
+export interface FocusSessionResult {
+  id: string;
+  coinsEarned: number;
+  newCoins: number;
+  dailyStreak: number;
+  sessionStreak: number;
+  newAchievements: Pick<Achievement, 'type' | 'unlockedAt'>[];
+}
+
+export type MoodValue = 'great' | 'good' | 'okay' | 'tired' | 'bad';
+
+export type ContactType = 'suggestion' | 'technical' | 'feedback';

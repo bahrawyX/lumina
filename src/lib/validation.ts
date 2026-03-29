@@ -41,6 +41,26 @@ export const dateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Please select a date');
 
+/* ── Mood / Contact schemas ──────────────────────────────────────────────── */
+
+export const moodSchema = z.enum(['great', 'good', 'okay', 'tired', 'bad']);
+
+export const moodNoteSchema = z.string().max(140, 'Note must be under 140 characters').optional();
+
+export const contactTypeSchema = z.enum(['suggestion', 'technical', 'feedback']);
+
+export const contactSubjectSchema = z
+  .string()
+  .trim()
+  .min(1, 'Subject is required')
+  .max(100, 'Subject must be under 100 characters');
+
+export const contactMessageSchema = z
+  .string()
+  .trim()
+  .min(10, 'Message must be at least 10 characters')
+  .max(1000, 'Message must be under 1000 characters');
+
 /* ── Utility ──────────────────────────────────────────────────────────────── */
 
 /**

@@ -1,9 +1,12 @@
 import { relations } from 'drizzle-orm';
 import { accounts } from './accounts';
+import { achievements } from './achievements';
 import { calendars } from './calendars';
+import { contactSubmissions } from './contactSubmissions';
 import { events } from './events';
 import { focusSessions } from './focusSessions';
 import { integrations } from './integrations';
+import { moodLogs } from './moodLogs';
 import { plannerItems } from './plannerItems';
 import { sessions } from './sessions';
 import { tasks } from './tasks';
@@ -20,6 +23,9 @@ export * from './tasks';
 export * from './plannerItems';
 export * from './focusSessions';
 export * from './integrations';
+export * from './achievements';
+export * from './moodLogs';
+export * from './contactSubmissions';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),
@@ -30,6 +36,9 @@ export const usersRelations = relations(users, ({ many }) => ({
 	plannerItems: many(plannerItems),
 	focusSessions: many(focusSessions),
 	integrations: many(integrations),
+	achievements: many(achievements),
+	moodLogs: many(moodLogs),
+	contactSubmissions: many(contactSubmissions),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -90,7 +99,7 @@ export const plannerItemsRelations = relations(plannerItems, ({ one }) => ({
 	}),
 }));
 
-export const focusSessionsRelations = relations(focusSessions, ({ one }) => ({
+export const focusSessionsRelations = relations(focusSessions, ({ one, many }) => ({
 	user: one(users, {
 		fields: [focusSessions.userId],
 		references: [users.id],
@@ -99,11 +108,37 @@ export const focusSessionsRelations = relations(focusSessions, ({ one }) => ({
 		fields: [focusSessions.taskId],
 		references: [tasks.id],
 	}),
+	moodLogs: many(moodLogs),
 }));
 
 export const integrationsRelations = relations(integrations, ({ one }) => ({
 	user: one(users, {
 		fields: [integrations.userId],
+		references: [users.id],
+	}),
+}));
+
+export const achievementsRelations = relations(achievements, ({ one }) => ({
+	user: one(users, {
+		fields: [achievements.userId],
+		references: [users.id],
+	}),
+}));
+
+export const moodLogsRelations = relations(moodLogs, ({ one }) => ({
+	user: one(users, {
+		fields: [moodLogs.userId],
+		references: [users.id],
+	}),
+	focusSession: one(focusSessions, {
+		fields: [moodLogs.focusSessionId],
+		references: [focusSessions.id],
+	}),
+}));
+
+export const contactSubmissionsRelations = relations(contactSubmissions, ({ one }) => ({
+	user: one(users, {
+		fields: [contactSubmissions.userId],
 		references: [users.id],
 	}),
 }));

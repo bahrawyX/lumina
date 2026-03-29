@@ -29,6 +29,8 @@ import {
 } from './icons';
 import { useLuminaAuthClient } from './AuthProvider';
 import { useTutorialStore } from '../store/useTutorialStore';
+import { useAmbientStore } from '../store/useAmbientStore';
+import ContactDrawer from './contact/ContactDrawer';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -166,6 +168,7 @@ const AppSidebar: React.FC = () => {
 
   const [outlookLoading, setOutlookLoading] = React.useState(false);
   const [customContextDialogOpen, setCustomContextDialogOpen] = useState(false);
+  const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [editingContextName, setEditingContextName] = useState<string | null>(null);
   const [contextPendingDelete, setContextPendingDelete] = useState<string | null>(null);
   const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
@@ -911,6 +914,32 @@ const AppSidebar: React.FC = () => {
           </SidebarGroup>
         </SidebarContent>
 
+        {/* ── Utility actions ───────────────────────────────────── */}
+        <SidebarGroup className="px-2 mt-auto mb-0">
+          <SidebarMenu>
+            <SidebarMenuButton
+              onClick={() => useAmbientStore.getState().openDrawer()}
+              className="rounded-xl hover:bg-accent/50 gap-2.5"
+            >
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              </svg>
+              {!isSidebarCollapsed && <span className="text-xs font-medium text-muted-foreground">Ambient Sounds</span>}
+            </SidebarMenuButton>
+            <SidebarMenuButton
+              onClick={() => setContactDrawerOpen(true)}
+              className="rounded-xl hover:bg-accent/50 gap-2.5"
+            >
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+              {!isSidebarCollapsed && <span className="text-xs font-medium text-muted-foreground">Contact</span>}
+            </SidebarMenuButton>
+          </SidebarMenu>
+        </SidebarGroup>
+
         {/* ── Footer: profile dropdown ─────────────────────────── */}
         <SidebarSeparator />
         <SidebarFooter className="p-2">
@@ -1169,6 +1198,7 @@ const AppSidebar: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ContactDrawer open={contactDrawerOpen} onClose={() => setContactDrawerOpen(false)} />
     </motion.aside>
   );
 };

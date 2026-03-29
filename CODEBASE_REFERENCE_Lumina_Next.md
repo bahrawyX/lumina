@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-03-29
+> Last updated: 2026-03-29 (v2 — streaks, pomodoro, ambient, stopwatch, contact)
 
 ---
 
@@ -145,11 +145,20 @@ src/
 │   ├── calendar/
 │   │   ├── interaction/            ← Conflict detection hooks + dialogs
 │   │   └── virtualization/        ← Virtual scrolling and density management
+│   ├── ambient/
+│   │   ├── AmbientSoundDrawer.tsx ← Bottom sheet with Web Audio noise tracks + volume slider
+│   │   └── FloatingAmbientPlayer.tsx ← Animated waveform circle, click to stop
+│   ├── contact/
+│   │   └── ContactDrawer.tsx      ← Right-side drawer with validation, rate-limited POST
 │   ├── focus/
 │   │   ├── FocusSessionView.tsx   ← Main focus container (interrupt/resume logic)
 │   │   ├── FocusTimer.tsx         ← Timer display and controls
 │   │   ├── FocusHeader.tsx
-│   │   └── FocusProgress.tsx
+│   │   ├── FocusProgress.tsx
+│   │   ├── PomodoroView.tsx       ← Full Pomodoro cycle: SVG ring, work/break, chime, auto-persist
+│   │   ├── PomodoroFeedbackModal.tsx ← Post-session mood selection (5 emojis, forced choice)
+│   │   ├── MoodAnalysisCard.tsx   ← 3-day mood trend card, shown above Pomodoro timer
+│   │   └── StopwatchView.tsx     ← HH:MM:SS.cs, requestAnimationFrame, up to 20 laps
 │   ├── icons/                     ← All SVG icon components + barrel index.ts
 │   ├── pages/
 │   │   ├── CalendarPage.tsx        ← data-tutorial="cal-view-tabs" on TabsList
@@ -381,6 +390,7 @@ Unique: `(provider_id, account_id)`
 | task_id | uuid FK→tasks | nullable, on delete set null |
 | start_time / end_time | timestamptz | |
 | duration_minutes | integer | must be > 0 |
+| coins_earned | integer | default 0, 1 coin per minute |
 | created_at | timestamptz | |
 
 #### `planner_items`
@@ -407,6 +417,47 @@ Unique: `(provider_id, account_id)`
 Unique: `(user_id, provider)` — one integration row per provider per user.
 
 **Security rule:** `refreshToken` is NEVER sent to the client. Tokens are loaded server-side by `session.user.id` only.
+
+#### `achievements`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | cascade delete |
+| type | varchar(64) | e.g. 'session_milestone_5', 'daily_streak_7' |
+| unlocked_at | timestamptz | default now() |
+| seen | boolean | default false — for notification badge |
+
+#### `mood_logs`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | cascade delete |
+| focus_session_id | uuid FK→focus_sessions | nullable, set null on delete |
+| mood | varchar(16) | 'great'\|'good'\|'okay'\|'tired'\|'bad' |
+| note | text | nullable, max 140 chars |
+| logged_at | timestamptz | default now() |
+
+#### `contact_submissions`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | nullable, set null on delete |
+| type | varchar(32) | 'suggestion'\|'technical'\|'feedback' |
+| subject | varchar(100) | |
+| message | text | |
+| email | varchar(255) | nullable |
+| submitted_at | timestamptz | default now() |
+
+#### Streak/gamification columns on `users` (added)
+| Column | Type | Notes |
+|---|---|---|
+| coins | integer | default 0, 1 coin per focus minute |
+| daily_streak | integer | default 0, consecutive days with focus session |
+| best_daily_streak | integer | default 0 |
+| session_streak | integer | default 0, consecutive sessions within 4h gap |
+| best_session_streak | integer | default 0 |
+| last_focus_date | date | YYYY-MM-DD, nullable |
+| last_session_at | timestamptz | nullable |
 
 ---
 
@@ -499,6 +550,40 @@ interface GuestState {
 ```
 Persisted keys: `isGuest`, `bannerDismissed`
 
+### `useStreakStore` (persisted as `lumina-streaks`)
+```ts
+interface StreakState {
+  coins: number;
+  dailyStreak: number;
+  bestDailyStreak: number;
+  sessionStreak: number;
+  bestSessionStreak: number;
+  achievements: Achievement[];
+  unseenAchievements: Achievement[];
+  hydrated: boolean;
+  hydrateFromAPI: () => Promise<void>;
+  applySessionResult: (result: FocusSessionResult) => void;
+  markAchievementsSeen: () => void;
+  setAchievements: (achievements: Achievement[]) => void;
+}
+```
+Persisted keys: `coins`, `dailyStreak`, `bestDailyStreak`, `sessionStreak`, `bestSessionStreak`
+
+### `useAmbientStore` (no persistence — resets on reload)
+```ts
+interface AmbientState {
+  isPlaying: boolean;
+  activeTrack: AmbientTrack | null; // 'white' | 'brown' | 'rainfall' | 'forest' | 'ocean'
+  volume: number;  // 0–1
+  drawerOpen: boolean;
+  setTrack: (track: AmbientTrack | null) => void;
+  setVolume: (v: number) => void;
+  stop: () => void;
+  openDrawer: () => void;
+  closeDrawer: () => void;
+}
+```
+
 ### `useToastStore`
 - `toasts: Toast[]`
 - `addToast`, `removeToast`
@@ -518,6 +603,8 @@ Persisted keys: `isGuest`, `bannerDismissed`
 | `useGuestGate.ts` | Gate feature access for guest users (see §9) |
 | `useOutlookSync.ts` | Calls `POST /api/sync/outlook` on mount, maps events |
 | `useContributionYear.ts` | Year selection for performance heatmap |
+
+Note: `useFocusStore` has NOT been extended with `moodLogs` — mood logs are managed as local state in FocusPage and fetched via `moodPersistence.fetchMoodLogs()`. The `useStreakStore` is hydrated from `GET /api/users/preferences` which now returns streak fields.
 
 ---
 
@@ -613,14 +700,53 @@ Response: `{ "ok": true }`
 ```
 Note: `duration` is in seconds; DB stores `durationMinutes`. `taskTitle` is empty string (not persisted in DB).
 
-#### `POST /api/focus-sessions`
+#### `POST /api/focus-sessions` (extended with streak/coin/achievement logic)
 Required: `startTime` (ISO), `endTime` (ISO), `duration` (seconds)
-Optional: `taskId` (uuid)
+Optional: `taskId` (uuid), `timezone` (string, default 'UTC')
 Validates: `end > start`, converts seconds → rounded minutes (min 1)
-Response: `{ "id": "uuid" }`
+After insert: computes streak update, coins earned, achievement unlocks — all in one DB pass.
+Response:
+```json
+{
+  "id": "uuid",
+  "coinsEarned": 25,
+  "newCoins": 147,
+  "dailyStreak": 5,
+  "sessionStreak": 3,
+  "newAchievements": [{ "type": "session_milestone_5", "unlockedAt": "ISO" }]
+}
+```
 
 #### `DELETE /api/focus-sessions/[id]`
 Response: `{ "ok": true }`
+
+---
+
+### Mood Logs
+
+#### `GET /api/mood-logs`
+Query: `?limit=30` (default 30, max 100)
+Returns array of mood log objects sorted by loggedAt desc.
+
+#### `POST /api/mood-logs`
+Body: `{ mood: 'great'|'good'|'okay'|'tired'|'bad', focusSessionId?: string, note?: string }`
+Response: `{ "id": "uuid" }`
+
+---
+
+### Contact
+
+#### `POST /api/contact`
+Body: `{ type: 'suggestion'|'technical'|'feedback', subject: string, message: string, email?: string }`
+Rate limited: 1 per 60 seconds per session.
+Response: `{ "ok": true }`
+
+---
+
+### Streak Recovery
+
+#### `POST /api/streaks/recover`
+Placeholder — returns `{ "ok": false, "reason": "payment_required" }` with HTTP 402.
 
 ---
 
@@ -950,35 +1076,41 @@ Inactive item: `text-muted-foreground`
 
 ---
 
-## 20. PENDING FEATURES (BACKLOG — NOT YET BUILT)
+## 20. IMPLEMENTED FEATURES (FORMERLY BACKLOG)
 
-These features were requested and are next in the queue. None of them exist in the codebase yet.
+### 20.1 Pomodoro tab + session feedback — COMPLETE
+- `/focus` page refactored into 3 tabs: Focus Timer | Pomodoro | Stopwatch
+- Floating circle FAB (TimerCallout) removed from AppShell
+- `PomodoroView`: SVG progress ring, work/break cycle (4 work → long break), Web Audio chime on completion
+- `PomodoroFeedbackModal`: forced mood selection (5 emojis), optional note, posts to `POST /api/mood-logs`
+- `MoodAnalysisCard`: 3-day mood trend analysis, shown above Pomodoro timer, dismissible, with reflection input for declining trends
 
-### 20.1 Pomodoro tab + session feedback
-- Add a dedicated `/focus` Pomodoro tab (full page with timer controls, session queue)
-- **Remove** the floating circle button in the bottom-right that starts Pomodoro sessions
-- After each completed Pomodoro session: feedback modal asking "How did you feel?" with emoji options (great 🔥 / good 😊 / okay 😐 / tired 😴 / bad 😞) displayed as a visual rating bar
-- Every 3 days: auto-generate a mood analysis card ("Your mood last 3 days: trending up ↑" or "Your mood seems low — what's going on?")
+### 20.2 White noise / ambient sound drawer — COMPLETE
+- Web Audio API noise synthesis (no external files): white, brown, rainfall, forest, ocean
+- `AmbientSoundDrawer`: bottom sheet with grid of sound cards, volume slider
+- `FloatingAmbientPlayer`: animated waveform circle at bottom-right (offset when tutorial button visible), click to stop
+- Sidebar has "Ambient Sounds" button to open drawer
 
-### 20.2 White noise / ambient sound drawer
-- Drawer component (slide up from bottom or side) with ambient sound options: White Noise 🌫️, Rainfall 🌧️, Brown Noise 🟤, Forest 🌲, Ocean 🌊
-- When a track plays and drawer is closed: floating mini player icon appears (fixed bottom-right or bottom-left, above the nav bar)
-- Clicking the floating icon stops playback and removes it
-- Sounds should play in-browser via `<audio>` or Web Audio API
+### 20.3 Streaks + achievements + coins — COMPLETE
+- DB-backed: `users` table extended with coins, dailyStreak, bestDailyStreak, sessionStreak, bestSessionStreak, lastFocusDate, lastSessionAt
+- `achievements` table for unlocked milestones, `mood_logs` table for session feedback
+- Server-side streak calculation in `POST /api/focus-sessions` (atomic transaction)
+- 1 coin per minute earned. Achievements at 5/10 session streaks, 7/30 day streaks, 100/500 coins
+- `useStreakStore` (Zustand + persist) for client state
+- Performance page: 4-card streak stats row (daily streak, session streak, best day, coins)
+- Achievement toasts via sonner on unlock
+- Streak recovery card + placeholder premium dialog (HTTP 402)
 
-### 20.3 Streaks + achievements + coins
-- **Daily streak**: accurate day-over-day consistency tracking (not just session count). A streak day = at least 1 completed focus session that day.
-- **Focus session streak**: consecutive sessions completed without breaking
-- Every 5 completed sessions: milestone achievement badge 🏅
-- Every 10 completed sessions: major achievement 🏆
-- **Best day** visible on Performance page (day with highest focus score)
-- **Coins**: earn coins on focus session completion (e.g. 1 coin per session minute). Display on user profile.
-- **Streak recovery**: placeholder UI for a "restore streak" feature (payment wall, leave as non-functional placeholder)
+### 20.4 Stopwatch — COMPLETE
+- `StopwatchView`: HH:MM:SS.cs display, requestAnimationFrame timing, up to 20 laps
+- Fastest/slowest lap highlighting, Framer Motion layout animations
+- Third tab in FocusPage
 
-### 20.4 Stopwatch
-- Clean, focused stopwatch UI component (separate from Pomodoro timer)
-- Lap functionality
-- Available within the Focus tab
+### 20.5 Contact / Feedback — COMPLETE (NEW)
+- `ContactDrawer`: right-side drawer with type/subject/message/email fields
+- Zod inline validation on blur, character counter, rate limiting (60s)
+- `POST /api/contact` → `contact_submissions` table
+- Sidebar has "Contact" paper-plane icon button
 
 ---
 
