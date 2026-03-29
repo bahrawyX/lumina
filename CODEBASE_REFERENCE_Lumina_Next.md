@@ -1,1116 +1,1023 @@
-    # LUMINA NEXT - FULL AUDIT REFERENCE
-> Intended for engineering and LLM consumption.
->
-> This is a code-verified audit of the current repository state, including runtime route contracts, database schema, client/store contracts, and concrete database improvements.
->
-> Last updated: 2026-03-25
+# LUMINA — COMPLETE CODEBASE REFERENCE
+
+> **For engineers and LLM consumption.**
+> Paste this file at the start of any new Claude session.
+> Last updated: 2026-03-29
 
 ---
 
-## 0c. Planner + Focus + Mobile UX Addendum (2026-03-25)
+## HOW TO USE THIS FILE
 
-This addendum captures the planner/focus continuity pass, mobile UX overhaul, and task contract expansion completed after the previous 2026-03-18 updates.
-
-### 0c.1 Task scheduling and focus continuity fields (DB + API)
-
-Task records now persist the following additional fields end-to-end:
-
-- `scheduledStart` (`HH:mm` or `null`)
-- `scheduledEnd` (`HH:mm` or `null`)
-- `remainingFocusTime` (seconds, integer, or `null`)
-
-Implementation points:
-
-- Schema columns added in `src/db/schema/tasks.ts`.
-- Migration added: `drizzle/0004_focus_resume_task_fields.sql` and journal updated.
-- API mappings updated in `src/app/api/tasks/route.ts` and `src/app/api/tasks/[id]/route.ts` for GET/POST/PATCH.
-- Client task type/store normalization updated in `src/types/task.ts`, `src/utils/taskBoard.ts`, and `src/store/useTaskBoardStore.ts`.
-
-### 0c.2 Focus interruption and resume behavior
-
-Focus flow now supports explicit interruption handling with persistence:
-
-- When a running focus session is interrupted, the user is prompted: "Did you finish this task?"
-- "Yes, it's done": marks task done and clears `remainingFocusTime`.
-- "Not yet": saves remaining seconds to `remainingFocusTime` and exits.
-- Starting a focus session from task board now resumes from saved `remainingFocusTime` when present.
-
-Primary files:
-
-- `src/components/focus/FocusSessionView.tsx`
-- `src/components/focus/FocusTimer.tsx`
-- `src/components/tasks/TaskBoard.tsx`
-
-### 0c.3 Roll Over Unfinished Tasks
-
-Planner now supports rolling unfinished/planned tasks to tomorrow with optimistic UI feedback:
-
-- Roll-over CTA in daily plan header.
-- Animated removal of rolled-over items from today's plan.
-- Toast feedback for progress/success/failure.
-- Batch DB sync via task PATCH updates (`dueDate` to tomorrow).
-
-Primary files:
-
-- `src/components/planner/DailyPlanView.tsx`
-- `src/components/planner/DailyPlanHeader.tsx`
-- `src/components/planner/RollOverButton.tsx`
-- `src/store/useTaskBoardStore.ts`
-
-### 0c.4 Mobile-first interaction and layout updates
-
-App shell and planner/task workflows were upgraded for mobile ergonomics:
-
-- Touch-friendly DnD sensors (`MouseSensor` + `TouchSensor` hold-to-drag) in planner and board.
-- Sidebar hidden on mobile with fixed bottom navigation.
-- Safe-area spacing utilities applied to avoid iOS home-indicator overlap.
-- Task and planning modal UX adapted to bottom-sheet patterns.
-
-Primary files:
-
-- `src/app/(app)/AppShell.tsx`
-- `src/components/ui/MobileBottomSheet.tsx`
-- `src/components/planner/PlanningModal.tsx`
-- `src/components/tasks/TaskDialog.tsx`
-- `src/components/planner/DailyPlanView.tsx`
-
-### 0c.5 Planner timeline and quick-add polish
-
-Planner UI received density and input-flow improvements:
-
-- Planned task cards and timeline block sizing reduced for better scanability.
-- Quick-add row now supports emoji insertion.
-- Quick-add duration control migrated to shadcn/Radix Select styling.
-
-Primary files:
-
-- `src/components/calendar/DayCalendarTimeline.tsx`
-- `src/components/planner/PlannedTaskCard.tsx`
-- `src/components/planner/DailyPlanView.tsx`
-
-### 0c.6 Scope guardrails
-
-- No new auth-provider scope expansion was introduced.
-- Integration ownership/security model from 2026-03-18 remains unchanged.
+This is the single source of truth for the Lumina codebase. It covers:
+- Project purpose and tech stack
+- Every directory and file with a brief description
+- All Zustand stores with their full state shape
+- All API route contracts (request/response)
+- Full database schema
+- Component architecture hierarchy
+- Every recent feature added and the files it lives in
+- Known gaps and the backlog of features pending implementation
 
 ---
 
-## 0b. Auth vs Integration Separation Addendum (2026-03-18)
+## 1. PROJECT OVERVIEW
 
-This addendum captures the full auth/integration architecture split completed in this pass.
+**Lumina** is a Next.js productivity and calendar management app. Core concept: give knowledge workers one place to manage their calendar, tasks, daily plan, and focus sessions — augmented by an AI intelligence engine that analyses their schedule and recommends optimal focus windows.
 
-### 0b.1 Auth-vs-integration separation
+### Key feature areas
 
-**Auth flow (identity-only):**
-- Google login: `openid`, `email`, `profile` only. Calendar scopes removed from `auth.ts`.
-- Microsoft login: identity only. No calendar scopes.
-- Both providers are registered in `src/lib/auth.ts` without any calendar scopes.
-
-**Integration flow (explicit user action):**
-- User must explicitly click "Connect Google Calendar" or "Connect Outlook Calendar".
-- This triggers a **separate** OAuth popup that is NOT the BetterAuth sign-in flow.
-- Each integration popup is bound to the authenticated user's session (server verifies session on connect + callback).
-- Tokens are stored in the `integrations` table, keyed by `(userId, provider)`.
-
-### 0b.2 New API routes
-
-| Route | Method | Purpose |
+| Area | Route | Description |
 |---|---|---|
-| `/api/integrations/google/connect` | GET | Initiates Google Calendar OAuth (calendar.readonly + offline + consent). Redirects to Google. |
-| `/api/integrations/google/callback` | GET | Receives Google code, exchanges for tokens, upserts into `integrations`, redirects to popup-complete. |
-| `/api/integrations/microsoft/connect` | GET | Initiates Microsoft Calendar OAuth (Calendars.Read + select_account). Redirects to Microsoft. |
-| `/api/integrations/microsoft/callback` | GET | Receives Microsoft code, exchanges for tokens, upserts into `integrations`, redirects to popup-complete. |
-| `/api/integrations/status` | GET | Returns `{ google: { connected }, microsoft: { connected } }` for the authenticated user. Never exposes tokens. |
-
-### 0b.3 CSRF state protection
-
-Each connect endpoint sets an httpOnly cookie (`lumina_google_connect_state` / `lumina_microsoft_connect_state`) with a random nonce. The callback verifies the URL `state` parameter matches the cookie before processing the OAuth code. Cookie expires after 10 minutes.
-
-### 0b.4 Token storage rule
-
-- Google tokens: stored in `integrations` with `provider='google'`, upserted on `(userId, provider)` unique index.
-- Microsoft tokens: stored in `integrations` with `provider='microsoft'`, upserted on `(userId, provider)` unique index.
-- If Google does not return a `refresh_token` (user already consented), the existing `refresh_token` from DB is preserved.
-- `refreshToken` is NEVER returned to the client.
-
-### 0b.5 Redirect URI manual prerequisites
-
-The following redirect URIs must be registered in external OAuth consoles before the integration flow works:
-
-- **Google Cloud Console**: `{BETTER_AUTH_URL}/api/integrations/google/callback`
-- **Azure AD App Registration**: `{BETTER_AUTH_URL}/api/integrations/microsoft/callback`
-
-The existing BetterAuth login redirect URIs (`/api/auth/callback/google`, `/api/auth/callback/microsoft`) remain registered and unchanged.
-
-### 0b.6 UI changes
-
-**Sidebar (`src/components/Sidebar.tsx`):**
-- `startSocialSignInPopup` removed. Replaced by `openIntegrationPopup(provider)` which opens `/api/integrations/{provider}/connect` directly in a popup.
-- `handleGoogleCalendarConnect` and `handleOutlookConnect` now use `openIntegrationPopup`.
-- `seedDemoOutlookEvent` usage removed.
-- `useEffect` on mount calls `/api/integrations/status` to restore connected state after page reload.
-
-**OnboardingFlow (`src/components/OnboardingFlow.tsx`):**
-- `seedDemoOutlookEvent` import removed.
-- `handleOutlookConnect` (provider='outlook') now uses `openIntegrationPopup('microsoft')` instead of BetterAuth social sign-in popup.
-- `startSocialSignInPopup('google')` for the Google LOGIN step remains correct and unchanged (login-only scopes).
-
-### 0b.7 Outlook sync fix
-
-**`src/hooks/useOutlookSync.ts`:**
-- Previously called `syncOutlookCalendar(timezone)` which was a dead stub returning localStorage events.
-- Now calls `POST /api/sync/outlook` (the real server endpoint that reads from `integrations` and calls Microsoft Graph).
-- Maps raw Graph API events using `mapOutlookEventToLuminaEvent` from `src/lib/outlook/outlookEvents.ts`.
-- Auto-disconnects (`setOutlookConnected(false)`) if the server responds 401 (token expired) or 404 (integration not connected).
-
-### 0b.8 MSAL status
-
-No MSAL library code exists in this codebase. Zero live usages of `PublicClientApplication`, `loginPopup`, `acquireTokenSilent`, `@azure/msal-*`. All references were already removed in a prior migration.
-
-### 0b.9 Microsoft: prompt=select_account
-
-`/api/integrations/microsoft/connect` includes `prompt=select_account` in the OAuth URL. This forces Microsoft to always present the account picker, preventing silent reuse of a cached developer account across different users.
-
-### 0b.10 Scope guardrails
-
-- No Zustand stores were modified in this pass.
-- No drag/layout/density/virtualization engine logic was modified.
-- Existing local event CRUD is unchanged.
-- BetterAuth login flows are unchanged.
+| Calendar | `/` | Month/week/day views with drag-drop event management |
+| Tasks | `/tasks` | Kanban board (todo → doing → done → archived) |
+| Daily Plan | `/plan` | Schedule tasks into the day with drag-drop time slots |
+| Focus | `/focus` | Pomodoro-style timer with session tracking |
+| Performance | `/performance` | GitHub-style contribution heatmap and focus stats |
+| Intelligence | `/intelligence` | AI-generated scheduling recommendations |
+| Onboarding | `/onboarding` | Multi-step onboarding flow with auth |
 
 ---
 
-## 0. Final Tightening Addendum (2026-03-18)
+## 2. TECH STACK
 
-This addendum captures the final strict DB-contract tightening pass completed after the baseline audit.
+### Core framework
+- **Next.js 16 (App Router)** — React 19 meta-framework
+- **TypeScript 5** — strict throughout
 
-### 0.1 Task status contract
+### State management
+- **Zustand 5** with `persist` middleware — all major UI state lives here
 
-- Canonical DB and API write status remains: `todo | in_progress | done | archived`.
-- Legacy UI write value `doing` is still accepted and normalized to `in_progress`.
-- `archived` is no longer collapsed into `done`.
-- Default board query now excludes archived tasks explicitly, while allowing opt-in via `includeArchived=true|1`.
+### UI / styling
+- **Tailwind CSS 3.4** — utility-first, design tokens in `globals.css`
+- **Radix UI** — headless primitives (Dialog, Dropdown, Tabs, Select, etc.)
+- **Framer Motion 12** — animations and `AnimatePresence`
+- **shadcn/ui** conventions — components in `src/components/ui/`
+- **class-variance-authority + clsx + tailwind-merge** — class composition
 
-### 0.2 Event provider and source vocabulary
+### Drag & drop
+- **@dnd-kit/core + @dnd-kit/sortable** — both planner and task board
 
-- Canonical provider at API and DB boundary: `local | google | outlook`.
-- Canonical source at API and DB boundary: `manual | google | microsoft | scheduler`.
-- Legacy values are normalized once at boundary:
-   - provider: `microsoft` -> `outlook`, `lumina/manual/local` -> `local`
-   - source: `lumina/local` -> `manual`, `outlook` -> `microsoft`
-- API event reads now return canonical source/provider from DB.
-- UI-facing persistence adapter maps canonical values to existing UI source vocabulary (`lumina | outlook`) without changing store contracts.
+### Date/time
+- **date-fns 4** — all date manipulation
 
-### 0.3 Migration backfill explicit mapping
+### Animation
+- **Framer Motion** — page transitions, animated drawers, tutorial spotlight
 
-- Migration `drizzle/0002_pink_komodo.sql` now includes explicit documented legacy source -> canonical provider mapping rules:
-   - `lumina/local/manual/scheduler` -> `local`
-   - `outlook/microsoft` -> `outlook`
-   - `google` -> `google`
-   - fallback -> `local`
+### Forms & validation
+- **Zod 4** — all form validation (see `src/lib/validation.ts`)
 
-### 0.4 Sync security tightening
+### Notifications
+- **sonner** — branded toast notifications
 
-- `/api/sync/outlook` is session-bound.
-- Provider token is loaded only from DB integration rows owned by `session.user.id`.
-- Client-supplied access tokens are not trusted.
-- Missing integration, non-active integration, and expired token all fail safely.
+### Auth
+- **better-auth 1.5** — sessions, email/password, Google OAuth, Microsoft OAuth
 
-### 0.5 Scope guardrails honored
+### Database
+- **Drizzle ORM 0.45** with **Neon Postgres** (`@neondatabase/serverless`)
 
-- No Zustand stores were modified in this tightening pass.
-- No drag/layout/density/virtualization engine logic was modified in this tightening pass.
-- Existing schema hardening constraints remain intact.
+### AI
+- **Google Gemini** (`@google/genai`) — intelligence engine summaries
 
----
-
-## 1. Audit Scope
-
-This document reflects the current behavior of:
-
-- Next.js App Router pages and API routes
-- BetterAuth server and client wiring
-- Drizzle schema definitions under `src/db/schema`
-- Zustand store contracts and persistence adapters
-- Calendar/task/focus data flow from UI -> API -> DB
-
-Primary audited files include:
-
-- `src/app/api/auth/[...all]/route.ts`
-- `src/app/api/events/route.ts`
-- `src/app/api/events/[id]/route.ts`
-- `src/app/api/tasks/route.ts`
-- `src/app/api/tasks/[id]/route.ts`
-- `src/app/api/focus-sessions/route.ts`
-- `src/app/api/focus-sessions/[id]/route.ts`
-- `src/app/api/sync/outlook/route.ts`
-- `src/app/api/sync/google/route.ts`
-- `src/lib/auth.ts`
-- `src/lib/auth-client.ts`
-- `src/lib/db.ts`
-- `src/db/schema/*.ts`
-- `src/store/*.ts`
-- `src/lib/persistence/*.ts`
+### Theme
+- **next-themes** — dark/light mode
 
 ---
 
-## 2. System Architecture Summary
+## 3. DIRECTORY MAP
 
-### 2.1 Runtime layers
-
-1. UI and interaction state
-   - Zustand stores handle local interaction speed, undo/redo, drag state, modal state, and ephemeral timer data.
-2. Persistence adapters
-   - Thin fetch wrappers under `src/lib/persistence` call API routes.
-3. API boundary
-   - Route handlers in `src/app/api/*` validate session and transform payloads.
-4. DB access
-   - Drizzle ORM + Neon client via `src/lib/db.ts`.
-5. Auth boundary
-   - BetterAuth configured in `src/lib/auth.ts` and exposed via catch-all auth route.
-
-### 2.2 Canonical source-of-truth status
-
-- Events: DB-backed (with dev-only localStorage fallback on hydration failure).
-- Tasks: DB-backed (with dev-only localStorage fallback on hydration failure).
-- Focus session history: DB-backed (active running timer state remains localStorage by design).
-- Daily planner items: localStorage-only today (DB table exists but runtime API is intentionally deferred).
+```
+src/
+├── app/
+│   ├── (app)/                      ← Authenticated app route group
+│   │   ├── layout.tsx              ← Wraps all app pages in <AppShell>
+│   │   ├── AppShell.tsx            ← Main shell: sidebar, mobile nav, GuestBanner, beforeunload handler
+│   │   ├── page.tsx                ← Calendar view
+│   │   ├── tasks/page.tsx          ← Task board
+│   │   ├── plan/page.tsx           ← Daily planner
+│   │   ├── focus/page.tsx          ← Focus session view
+│   │   ├── focus/done/page.tsx     ← Focus history
+│   │   ├── performance/page.tsx    ← Contribution heatmap + stats
+│   │   └── intelligence/page.tsx  ← Intelligence/profile page
+│   ├── auth/
+│   │   └── popup-complete/page.tsx ← OAuth popup bridge (posts lumina:oauth-complete to opener)
+│   ├── onboarding/
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── api/
+│   │   ├── auth/[...all]/route.ts  ← BetterAuth catch-all handler
+│   │   ├── events/
+│   │   │   ├── route.ts            ← GET (list) / POST (create)
+│   │   │   └── [id]/route.ts       ← GET / PATCH / DELETE
+│   │   ├── tasks/
+│   │   │   ├── route.ts            ← GET / POST
+│   │   │   └── [id]/route.ts       ← PATCH / DELETE
+│   │   ├── focus-sessions/
+│   │   │   ├── route.ts            ← GET / POST
+│   │   │   └── [id]/route.ts       ← DELETE
+│   │   ├── integrations/
+│   │   │   ├── status/route.ts                    ← GET: { google, microsoft }.connected
+│   │   │   ├── google/connect/route.ts            ← Initiates Google Calendar OAuth popup
+│   │   │   ├── google/callback/route.ts           ← Stores Google tokens in integrations table
+│   │   │   ├── google/events/sync/route.ts        ← Syncs Google events into DB
+│   │   │   ├── google/calendars/route.ts          ← Lists/imports Google calendars
+│   │   │   ├── microsoft/connect/route.ts         ← Initiates Microsoft Calendar OAuth popup
+│   │   │   ├── microsoft/callback/route.ts        ← Stores Microsoft tokens in integrations table
+│   │   │   ├── [provider]/disconnect/route.ts     ← Revokes integration
+│   │   │   └── [provider]/calendars/route.ts      ← Lists provider calendars
+│   │   ├── sync/
+│   │   │   ├── all/route.ts        ← Syncs all providers
+│   │   │   ├── google/route.ts     ← Runs full Google Calendar sync
+│   │   │   └── outlook/route.ts   ← Session-bound Microsoft Graph sync
+│   │   ├── external-events/
+│   │   │   ├── all/route.ts
+│   │   │   └── [provider]/route.ts
+│   │   ├── intelligence/route.ts
+│   │   ├── users/preferences/route.ts
+│   │   └── maintenance/cleanup-external-events/route.ts
+│   ├── globals.css
+│   ├── layout.tsx                  ← Root layout: AuthProvider, ThemeProvider, metadata
+│   └── providers.tsx
+│
+├── components/
+│   ├── auth/
+│   │   ├── GuestBanner.tsx         ← Amber dismissible banner shown at top of AppShell in guest mode
+│   │   └── GuestUpgradeModal.tsx   ← Dialog shown when guest attempts gated feature
+│   ├── calendar/
+│   │   ├── interaction/            ← Conflict detection hooks + dialogs
+│   │   └── virtualization/        ← Virtual scrolling and density management
+│   ├── focus/
+│   │   ├── FocusSessionView.tsx   ← Main focus container (interrupt/resume logic)
+│   │   ├── FocusTimer.tsx         ← Timer display and controls
+│   │   ├── FocusHeader.tsx
+│   │   └── FocusProgress.tsx
+│   ├── icons/                     ← All SVG icon components + barrel index.ts
+│   ├── pages/
+│   │   ├── CalendarPage.tsx        ← data-tutorial="cal-view-tabs" on TabsList
+│   │   ├── TasksPage.tsx
+│   │   ├── DailyPlanPage.tsx
+│   │   ├── FocusPage.tsx
+│   │   ├── PerformancePage.tsx
+│   │   └── IntelligencePage.tsx
+│   ├── performance/
+│   │   └── contributions/         ← ContributionGrid, Cell, Heatmap, Legend, Tooltip, YearSelector
+│   ├── planner/
+│   │   ├── DailyPlanView.tsx       ← data-tutorial="plan-pool" on task pool container
+│   │   ├── DailyPlanHeader.tsx
+│   │   ├── TodayTimeline.tsx
+│   │   ├── PlannedTaskCard.tsx
+│   │   ├── TaskPoolCard.tsx
+│   │   ├── FreeTimePanel.tsx
+│   │   ├── IntelligencePanel.tsx   ← All dark/zinc tokens replaced with semantic bg-card/border-border
+│   │   ├── IntelligenceRecommendationCard.tsx
+│   │   ├── PlanningModal.tsx
+│   │   └── RollOverButton.tsx
+│   ├── tasks/
+│   │   ├── TaskBoard.tsx           ← data-tutorial="task-board-header" on board header
+│   │   ├── TaskColumn.tsx
+│   │   ├── TaskCard.tsx
+│   │   ├── TaskDialog.tsx
+│   │   └── TaskScheduleDialog.tsx
+│   ├── tutorial/
+│   │   └── TutorialOverlay.tsx    ← Full tutorial system (see §10)
+│   ├── ui/
+│   │   ├── CompactEmojiPicker.tsx ← Themed: bg-popover/95 border-border/60 (no dark bg-zinc-950)
+│   │   ├── MobileBottomSheet.tsx  ← Themed: bg-card/95 border-border (no dark bg-[#0a0a0a]/90)
+│   │   ├── Toaster.tsx
+│   │   ├── MobileBottomSheet.tsx
+│   │   └── [shadcn primitives]    ← avatar, badge, button, calendar, dialog, dropdown-menu,
+│   │                                 input, label, popover, scroll-area, select, separator,
+│   │                                 sheet, sidebar, skeleton, tabs, textarea, tooltip
+│   ├── AuthProvider.tsx
+│   ├── DayView.tsx / WeekView.tsx / MonthView.tsx
+│   ├── DayCalendarTimeline.tsx
+│   ├── EventModal.tsx
+│   ├── GoogleCalendarSync.tsx
+│   ├── OnboardingFlow.tsx          ← Full multi-step flow with guest auth path (see §9)
+│   ├── PersistenceBootstrap.tsx    ← Fetches events/tasks/focus in parallel on mount
+│   ├── Profile.tsx
+│   ├── Sidebar.tsx
+│   ├── TimerCallout.tsx
+│   └── theme-provider.tsx / theme-toggle.tsx
+│
+├── store/                          ← All Zustand stores (see §6)
+├── hooks/                          ← Custom React hooks (see §7)
+├── lib/
+│   ├── auth.ts                     ← BetterAuth server config
+│   ├── auth-client.ts              ← BetterAuth client instance
+│   ├── authGuard.ts                ← Session validation middleware
+│   ├── db.ts                       ← Drizzle + Neon client
+│   ├── focusSettings.ts            ← Focus duration utilities
+│   ├── persistence/                ← Thin API wrappers: events/tasks/focus/planner
+│   ├── validation.ts               ← Zod schemas: nameSchema, emailSchema, passwordCreateSchema, passwordSchema, titleSchema, getFieldError()
+│   ├── utils.ts                    ← cn() and common utils
+│   ├── intelligence/               ← AI engine: engine, types, recommendations, scoring, llmSummary
+│   ├── integrations/
+│   │   ├── google/                 ← OAuth, token refresh, calendar/event CRUD, sync
+│   │   └── microsoft/              ← OAuth, token refresh, calendar/event CRUD, sync
+│   └── calendar/                   ← Normalize, local CRUD, providers
+├── db/
+│   └── schema/                     ← users, accounts, sessions, verifications, events,
+│                                     tasks, calendars, integrations, focusSessions, plannerItems
+├── types/
+│   ├── types.ts                    ← CalendarEvent, Task, FocusSession, ViewType, EventCategory, IntelligenceProfile
+│   ├── task.ts
+│   └── performance.ts
+├── utils/
+│   ├── dateUtils.ts
+│   ├── time/timeUtils.ts
+│   ├── dailyPlanUtils.ts
+│   ├── taskBoard.ts
+│   ├── notify.ts
+│   ├── scheduling/                 ← scheduleTask, autoScheduleTasks, autoPlanDay, findFreeTime, timelineMerge
+│   ├── performance/                ← buildContributionCalendar, computeContributionScoreForDay, getContributionLevel
+│   └── calendar/getVisibleEvents.ts
+├── services/
+│   ├── geminiService.ts            ← Google Gemini AI
+│   └── outlookSyncService.ts
+├── engine/
+│   ├── dragEngine.ts
+│   ├── overlapEngine.ts
+│   └── slotEngine.ts
+└── constants.tsx                   ← Event categories, colors, constants
+```
 
 ---
 
-## 3. Routing Inventory
+## 4. DESIGN TOKENS & THEMING
 
-### 3.1 App pages
+All components must use **semantic CSS tokens only**. Never use hardcoded dark colors.
 
-- `/` -> app shell main calendar
-- `/onboarding` -> onboarding flow
-- `/tasks` -> task board
-- `/plan` -> daily planning view
-- `/focus` -> focus view
-- `/performance` -> performance dashboard
-- `/intelligence` -> intelligence/profile view
+### Required tokens (Tailwind classes)
 
-### 3.2 API routes
+| Token | Use |
+|---|---|
+| `bg-background` | Page/card backdrop |
+| `bg-card` | Card surfaces |
+| `bg-popover` | Floating popovers, pickers |
+| `bg-muted` | Subtle backgrounds |
+| `text-foreground` | Primary text |
+| `text-muted-foreground` | Secondary/subdued text |
+| `border-border` | All borders |
+| `text-primary` / `bg-primary` | Brand color |
+| `text-destructive` | Error state |
+| `bg-destructive/focus-visible:ring-destructive/20` | Error input |
 
-- `/api/auth/[...all]`
-- `/api/events`
-- `/api/events/[id]`
-- `/api/tasks`
-- `/api/tasks/[id]`
-- `/api/focus-sessions`
-- `/api/focus-sessions/[id]`
-- `/api/sync/outlook` — POST, session-bound, reads token from `integrations` table
-- `/api/sync/google` — POST, delegates to `runFullGoogleSync`
-- `/api/integrations/google/connect` — GET, initiates Google Calendar OAuth popup
-- `/api/integrations/google/callback` — GET, handles Google Calendar OAuth callback
-- `/api/integrations/google/calendars` — GET/POST, list/import Google calendars
-- `/api/integrations/google/events/sync` — POST, sync Google events into DB
-- `/api/integrations/microsoft/connect` — GET, initiates Microsoft Calendar OAuth popup
-- `/api/integrations/microsoft/callback` — GET, handles Microsoft Calendar OAuth callback
-- `/api/integrations/status` — GET, returns connection status for both providers (no tokens)
+### Banned patterns (break light mode on mobile)
+
+```
+bg-black/60         → bg-background/90
+bg-[#0a0a0a]/90     → bg-card/95
+text-white/*        → text-foreground or text-muted-foreground
+border-white/*      → border-border
+bg-zinc-950/*       → bg-popover
+text-zinc-400       → text-muted-foreground
+bg-white/[0.0x]     → bg-muted/[x]
+```
+
+### Components fixed for theme consistency
+
+- `AppShell.tsx` — mobile nav uses `bg-background/90 border-border text-muted-foreground`
+- `MobileBottomSheet.tsx` — `bg-card/95 border-border`; handle `bg-muted-foreground/25`
+- `IntelligencePanel.tsx` — fully rewritten with semantic tokens
+- `CompactEmojiPicker.tsx` — `bg-popover/95 border-border/60`
 
 ---
 
-## 4. Auth Layer (BetterAuth)
+## 5. DATABASE SCHEMA
 
-### 4.1 Server config
-
-Location: `src/lib/auth.ts`
-
-- Auth engine: BetterAuth + Drizzle adapter (`provider: 'pg'`, `usePlural: true`).
-- Session DB requirement: throws hard error if DB client unavailable.
-- Email/password login enabled.
-- Social providers are conditionally registered:
-  - Google only if both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` exist.
-  - Microsoft only if both `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET` exist.
-
-### 4.2 Auth route adapters and aliases
-
-Location: `src/app/api/auth/[...all]/route.ts`
-
-- Alias 1: `/session` is normalized to `/get-session`.
-- Alias 2: `/sign-in/microsoft` is converted to `/sign-in/social` POST body with:
-  - `provider: "microsoft"`
-  - `callbackURL` from query or origin root fallback
-
-This alias protects compatibility with UI calls that still hit provider-specific sign-in path formats.
-
-### 4.3 Client auth
-
-Location: `src/lib/auth-client.ts`, `src/components/AuthProvider.tsx`, `src/hooks/useUser.ts`
-
-- Client base URL resolves to `${origin}/api/auth` when no public env override exists.
-- `useUser` exposes `{ user, session, isAuthenticated, isLoading, refetch }`.
-
-### 4.4 OAuth popup completion
-
-Location: `src/app/auth/popup-complete/page.tsx`
-
-- Popup page posts `lumina:oauth-complete` to opener on same origin and closes window.
-- Used by onboarding and sidebar popup social sign-in flows.
-
----
-
-## 5. API Contracts (Current Behavior)
-
-All domain routes below require an authenticated session.
-
-### 5.1 Events API
-
-#### GET `/api/events`
-
-Response: `200` array of mapped event objects:
-
-```json
-[
-  {
-    "id": "uuid",
-    "title": "string",
-    "date": "YYYY-MM-DD",
-    "startTime": "HH:mm",
-    "endTime": "HH:mm",
-    "description": "string | undefined",
-    "location": "string | undefined",
-    "isAllDay": false,
-    "completed": false,
-    "category": "work",
-    "linkedTaskId": null
-  }
-]
-```
-
-Notes:
-
-- `completed`, `category`, `linkedTaskId` are currently synthesized defaults, not loaded from DB columns.
-
-#### POST `/api/events`
-
-Request body accepted (minimum required):
-
-```json
-{
-  "title": "required string",
-  "date": "required YYYY-MM-DD",
-  "startTime": "optional HH:mm",
-  "endTime": "optional HH:mm",
-  "description": "optional string",
-  "location": "optional string",
-  "isAllDay": "optional boolean"
-}
-```
-
-Behavior:
-
-- Creates or reuses a primary local calendar (`provider=local`, `isPrimary=true`) per user.
-- Builds UTC timestamps from date/time.
-- Inserts event with `source='manual'`.
-
-Response:
-
-```json
-{ "id": "uuid" }
-```
-
-#### PATCH `/api/events/[id]`
-
-Patchable fields:
-
-- `title`
-- `description`
-- `location`
-- `isAllDay`
-- `date` + `startTime` (rebuild `startTime` timestamp)
-- `date` + `endTime` (rebuild `endTime` timestamp)
-
-Ownership check:
-
-- Update where `events.id = :id AND events.userId = :sessionUserId`.
-
-Response:
-
-```json
-{ "ok": true }
-```
-
-#### DELETE `/api/events/[id]`
-
-Ownership check same as PATCH.
-
-Response:
-
-```json
-{ "ok": true }
-```
-
-### 5.2 Tasks API
-
-#### GET `/api/tasks`
-
-Response: mapped task array:
-
-```json
-[
-  {
-    "id": "uuid",
-    "title": "string",
-    "description": "string | undefined",
-      "status": "todo | doing | done | archived",
-      "dbStatus": "todo | in_progress | done | archived",
-    "priority": "low | medium | high",
-    "dueDate": "YYYY-MM-DD | null",
-    "durationMinutes": 30,
-      "scheduledStart": "HH:mm | null",
-      "scheduledEnd": "HH:mm | null",
-      "remainingFocusTime": 600,
-    "order": 0,
-    "context": null,
-    "linkedEventId": null,
-    "createdAt": "ISO",
-    "updatedAt": "ISO"
-  }
-]
-```
-
-Notes:
-
-- API returns UI-friendly `status` (`doing`) plus canonical `dbStatus` (`in_progress`) for compatibility.
-- Archived tasks are excluded by default; include with `?includeArchived=true` or `?includeArchived=1`.
-
-#### POST `/api/tasks`
-
-Request body accepted:
-
-```json
-{
-  "title": "required string",
-   "description": "optional string | null",
-   "status": "optional todo|doing|in_progress|done|archived",
-  "priority": "optional low|medium|high",
-  "dueDate": "optional ISO/date string or null",
-   "durationMinutes": "optional number",
-   "scheduledStart": "optional HH:mm or null",
-   "scheduledEnd": "optional HH:mm or null",
-   "remainingFocusTime": "optional number(seconds) or null"
-}
-```
-
-Response:
-
-```json
-{ "id": "uuid" }
-```
-
-#### PATCH `/api/tasks/[id]`
-
-Patchable fields:
-
-- `title`
-- `description`
-- `status` (`todo|doing|in_progress|done|archived`)
-- `priority`
-- `durationMinutes` -> mapped to `estimatedMinutes`
-- `dueDate` (`null` clears)
-- `scheduledStart` (`HH:mm` or `null`)
-- `scheduledEnd` (`HH:mm` or `null`)
-- `remainingFocusTime` (seconds integer or `null`)
-
-Ownership check:
-
-- Update where `tasks.id = :id AND tasks.userId = :sessionUserId`.
-
-#### DELETE `/api/tasks/[id]`
-
-Ownership check same as PATCH.
-
-Response:
-
-```json
-{ "ok": true }
-```
-
-### 5.3 Focus Sessions API
-
-#### GET `/api/focus-sessions`
-
-Response shape:
-
-```json
-[
-  {
-    "id": "uuid",
-    "taskId": "uuid | ''",
-    "taskTitle": "",
-    "startTime": "ISO",
-    "endTime": "ISO",
-    "duration": 1500,
-    "completed": true
-  }
-]
-```
-
-Notes:
-
-- `taskTitle` is not persisted in DB and is returned as empty string.
-- `duration` is returned in seconds but DB stores `durationMinutes`.
-
-#### POST `/api/focus-sessions`
-
-Request body accepted:
-
-```json
-{
-  "startTime": "required ISO",
-  "endTime": "required ISO",
-  "duration": "required number (seconds)",
-  "taskId": "optional uuid"
-}
-```
-
-Behavior:
-
-- Validates timestamps and end > start.
-- Converts seconds to rounded minutes (minimum 1).
-
-Response:
-
-```json
-{ "id": "uuid" }
-```
-
-#### DELETE `/api/focus-sessions/[id]`
-
-Ownership check:
-
-- Delete where `focus_sessions.id = :id AND focus_sessions.userId = :sessionUserId`.
-
-Response:
-
-```json
-{ "ok": true }
-```
-
-### 5.4 Sync API
-
-#### POST `/api/sync/outlook`
-
-Request body accepted:
-
-```json
-{
-  "timezone": "optional string"
-}
-```
-
-Behavior:
-
-- Requires authenticated session (`401` if missing).
-- Loads the user's Microsoft integration token from `integrations` table (session-bound).
-- Returns `404` if integration not connected, `409` if status is not active, `401` if token is expired.
-- Calls `fetchOutlookEvents(accessToken)` via Microsoft Graph.
-- Returns `{ ok, eventCount, events }` where events are raw Graph API shapes.
-- Client (`useOutlookSync`) maps events using `mapOutlookEventToLuminaEvent`.
-- Client auto-disconnects on `401`/`404` responses.
-
-Security: client-supplied tokens are never used. Token is always loaded from DB by `session.user.id`.
-
-#### POST `/api/sync/google`
-
-Behavior:
-
-- Requires authenticated session.
-- Delegates to `runFullGoogleSync(userId)`.
-- Returns sync result including imported calendar/event counts.
-
----
-
-## 6. Database Schema (Current)
-
-### 6.1 Auth tables
+### Auth tables (managed by BetterAuth)
 
 #### `users`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| email | varchar(255) | no | - | unique |
-| name | text | yes | null | display name |
-| email_verified | boolean | no | false | |
-| image | text | yes | null | |
-| avatar | text | yes | null | |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-
-Indexes:
-
-- `users_email_idx` on `email`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | auto gen |
+| email | varchar(255) unique | required |
+| name | text | nullable |
+| email_verified | boolean | default false |
+| image | text | nullable |
+| avatar | text | nullable |
+| created_at / updated_at | timestamptz | |
 
 #### `accounts`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| account_id | text | provider's account id |
+| provider_id | text | |
+| user_id | uuid FK→users | cascade delete |
+| access_token / refresh_token / id_token | text | nullable |
+| password | text | nullable (email auth) |
+| created_at / updated_at | timestamptz | |
 
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| account_id | text | no | - | provider account id |
-| provider_id | text | no | - | provider key |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| access_token | text | yes | null | |
-| refresh_token | text | yes | null | |
-| id_token | text | yes | null | |
-| access_token_expires_at | timestamptz | yes | null | |
-| refresh_token_expires_at | timestamptz | yes | null | |
-| scope | text | yes | null | |
-| password | text | yes | null | for password auth mode |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-
-Indexes and uniques:
-
-- `accounts_user_id_idx` on `user_id`
-- `accounts_provider_id_idx` on `provider_id`
-- unique `accounts_provider_account_unique` on (`provider_id`, `account_id`)
+Unique: `(provider_id, account_id)`
 
 #### `sessions`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| expires_at | timestamptz | no | - | |
-| token | text | no | - | unique token |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-| ip_address | text | yes | null | |
-| user_agent | text | yes | null | |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-
-Indexes and uniques:
-
-- unique `sessions_token_unique` on `token`
-- `sessions_user_id_idx` on `user_id`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| token | text unique | |
+| user_id | uuid FK→users | cascade delete |
+| expires_at | timestamptz | |
+| ip_address / user_agent | text | nullable |
 
 #### `verifications`
+- identifier, value, expires_at
 
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| identifier | text | no | - | |
-| value | text | no | - | |
-| expires_at | timestamptz | no | - | |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
+---
 
-Index:
-
-- `verifications_identifier_idx` on `identifier`
-
-### 6.2 Product/domain tables
-
-#### Enum: `calendar_provider`
-
-- `google`
-- `microsoft`
-- `local`
+### Domain tables
 
 #### `calendars`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| provider | calendar_provider | no | - | google/microsoft/local |
-| external_id | varchar(255) | yes | null | external calendar id |
-| name | varchar(255) | no | - | |
-| color | varchar(32) | no | '#6D59E0' | |
-| is_primary | boolean | no | false | |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-
-Indexes:
-
-- `calendars_user_id_idx` on `user_id`
-- `calendars_provider_idx` on `provider`
-
-#### Enum: `event_source`
-
-- `manual`
-- `google`
-- `microsoft`
-- `scheduler`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | |
+| provider | enum: `google\|microsoft\|local` | |
+| external_id | varchar(255) | nullable |
+| name | varchar(255) | |
+| color | varchar(32) | default '#6D59E0' |
+| is_primary | boolean | default false |
 
 #### `events`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | |
+| calendar_id | uuid FK→calendars | |
+| title | varchar(512) | |
+| description | text | nullable |
+| start_time / end_time | timestamptz | check: end > start |
+| is_all_day | boolean | |
+| location | varchar(512) | nullable |
+| source | enum: `manual\|google\|microsoft\|scheduler` | |
+| external_id | varchar(255) | nullable (provider event id) |
+| last_synced_at | timestamptz | nullable |
+| is_task_generated | boolean | default false |
 
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| calendar_id | uuid | no | - | FK -> calendars(id) cascade delete |
-| title | varchar(512) | no | - | |
-| description | text | yes | null | |
-| start_time | timestamptz | no | - | |
-| end_time | timestamptz | no | - | must be > start_time |
-| is_all_day | boolean | no | false | |
-| location | varchar(512) | yes | null | |
-| is_task_generated | boolean | no | false | |
-| source | event_source | no | manual | |
-| external_id | varchar(255) | yes | null | external provider event id |
-| last_synced_at | timestamptz | yes | null | |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-
-Indexes and checks:
-
-- `events_user_start_time_idx` on (`user_id`, `start_time`)
-- `events_user_end_time_idx` on (`user_id`, `end_time`)
-- `events_calendar_id_idx` on `calendar_id`
-- `events_external_id_idx` on `external_id`
-- check `events_time_range_check`: `end_time > start_time`
-
-#### Enum: `task_status`
-
-- `todo`
-- `in_progress`
-- `done`
-
-#### Enum: `task_priority`
-
-- `low`
-- `medium`
-- `high`
+**Note:** `category`, `color`, `completed`, `linked_task_id`, recurrence are NOT in DB yet — silently dropped at API boundary.
 
 #### `tasks`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | |
+| title | varchar(512) | |
+| description | text | nullable |
+| status | enum: `todo\|in_progress\|done` | default todo |
+| priority | enum: `low\|medium\|high` | default medium |
+| estimated_minutes | integer | default 30, must be > 0 |
+| due_date | timestamptz | nullable |
+| scheduled_start | varchar(5) | HH:mm or null |
+| scheduled_end | varchar(5) | HH:mm or null |
+| remaining_focus_time | integer | seconds for resume, nullable |
 
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| title | varchar(512) | no | - | |
-| description | text | yes | null | |
-| status | task_status | no | todo | |
-| priority | task_priority | no | medium | |
-| estimated_minutes | integer | no | 30 | |
-| due_date | timestamptz | yes | null | |
-| scheduled_start | varchar(5) | yes | null | HH:mm |
-| scheduled_end | varchar(5) | yes | null | HH:mm |
-| remaining_focus_time | integer | yes | null | seconds remaining for resume |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-
-Indexes:
-
-- `tasks_user_id_idx` on `user_id`
-- `tasks_status_idx` on `status`
-
-Checks:
-
-- `tasks_estimated_minutes_check`: `estimated_minutes > 0`
-
-#### `planner_items`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| task_id | uuid | no | - | FK -> tasks(id) cascade delete |
-| start_time | timestamptz | no | - | |
-| end_time | timestamptz | no | - | must be > start_time |
-| is_auto_scheduled | boolean | no | false | |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
-
-Indexes and checks:
-
-- `planner_items_user_start_time_idx` on (`user_id`, `start_time`)
-- check `planner_items_time_range_check`: `end_time > start_time`
+**Status vocabulary gap:** DB uses `in_progress`, UI uses `doing`. API maps both ways, emitting both `status` (UI) and `dbStatus` (canonical) in responses.
 
 #### `focus_sessions`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | |
+| task_id | uuid FK→tasks | nullable, on delete set null |
+| start_time / end_time | timestamptz | |
+| duration_minutes | integer | must be > 0 |
+| created_at | timestamptz | |
 
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| task_id | uuid | yes | null | FK -> tasks(id), on delete set null |
-| start_time | timestamptz | no | - | |
-| end_time | timestamptz | no | - | |
-| duration_minutes | integer | no | - | must be > 0 |
-| created_at | timestamptz | no | now() | |
+#### `planner_items`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id / task_id | uuid FK | |
+| start_time / end_time | timestamptz | check: end > start |
+| is_auto_scheduled | boolean | |
 
-Indexes and checks:
-
-- `focus_sessions_user_id_idx` on `user_id`
-- check `focus_sessions_duration_check`: `duration_minutes > 0`
-- check `focus_sessions_time_range_check`: `end_time > start_time`
-
-#### Enum: `integration_provider`
-
-- `google`
-- `microsoft`
+**Status:** Schema exists but API is intentionally deferred. Planner is localStorage-only at runtime.
 
 #### `integrations`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK→users | |
+| provider | enum: `google\|microsoft` | |
+| access_token | text | |
+| refresh_token | text | |
+| expires_at | timestamptz | |
+| scope | text | nullable |
 
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| id | uuid | no | gen random | PK |
-| user_id | uuid | no | - | FK -> users(id) cascade delete |
-| provider | integration_provider | no | - | google/microsoft |
-| access_token | text | no | - | |
-| refresh_token | text | no | - | |
-| expires_at | timestamptz | no | - | |
-| scope | text | yes | null | |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | |
+Unique: `(user_id, provider)` — one integration row per provider per user.
 
-Indexes and uniques:
-
-- `integrations_user_provider_idx` on (`user_id`, `provider`)
-- unique `integrations_user_provider_unique` on (`user_id`, `provider`)
+**Security rule:** `refreshToken` is NEVER sent to the client. Tokens are loaded server-side by `session.user.id` only.
 
 ---
 
-## 7. Contract Matrix: User and Calendar Event
+## 6. ZUSTAND STORES
 
-This section answers: "what a user should have" and "what a calendar event takes".
+All stores in `src/store/`. Stores with `persist` write to `localStorage`.
 
-### 7.1 User contract (current)
+### `useCalendarStore`
+- View state: `view` (month/week/day), `currentDate`, `tab`, `searchQuery`
+- User profile: `profile { name, role, timezone, workStart, workEnd }`
+- Calendar state: `isFocusMode`, `isModalOpen`, selected event
+- Actions: `setView`, `setCurrentDate`, `openModal`, `calculateIntelligence`, `updateProfile`, `setTab`, `setFocusMode`
 
-#### DB user row (`users`)
+### `useCalendarEventsStore`
+- `events: CalendarEvent[]` — all calendar events
+- `dbHydrated: boolean`
+- CRUD: `addEvent`, `updateEvent`, `deleteEvent`, `hydrateFromDB`
+- Undo/redo: `undo`, `redo`
 
-Required:
+### `useTaskBoardStore`
+- `tasks: Task[]`, `dbHydrated: boolean`
+- CRUD: `addTask`, `updateTask`, `deleteTask`, `hydrateFromDB`
+- Filtering: `filter`, `sort`, `searchQuery`
 
-- `id`
-- `email`
-- `email_verified`
-- `created_at`
-- `updated_at`
+### `useFocusStore`
+- `isRunning`, `isPaused`, `sessionDuration` (seconds), `elapsed`
+- `activeTask: Task | null`
+- `sessionHistory: FocusSession[]`
+- `startSession`, `pauseSession`, `resumeSession`, `stopSession`
+- `dbHydrated`, `hydrateFromDB`
 
-Optional:
+### `useDailyPlanStore`
+- `scheduledItems: PlannedItem[]`, `unscheduledTasks: Task[]`
+- `planDate: string` (YYYY-MM-DD)
+- `addToSchedule`, `removeFromSchedule`, `autoPlan`, `rollOver`
 
-- `name`
-- `image`
-- `avatar`
+### `usePlannerStore`
+- `outlookConnected: boolean`, `outlookEvents: OutlookEvent[]`
+- `googleConnected: boolean`
+- `setOutlookConnected`, `setOutlookEvents`, `setGoogleConnected`
 
-#### Runtime session user (from BetterAuth)
+### `useIntelligenceStore`
+- `recommendations: Recommendation[]`, `insights: Insight[]`
+- `lastAnalysed: string | null`
+- `setRecommendations`, `setInsights`
 
-Typical fields consumed in app:
+### `useDragStore`
+- `isDragging: boolean`, `activeId: string | null`
+- `dragOverId: string | null`, `overlaps: string[]`
 
-- `user.id`
-- `user.email`
-- `user.name`
-- `user.image` (if present)
-- plus a `session` object with token/session metadata
+### `useSettingsStore`
+- `theme: 'light' | 'dark' | 'system'`
+- `focusSessionLength: number` (minutes)
+- `notifications: boolean`
+- `setFocusSessionLength`, `setTheme`
 
-#### Recommended user profile extensions (if you want DB-first onboarding)
+### `useOnboardingStore` (persisted as `lumina-onboarding`)
+- `completed: boolean`
+- `userName`, `userRole`, `timezone`, `workStart`, `workEnd`
+- `focusPreference`, `focusSessionLength`, `customFocusMinutes`, `customBreakMinutes`
+- `focusGoals: FocusGoal[]`
+- `googleConnected`, `microsoftConnected`
+- `complete()` — sets `completed: true`
 
-Current onboarding values are local/persist-store only. If you want them in DB, add profile columns/table for:
+### `useTutorialStore` (persisted as `lumina-tutorial`)
+```ts
+interface TutorialState {
+  isActive: boolean;
+  currentStep: number;
+  hasCompletedTutorial: boolean;
+  hasSeenPrompt: boolean;          // true after first time prompt is shown
+  startTutorial: () => void;       // sets isActive=true, hasSeenPrompt=true
+  nextStep: () => void;
+  skipTutorial: () => void;
+  completeTutorial: () => void;
+  dismissPrompt: () => void;       // sets hasSeenPrompt=true without starting
+}
+```
+Persisted keys: `hasCompletedTutorial`, `hasSeenPrompt`
 
-- `display_name`
-- `role`
-- `timezone`
-- `work_start_time`
-- `work_end_time`
-- `focus_preference`
-- `focus_session_length`
-- `focus_goals` (jsonb/text[])
+### `useGuestStore` (persisted as `lumina-guest`)
+```ts
+interface GuestState {
+  isGuest: boolean;
+  bannerDismissed: boolean;
+  setGuest: (value: boolean) => void;
+  dismissBanner: () => void;
+  clearGuestSession: () => void;   // sets isGuest=false, bannerDismissed=false
+}
+```
+Persisted keys: `isGuest`, `bannerDismissed`
 
-### 7.2 Calendar event contract (current)
-
-#### Client-side type (`CalendarEvent`)
-
-Current UI model includes many fields:
-
-- `id`, `title`, `description`, `date`, `startTime`, `endTime`, `timezone`
-- `location`, `category`, `color`
-- optional recurrence/exceptions/meetingLink
-- optional `completed`, `source`, `editable`, `outlookId`, `organizer`, `linkedTaskId`
-
-#### API create contract (`POST /api/events`)
-
-Required today:
-
-- `title`
-- `date`
-
-Optional today:
-
-- `startTime`, `endTime`, `description`, `location`, `isAllDay`
-
-Ignored today even if sent:
-
-- `timezone`, `category`, `color`, `completed`, `linkedTaskId`, recurrence fields, meeting link fields
-
-#### DB event row (`events`)
-
-Persisted today:
-
-- `user_id`, `calendar_id`, `title`, `description`, `start_time`, `end_time`, `is_all_day`, `location`, `source`, `external_id`, `last_synced_at`, `is_task_generated`
-
-Not persisted as first-class columns today:
-
-- `category`, `color`, `timezone`, `completed`, `linked_task_id`, recurrence rules, meeting link, organizer
-
----
-
-## 8. Store and Persistence Behavior
-
-### 8.1 Hydration
-
-`src/components/PersistenceBootstrap.tsx`:
-
-- Runs once in app shell.
-- Fetches events, tasks, focus history in parallel.
-- Calls each store hydrate method even for empty arrays, setting `dbHydrated=true`.
-- Dev-only fallback: if fetch fails, hydrate from localStorage.
-
-### 8.2 Persistence adapters
-
-`src/lib/persistence/eventsPersistence.ts`
-
-- fetch/create/update/delete wrappers for `/api/events`
-
-`src/lib/persistence/tasksPersistence.ts`
-
-- fetch/create/update/delete wrappers for `/api/tasks`
-
-`src/lib/persistence/focusPersistence.ts`
-
-- fetch/create/delete wrappers for `/api/focus-sessions`
-
-`src/lib/persistence/plannerPersistence.ts`
-
-- Explicit no-op stub by design until planner DB workflow is enabled.
+### `useToastStore`
+- `toasts: Toast[]`
+- `addToast`, `removeToast`
 
 ---
 
-## 9. Critical Gaps and Risks
+## 7. HOOKS
 
-Severity uses: High, Medium, Low.
-
-1. Medium - task status vocabulary is normalized but still dual at boundaries.
-   - DB canonical value remains `in_progress`.
-   - UI canonical value remains `doing`.
-   - API now maps both directions and emits `status` + `dbStatus`.
-   - Residual risk: new callers can bypass normalization if they assume one vocabulary everywhere.
-
-2. High - event contract mismatch (UI richer than persisted model).
-   - UI carries `category/color/timezone/linkedTaskId/completed`, but API/DB largely drop or synthesize these.
-   - Risk: silent data loss and non-deterministic behavior after reload.
-
-3. ~~High - sync routes are not session-guarded.~~ **RESOLVED (2026-03-18)**
-   - `/api/sync/outlook` is now fully session-bound.
-   - Token is loaded from `integrations` by `session.user.id`, never from request body.
-
-4. Medium - planner table exists but planner runtime is local-only.
-   - DB schema suggests persistence, app behavior does not use it.
-   - Risk: schema drift and false assumptions during analytics/reporting.
-
-5. ~~Medium - integrations table not wired into active sync path.~~ **RESOLVED (2026-03-18)**
-   - Integration connect flow writes tokens into `integrations` via dedicated OAuth callback endpoints.
-   - `/api/sync/outlook` reads tokens from `integrations` by `session.user.id`.
-   - Google Calendar sync reads from `integrations` via `getGoogleAccessToken()` in `src/lib/integrations/google/token.ts`.
-   - Integration status endpoint (`/api/integrations/status`) exposes connected state to UI without tokens.
-
-6. Medium - no unique DB guarantee for one primary local calendar per user.
-   - App logic creates or reuses one, but DB does not enforce uniqueness.
-
-7. Low - source vocabulary mismatch.
-   - DB event source enum: `manual/google/microsoft/scheduler`.
-   - Client event source type: `lumina/outlook`.
+| File | Purpose |
+|---|---|
+| `useCalendar.ts` | Calendar data and actions from stores |
+| `useFocusStore.ts` | Focus session operations |
+| `useUser.ts` | `{ user, session, isAuthenticated, isLoading, refetch }` from BetterAuth |
+| `useToast.ts` | Toast notification helper |
+| `useIsMobile.ts` | `boolean` — checks `window.innerWidth < 768` |
+| `useVirtualWindow.ts` | Virtual scrolling for dense time grids |
+| `useGuestGate.ts` | Gate feature access for guest users (see §9) |
+| `useOutlookSync.ts` | Calls `POST /api/sync/outlook` on mount, maps events |
+| `useContributionYear.ts` | Year selection for performance heatmap |
 
 ---
 
-## 10. Recommended DB Improvement Plan
+## 8. API CONTRACTS
 
-### 10.1 P0 (must fix first)
+All API routes require an authenticated session except where noted.
 
-1. Unify task status vocabulary.
-   - Choose one canonical set and apply end-to-end.
-   - Recommended: use `todo/doing/done` everywhere in UI + API + DB, or keep `in_progress` everywhere and map once at UI boundary.
+### Events
 
-2. Decide canonical event domain contract.
-   - If product needs category/color/linking/completion, add real DB columns and API support.
+#### `GET /api/events`
+Returns array of event objects:
+```json
+{
+  "id": "uuid",
+  "title": "string",
+  "date": "YYYY-MM-DD",
+  "startTime": "HH:mm",
+  "endTime": "HH:mm",
+  "description": "string|undefined",
+  "location": "string|undefined",
+  "isAllDay": false,
+  "completed": false,
+  "category": "work",
+  "linkedTaskId": null
+}
+```
+Note: `completed`, `category`, `linkedTaskId` are synthesized defaults (not in DB).
 
-3. Session-protect sync endpoints.
-   - Require auth session and bind provider operations to `session.user.id`.
+#### `POST /api/events`
+Required: `title`, `date`
+Optional: `startTime`, `endTime`, `description`, `location`, `isAllDay`
+Response: `{ "id": "uuid" }`
 
-4. Define integration token ownership lifecycle.
-   - Persist OAuth tokens in `integrations` with refresh handling and expiry refresh job.
+#### `PATCH /api/events/[id]`
+Patchable: `title`, `description`, `location`, `isAllDay`, `date`+`startTime`, `date`+`endTime`
+Ownership checked: `events.userId = session.user.id`
+Response: `{ "ok": true }`
 
-### 10.2 P1 (strongly recommended)
-
-1. Enforce one primary local calendar per user.
-   - Add unique partial index on `(user_id)` where `provider='local' AND is_primary=true`.
-
-2. Strengthen external sync dedupe.
-   - Add unique index for provider event identity (for example `(calendar_id, external_id)` where external_id is not null).
-
-3. Add validation checks.
-   - `tasks.estimated_minutes > 0`.
-   - Optional stricter constraints around all-day event time handling.
-
-4. Decide planner persistence rollout.
-   - Either wire `planner_items` with API routes, or postpone schema to avoid dead tables.
-
-### 10.3 P2 (quality)
-
-1. Move onboarding profile fields into DB if cross-device consistency is required.
-2. Normalize due-date semantics to `date` (instead of timestamp) if time-of-day is not meaningful.
-3. Add audit columns/versioning strategy for conflict resolution if multi-device edits increase.
-
----
-
-## 11. Suggested Target Contract (User + Event)
-
-This is a practical target if your objective is "make DB better" with minimal product breakage.
-
-### 11.1 Suggested `user_profiles` table
-
-Keep `users` for auth identity and add profile table:
-
-- `user_id` (pk/fk -> users.id)
-- `display_name` text
-- `role` text
-- `timezone` text not null
-- `work_start_time` time
-- `work_end_time` time
-- `focus_preference` enum (`morning|midday|evening|none`)
-- `focus_session_length` enum or integer minutes
-- `focus_goals` jsonb
-- `created_at`, `updated_at`
-
-### 11.2 Suggested event columns to close current gaps
-
-Add to `events` if they are product requirements:
-
-- `timezone` text not null default 'UTC'
-- `category` varchar(64)
-- `color` varchar(32)
-- `completed` boolean not null default false
-- `linked_task_id` uuid null references tasks(id) on delete set null
-- `organizer` text
-- `meeting_url` text
-- `recurrence_rule` jsonb
-- `recurrence_parent_id` uuid null references events(id)
-
-Then update GET/POST/PATCH route mappings to preserve these fields end-to-end.
+#### `DELETE /api/events/[id]`
+Ownership checked. Response: `{ "ok": true }`
 
 ---
 
-## 12. Immediate Action Checklist
+### Tasks
 
-1. Pick canonical task status enum and migrate one layer to match.
-2. Finalize event canonical schema (what must persist vs what can remain derived).
-3. Patch `/api/events` and `/api/events/[id]` to persist chosen event fields.
-4. Add auth checks to `/api/sync/outlook` and future Google sync route.
-5. Add DB uniqueness constraints for local primary calendar and external event identity.
-6. Decide planner persistence timeline and either implement routes or defer schema.
+#### `GET /api/tasks`
+Query param: `?includeArchived=true` to include archived tasks (excluded by default)
+Returns array:
+```json
+{
+  "id": "uuid",
+  "title": "string",
+  "description": "string|undefined",
+  "status": "todo|doing|done|archived",
+  "dbStatus": "todo|in_progress|done|archived",
+  "priority": "low|medium|high",
+  "dueDate": "YYYY-MM-DD|null",
+  "durationMinutes": 30,
+  "scheduledStart": "HH:mm|null",
+  "scheduledEnd": "HH:mm|null",
+  "remainingFocusTime": 600,
+  "order": 0,
+  "context": null,
+  "linkedEventId": null
+}
+```
+
+#### `POST /api/tasks`
+Required: `title`
+Optional: `description`, `status`, `priority`, `dueDate`, `durationMinutes`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`
+
+#### `PATCH /api/tasks/[id]`
+Patchable: `title`, `description`, `status` (todo|doing|in_progress|done|archived), `priority`, `durationMinutes`, `dueDate`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`
+
+#### `DELETE /api/tasks/[id]`
+Response: `{ "ok": true }`
 
 ---
 
-## 13. Quick Reality Check
+### Focus Sessions
 
-Today, the system is functional for core event/task/focus persistence and auth, but it is not yet schema-consistent across all layers.
+#### `GET /api/focus-sessions`
+```json
+{
+  "id": "uuid",
+  "taskId": "uuid|''",
+  "taskTitle": "",
+  "startTime": "ISO",
+  "endTime": "ISO",
+  "duration": 1500,
+  "completed": true
+}
+```
+Note: `duration` is in seconds; DB stores `durationMinutes`. `taskTitle` is empty string (not persisted in DB).
 
-The highest-value database work is:
+#### `POST /api/focus-sessions`
+Required: `startTime` (ISO), `endTime` (ISO), `duration` (seconds)
+Optional: `taskId` (uuid)
+Validates: `end > start`, converts seconds → rounded minutes (min 1)
+Response: `{ "id": "uuid" }`
 
-- normalize contracts across UI/API/DB,
-- remove enum mismatches,
-- and persist the fields the UI already treats as first-class.
+#### `DELETE /api/focus-sessions/[id]`
+Response: `{ "ok": true }`
 
-That will eliminate silent data loss and make analytics/sync improvements much safer.
+---
+
+### Integrations
+
+#### `GET /api/integrations/status`
+No body needed. Returns:
+```json
+{ "google": { "connected": true }, "microsoft": { "connected": false } }
+```
+Never exposes tokens.
+
+#### `GET /api/integrations/google/connect`
+Redirects user to Google Calendar OAuth (calendar.readonly + offline + consent prompt).
+Sets httpOnly state cookie `lumina_google_connect_state` for CSRF.
+
+#### `GET /api/integrations/google/callback`
+Verifies state cookie, exchanges code for tokens, upserts into `integrations` table, redirects to `/auth/popup-complete?provider=google`.
+
+#### `GET /api/integrations/microsoft/connect`
+Redirects to Microsoft OAuth (Calendars.Read + select_account).
+
+#### `GET /api/integrations/microsoft/callback`
+Same pattern as Google. Stores in `integrations` with `provider='microsoft'`.
+
+#### `POST /api/sync/outlook`
+Body (optional): `{ "timezone": "string" }`
+Loads token from DB by `session.user.id`. Never trusts client-supplied tokens.
+Returns: `{ ok, eventCount, events[] }`
+- `401` if session missing or token expired
+- `404` if integration not connected
+- `409` if integration status not active
+
+#### `POST /api/sync/google`
+Calls `runFullGoogleSync(userId)`. Returns sync result with imported counts.
+
+---
+
+## 9. GUEST AUTH FLOW
+
+The full guest authentication system was built in the March 2026 pass.
+
+### Architecture
+
+```
+useGuestStore (Zustand + persist)
+  ↓
+StepAuth (OnboardingFlow step 1) — "Continue as Guest" path
+  ↓ calls setGuest(true) + advances step
+GuestBanner (AppShell) — amber warning strip at top of every page
+GuestUpgradeModal — dialog on account-gated feature access
+useGuestGate hook — gate(feature?) → true if guest + opens modal
+beforeunload handler (AppShell) — browser "Leave site?" prompt
+```
+
+### Files
+
+**`src/store/useGuestStore.ts`**
+- State: `isGuest`, `bannerDismissed`
+- Actions: `setGuest(value)`, `dismissBanner()`, `clearGuestSession()`
+- Persisted to `localStorage` key `lumina-guest`
+
+**`src/components/auth/GuestBanner.tsx`**
+- Shown in AppShell when `isGuest && !bannerDismissed`
+- Amber palette: `border-amber-200/70 dark:border-amber-800/35 bg-amber-50/90 dark:bg-amber-950/25`
+- AnimatePresence height animation for show/dismiss
+- Links to `/onboarding` to convert guest to registered user
+
+**`src/components/auth/GuestUpgradeModal.tsx`**
+- Dialog with contextual `featureName?: string`
+- CTA: "Create free account" (Link to /onboarding) + "Continue as guest" (dismiss)
+- Tokens: `bg-card`, `border-border/60`, `rounded-2xl`
+
+**`src/hooks/useGuestGate.ts`**
+```ts
+const { isGuest, gate, upgradeModalOpen, gatedFeatureName, closeUpgradeModal } = useGuestGate();
+// Usage: if (gate('Export data')) return;  ← shows modal and returns true for guests
+```
+
+**`src/components/OnboardingFlow.tsx` — StepAuth (step 1)**
+- Tab strip: Sign in / Create account (pill tabs, `bg-background shadow-sm` active)
+- Label-above-field pattern using `<AuthField>` helper component
+- `AuthField`: `label` above, `AnimatePresence` animated error `motion.p` below
+- Zod validation: `nameSchema`, `emailSchema`, `passwordCreateSchema`, `passwordSchema`
+- Field error state: `border-destructive focus-visible:ring-destructive/20`
+- Server-level error shown only when no field-level errors exist
+- Guest path section behind `border-t border-border/40` divider:
+  1. "Continue as Guest" text link → expands warning card
+  2. Amber warning card: data-loss scenarios, dismiss (×) button
+  3. "I understand — continue as Guest" → calls `onContinueAsGuest`
+- `onContinueAsGuest` prop calls `setGuest(true)` + advances step directly (bypasses `canContinue()`)
+- `canContinue()` for step 1: `authStatus === 'logged in' || isGuest`
+
+**`src/components/OnboardingFlow.tsx` — StepCompletion (step 8)**
+- Accepts `isGuest?: boolean`
+- When `isGuest=true`: renders amber block with link to create an account
+
+**`src/app/(app)/AppShell.tsx`**
+- Imports and renders `<GuestBanner />` inside `<main>` before content
+- `useEffect` adds `beforeunload` event listener when `isGuest === true`
+
+---
+
+## 10. TUTORIAL OVERLAY SYSTEM
+
+The tutorial system was fully rewritten in the March 2026 pass.
+
+### Files
+- `src/components/tutorial/TutorialOverlay.tsx` — single file for entire system
+- `src/store/useTutorialStore.ts` — state
+
+### Architecture
+
+**Spotlight approach:** SVG `<mask>` with white fill rect + animated black `<motion.rect>` for the cutout. No `mix-blend-mode` (was broken cross-browser).
+
+**Clickable spotlight:** 4 surrounding blocker divs (top/left/right/bottom strips) at `z-[9988]` each cover the area AROUND the highlighted element. The spotlight area itself has no blocker, so the user can click/interact with highlighted UI.
+
+```tsx
+// 4-rect pattern (no single full-screen blocker)
+const blockers = [
+  { left: 0, top: 0, width: winW, height: sy },                          // top
+  { left: 0, top: sy, width: sx, height: sh },                           // left
+  { left: sx + sw, top: sy, width: winW - (sx + sw), height: sh },      // right
+  { left: 0, top: sy + sh, width: winW, height: winH - (sy + sh) },     // bottom
+];
+```
+
+### Tour steps (11 total)
+
+| Step | data-tutorial | Description | Optional |
+|---|---|---|---|
+| 0 | `sidebar-nav` | Sidebar navigation | No |
+| 1 | `calendar-view` | Calendar tab | No |
+| 2 | `task-view` | Tasks tab | No |
+| 3 | `plan-view` | Plan tab | No |
+| 4 | `focus-view` | Focus tab | No |
+| 5 | `add-event-btn` | Add event button | No |
+| 6 | `intelligence-view` | Intelligence panel | No |
+| 7 | `cal-view-tabs` | CalendarPage TabsList | **Yes** |
+| 8 | `task-board-header` | TaskBoard header | **Yes** |
+| 9 | `plan-pool` | DailyPlanView task pool | **Yes** |
+| 10 | Completion | Tour done | No |
+
+Optional steps: if target element isn't found, auto-advance after 1500ms.
+
+### data-tutorial attributes added to components
+
+- `src/components/pages/CalendarPage.tsx` → `<TabsList data-tutorial="cal-view-tabs">`
+- `src/components/tasks/TaskBoard.tsx` → board header `data-tutorial="task-board-header"`
+- `src/components/planner/DailyPlanView.tsx` → task pool div `data-tutorial="plan-pool"`
+
+### First-time prompt flow
+
+On first visit (before tutorial has been seen):
+- `TourPrompt` component — bottom-right notification card: "New to Lumina?" with "Show me around →" and "Maybe later"
+- Dismissing prompt shows `FloatingTourButton` (persistent `?` circle icon, bottom-right)
+- `hasSeenPrompt` is persisted; once true, `TourPrompt` never re-appears
+- No `BeaconRing`/pulse animation (was removed)
+
+### Keyboard nav
+- `→` / `Enter` → next step
+- `Escape` → skip/exit tour
+
+---
+
+## 11. ONBOARDING FLOW STEPS
+
+File: `src/components/OnboardingFlow.tsx`
+
+| Step | Component | Notes |
+|---|---|---|
+| 0 | `StepWelcome` | Landing with feature bullets |
+| 1 | `StepAuth` | Sign in / Create account / Guest path |
+| 2 | `StepAboutYou` | Name + role |
+| 3 | `StepWorkSchedule` | Work start/end times |
+| 4 | `StepFocusPreference` | Morning / midday / evening / none |
+| 5 | `StepSessionLength` | 25/5, 50/10, 90/20, custom |
+| 6 | `StepCalendarSync` | Connect Google/Outlook (optional, skippable) |
+| 7 | `StepFocusGoals` | Multi-select goals |
+| 8 | `StepCompletion` | Done. Shows guest amber reminder if `isGuest` |
+
+Navigation: `canContinue()` gates the Continue button. Step 1 requires `authStatus === 'logged in' || isGuest`.
+
+---
+
+## 12. AUTH ARCHITECTURE
+
+### Identity-only OAuth (BetterAuth)
+Configured in `src/lib/auth.ts`.
+- Google: `openid`, `email`, `profile` scopes only. No calendar scopes.
+- Microsoft: identity only.
+- Email/password also supported.
+
+### Calendar integration OAuth (separate flow)
+Triggered by user clicking "Connect Google Calendar" or "Connect Outlook".
+- Opens popup to `/api/integrations/{provider}/connect`
+- Callback stores tokens in `integrations` table at `/api/integrations/{provider}/callback`
+- CSRF state cookie protection: `lumina_google_connect_state` / `lumina_microsoft_connect_state`
+- Tokens are NEVER exposed to client. Always loaded from DB by `session.user.id`.
+
+### Required OAuth redirect URIs in external consoles
+- Google Cloud Console: `{BETTER_AUTH_URL}/api/integrations/google/callback`
+- Azure AD: `{BETTER_AUTH_URL}/api/integrations/microsoft/callback`
+- BetterAuth login: `/api/auth/callback/google`, `/api/auth/callback/microsoft`
+
+### OAuth popup bridge
+`src/app/auth/popup-complete/page.tsx` — posts `{ type: 'lumina:oauth-complete', provider, success }` to `window.opener` then closes.
+
+---
+
+## 13. VALIDATION LIBRARY
+
+File: `src/lib/validation.ts`
+
+```ts
+// Schemas
+nameSchema             // min 1, max 100 chars, trimmed
+emailSchema            // valid email format
+passwordCreateSchema   // min 8 chars (sign-up)
+passwordSchema         // non-empty (sign-in)
+titleSchema            // min 1, max 200 chars (event/task titles)
+contextNameSchema      // min 1, max 50 chars
+dateSchema             // must match /^\d{4}-\d{2}-\d{2}$/
+
+// Utility
+getFieldError(schema, value): string | null
+// Returns first Zod error message or null if valid
+```
+
+---
+
+## 14. PERSISTENCE & HYDRATION
+
+### PersistenceBootstrap
+`src/components/PersistenceBootstrap.tsx` — runs once on app mount.
+- Fetches events, tasks, focus sessions in parallel.
+- Calls store `hydrateFromDB()` on each.
+- Dev-only fallback: if fetch fails, reads from localStorage.
+
+### Persistence adapters
+`src/lib/persistence/`
+- `eventsPersistence.ts` → wrappers for `/api/events`
+- `tasksPersistence.ts` → wrappers for `/api/tasks`
+- `focusPersistence.ts` → wrappers for `/api/focus-sessions`
+- `plannerPersistence.ts` → intentional no-op stub (planner is localStorage-only)
+
+### Data flow
+```
+UI interaction
+  → Zustand store (optimistic update)
+    → persistence adapter (fetch call)
+      → API route (session check + validation)
+        → Drizzle ORM → Neon Postgres
+```
+
+---
+
+## 15. FOCUS SESSION FLOW
+
+### Interruption / resume
+When a running focus session is interrupted:
+- Prompt: "Did you finish this task?"
+  - **Yes** → task status = done, `remainingFocusTime = null`
+  - **Not yet** → saves remaining seconds to `remainingFocusTime` on task
+- Next time the task is started from TaskBoard, `remainingFocusTime` is used to resume
+
+Primary files: `FocusSessionView.tsx`, `FocusTimer.tsx`, `TaskBoard.tsx`
+
+### Session persistence
+- Active timer state: localStorage only (by design — ephemeral)
+- Completed sessions: DB-backed via `POST /api/focus-sessions`
+
+---
+
+## 16. PERFORMANCE / CONTRIBUTION SYSTEM
+
+File: `src/components/performance/contributions/ContributionGrid.tsx`
+- GitHub-style heatmap of daily focus/task activity
+- `buildContributionCalendar()` computes grid from focus sessions + completed tasks
+- Color levels computed by `getContributionLevel(score)`
+- Year selection: `ContributionYearSelector`
+
+---
+
+## 17. INTELLIGENCE ENGINE
+
+`src/lib/intelligence/`
+- `engine.ts` — orchestrates analysis
+- `recommendations.ts` — generates task scheduling suggestions
+- `focusWindows.ts` — finds optimal focus time blocks
+- `calendarAnalysis.ts` — analyses meeting density
+- `conflicts.ts` — detects scheduling conflicts
+- `scoring.ts` — ranks recommendations
+- `llmSummary.ts` — Gemini-powered natural language summary
+
+Triggered by `calculateIntelligence()` in `useCalendarStore`.
+
+---
+
+## 18. MOBILE / RESPONSIVE
+
+### AppShell mobile nav
+Fixed bottom nav with 5 items: Home, Tasks, Plan, Stats, Focus.
+Tokens: `bg-background/90 backdrop-blur-xl border-t border-border`
+Active item: `text-primary`
+Inactive item: `text-muted-foreground`
+
+### Touch DnD
+- `MouseSensor` + `TouchSensor` (hold-to-drag activation delay) in both planner and task board
+- `PlanningModal.tsx` and `TaskDialog.tsx` use bottom-sheet pattern on mobile
+
+### Safe area
+- `pb-[calc(env(safe-area-inset-bottom)+72px)]` — prevents iOS home indicator overlap on mobile
+- `pb-safe` on mobile nav
+
+---
+
+## 19. KNOWN GAPS / OPEN ISSUES
+
+| # | Severity | Description |
+|---|---|---|
+| 1 | Medium | Task status vocabulary dual boundary: DB uses `in_progress`, UI uses `doing`. API normalizes both ways. New code should use `in_progress` in DB calls. |
+| 2 | High | Event contract mismatch: `category`, `color`, `completed`, `linkedTaskId`, recurrence fields exist on client type but are silently dropped at API/DB boundary. |
+| 3 | Medium | Planner table exists in DB but runtime is localStorage-only. Schema suggests persistence that doesn't exist. |
+| 4 | Low | No unique DB constraint for one primary local calendar per user (app logic handles it but DB doesn't enforce). |
+| 5 | Low | `taskTitle` not persisted on `focus_sessions` table — always returned as empty string from API. |
+
+---
+
+## 20. PENDING FEATURES (BACKLOG — NOT YET BUILT)
+
+These features were requested and are next in the queue. None of them exist in the codebase yet.
+
+### 20.1 Pomodoro tab + session feedback
+- Add a dedicated `/focus` Pomodoro tab (full page with timer controls, session queue)
+- **Remove** the floating circle button in the bottom-right that starts Pomodoro sessions
+- After each completed Pomodoro session: feedback modal asking "How did you feel?" with emoji options (great 🔥 / good 😊 / okay 😐 / tired 😴 / bad 😞) displayed as a visual rating bar
+- Every 3 days: auto-generate a mood analysis card ("Your mood last 3 days: trending up ↑" or "Your mood seems low — what's going on?")
+
+### 20.2 White noise / ambient sound drawer
+- Drawer component (slide up from bottom or side) with ambient sound options: White Noise 🌫️, Rainfall 🌧️, Brown Noise 🟤, Forest 🌲, Ocean 🌊
+- When a track plays and drawer is closed: floating mini player icon appears (fixed bottom-right or bottom-left, above the nav bar)
+- Clicking the floating icon stops playback and removes it
+- Sounds should play in-browser via `<audio>` or Web Audio API
+
+### 20.3 Streaks + achievements + coins
+- **Daily streak**: accurate day-over-day consistency tracking (not just session count). A streak day = at least 1 completed focus session that day.
+- **Focus session streak**: consecutive sessions completed without breaking
+- Every 5 completed sessions: milestone achievement badge 🏅
+- Every 10 completed sessions: major achievement 🏆
+- **Best day** visible on Performance page (day with highest focus score)
+- **Coins**: earn coins on focus session completion (e.g. 1 coin per session minute). Display on user profile.
+- **Streak recovery**: placeholder UI for a "restore streak" feature (payment wall, leave as non-functional placeholder)
+
+### 20.4 Stopwatch
+- Clean, focused stopwatch UI component (separate from Pomodoro timer)
+- Lap functionality
+- Available within the Focus tab
+
+---
+
+## 21. FILE NAMING CONVENTIONS
+
+- Components: `PascalCase.tsx`
+- Hooks: `useXxx.ts`
+- Stores: `useXxxStore.ts`
+- Utilities: `camelCase.ts`
+- API routes: `route.ts` inside directory
+- Schemas: `schema/tableName.ts`
+
+---
+
+## 22. ENVIRONMENT VARIABLES REQUIRED
+
+```
+DATABASE_URL                   # Neon Postgres connection string
+BETTER_AUTH_SECRET             # Session signing secret
+BETTER_AUTH_URL                # Public base URL (e.g. https://yourdomain.com)
+GOOGLE_CLIENT_ID               # Google OAuth app (identity login)
+GOOGLE_CLIENT_SECRET
+MICROSOFT_CLIENT_ID            # Azure AD app (identity login)
+MICROSOFT_CLIENT_SECRET
+GOOGLE_CALENDAR_CLIENT_ID      # Google OAuth app (calendar integration)
+GOOGLE_CALENDAR_CLIENT_SECRET
+GEMINI_API_KEY                 # Google Gemini (intelligence summaries)
+NEXT_PUBLIC_APP_URL            # Same as BETTER_AUTH_URL, public-facing
+```
+
+---
+
+## 23. GIT / DEPLOYMENT
+
+- Repo: GitHub (`bahrawyX/lumina`)
+- Branch: `main`
+- Deployment: Vercel (auto-deploy on push to main)
+- Every commit to main triggers a new Vercel build
+
+---
+
+*End of reference. This document should be kept up to date after every significant feature addition or architectural change.*
