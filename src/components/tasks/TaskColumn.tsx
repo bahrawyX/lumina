@@ -102,7 +102,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
         className={`flex-1 rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 cursor-pointer ${
           isDragOver
             ? 'border-primary/30 bg-primary/10'
-            : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'
+            : 'border-border/30 bg-muted/20 hover:bg-muted/30'
         }`}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>

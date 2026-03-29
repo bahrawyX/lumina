@@ -183,7 +183,7 @@ export const FocusSessionView: React.FC = () => {
             <button
               type="button"
               onClick={handlePauseAndExit}
-              className="min-h-11 rounded-xl border border-white/10 bg-white/[0.03] text-zinc-100 text-sm font-semibold hover:bg-white/[0.07] transition-colors"
+              className="min-h-11 rounded-xl border border-border/60 bg-muted/30 text-foreground text-sm font-semibold hover:bg-muted/50 transition-colors"
             >
               Not yet
             </button>

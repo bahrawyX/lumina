@@ -9,6 +9,7 @@ import PomodoroFeedbackModal from '@/components/focus/PomodoroFeedbackModal';
 import MoodAnalysisCard from '@/components/focus/MoodAnalysisCard';
 import { useStreakStore } from '@/store/useStreakStore';
 import { useFocusStore } from '@/store/useFocusStore';
+import { useOnboardingStore } from '@/store/useOnboardingStore';
 import * as moodPersistence from '@/lib/persistence/moodPersistence';
 import { toast } from 'sonner';
 import { getAchievementInfo } from '@/utils/streaks/achievementUtils';
@@ -21,6 +22,7 @@ const FocusPage: React.FC = () => {
   const [moodLogsLoaded, setMoodLogsLoaded] = useState(false);
 
   const applySessionResult = useStreakStore((s) => s.applySessionResult);
+  const userTimezone = useOnboardingStore((s) => s.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Load mood logs once
   React.useEffect(() => {
@@ -41,6 +43,7 @@ const FocusPage: React.FC = () => {
           endTime: data.endTime,
           duration: data.duration,
           taskId: null,
+          timezone: userTimezone,
         }),
       });
 

@@ -538,17 +538,17 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
 
         {/* Mobile summary cards */}
         <div className="md:hidden -mx-1 px-1 overflow-x-auto no-scrollbar snap-x snap-mandatory flex gap-2 pb-1">
-          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-3">
+          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-border/60 bg-muted/30 backdrop-blur-md p-3">
             <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">Planned</p>
             <p className="mt-1 text-xl font-semibold text-foreground tabular-nums">{summary.plannedCount}</p>
             <p className="text-[11px] text-muted-foreground/70">{summary.plannedMinutes} mins scheduled</p>
           </div>
-          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-3">
+          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-border/60 bg-muted/30 backdrop-blur-md p-3">
             <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">Remaining</p>
             <p className="mt-1 text-xl font-semibold text-amber-400 tabular-nums">{summary.unplannedCount}</p>
             <p className="text-[11px] text-muted-foreground/70">Tasks still unplanned</p>
           </div>
-          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-3">
+          <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-border/60 bg-muted/30 backdrop-blur-md p-3">
             <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">Best Window</p>
             <p className="mt-1 text-sm font-semibold text-emerald-400 tabular-nums">
               {summary.topFreeBlock ? `${summary.topFreeBlock.startTime}-${summary.topFreeBlock.endTime}` : 'No free block'}
@@ -597,7 +597,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                       <button
                         type="button"
                         aria-label="Insert emoji"
-                        className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors text-[13px]"
+                        className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-[13px]"
                       >
                         😊
                       </button>

@@ -46,8 +46,8 @@ export const PlanningModal: React.FC<PlanningModalProps> = ({ open, phase = 'pla
     >
         <div className="flex items-center gap-4">
           <div className="relative h-9 w-9 flex-shrink-0">
-            <span className="absolute inset-0 rounded-full border-2 border-white/20 border-t-transparent animate-spin" />
-            <span className="absolute inset-1 rounded-full bg-white/10 animate-pulse" />
+            <span className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-transparent animate-spin" />
+            <span className="absolute inset-1 rounded-full bg-primary/10 animate-pulse" />
           </div>
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">

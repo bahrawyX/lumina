@@ -22,7 +22,7 @@ export const RollOverButton: React.FC<RollOverButtonProps> = React.memo(({ onCli
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white/[0.02] border border-white/5 backdrop-blur-md hover:bg-white/[0.05] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-muted/20 border border-border/40 backdrop-blur-md hover:bg-muted/40 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
       title={rolloverCount === 0 ? 'No unfinished tasks due today' : 'Move unfinished tasks to tomorrow'}
     >
       {isRolling ? (

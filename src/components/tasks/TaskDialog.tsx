@@ -172,7 +172,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                         <button
                           type="button"
                           aria-label="Insert emoji"
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.07] transition-colors text-[13px]"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-[13px]"
                         >
                           😊
                         </button>

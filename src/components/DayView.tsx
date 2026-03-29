@@ -453,7 +453,7 @@ const DayView: React.FC<DayViewProps> = ({ events }) => {
       {showJumpToNow && isSameDay(currentDate, now) && (
         <button
           onClick={scrollToNow}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 bg-neutral-dark/80 backdrop-blur-xl text-white text-[11px] font-black uppercase tracking-widest rounded-full shadow-elevated z-50 hover:bg-neutral-dark transition-all flex items-center gap-2 border border-white/10 animate-in fade-in slide-in-from-bottom-4 duration-200"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 bg-card/90 backdrop-blur-xl text-foreground text-[11px] font-black uppercase tracking-widest rounded-full shadow-elevated z-50 hover:bg-card transition-all flex items-center gap-2 border border-border animate-in fade-in slide-in-from-bottom-4 duration-200"
         >
           <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
           Jump to Now

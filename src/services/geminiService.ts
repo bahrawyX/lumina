@@ -1,7 +1,11 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyACcQnBiBRwFWDx-3nAigF9fHUYSY7nl8g" });
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  console.warn('[geminiService] GEMINI_API_KEY is not set — AI features will be unavailable.');
+}
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export interface SmartEventParams {
   title: string;
@@ -13,6 +17,10 @@ export interface SmartEventParams {
 }
 
 export const parseEventNaturalLanguage = async (input: string): Promise<Partial<SmartEventParams>> => {
+  if (!ai) {
+    console.warn('[geminiService] Skipping — GEMINI_API_KEY not configured.');
+    return {};
+  }
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",

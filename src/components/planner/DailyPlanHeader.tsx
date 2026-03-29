@@ -73,7 +73,7 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
             className={`flex items-center justify-center w-9 h-9 md:w-8 md:h-8 rounded-xl border transition-colors flex-shrink-0 ${
               insightsOpen
                 ? 'border-primary/40 bg-primary/15 text-primary'
-                : 'border-white/10 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
+                : 'border-border/60 bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             }`}
           >
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">

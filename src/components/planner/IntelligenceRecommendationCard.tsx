@@ -69,7 +69,7 @@ export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendation
           type="button"
           onClick={handleApply}
           disabled={isApplying}
-          className="h-8 px-3 rounded-lg bg-white/10 border border-white/15 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40 transition-colors"
+          className="h-8 px-3 rounded-lg bg-primary/10 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/15 disabled:opacity-40 transition-colors"
         >
           {isApplying ? 'Applying...' : acceptLabel(recommendation.type)}
         </button>
