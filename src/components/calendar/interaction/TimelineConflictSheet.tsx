@@ -97,7 +97,7 @@ const TimelineConflictSheet: React.FC<TimelineConflictSheetProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => onDeleteEvent(event.id)}
-                        className="h-7 px-2 text-xs text-red-500 hover:text-red-500"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
                         aria-label={`Delete ${event.title}`}
                       >
                         <TrashIcon size={12} />

@@ -52,12 +52,12 @@ export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendation
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10, scale: 0.98 }}
       transition={{ duration: 0.2 }}
-      className="bg-white/[0.02] border border-white/5 rounded-xl p-4 hover:bg-white/[0.04] transition-all"
+      className="bg-muted/30 border border-border/40 rounded-xl p-4 hover:bg-muted/50 transition-all"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">{recommendation.type.replace('_', ' ')}</p>
-          <p className="mt-1 text-sm text-zinc-100 leading-relaxed">{recommendation.explanation}</p>
+          <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{recommendation.type.replace('_', ' ')}</p>
+          <p className="mt-1 text-sm text-foreground leading-relaxed">{recommendation.explanation}</p>
         </div>
         <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${priorityTone(recommendation.priority)}`}>
           {recommendation.priority}

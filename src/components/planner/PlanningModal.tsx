@@ -50,10 +50,10 @@ export const PlanningModal: React.FC<PlanningModalProps> = ({ open, phase = 'pla
             <span className="absolute inset-1 rounded-full bg-white/10 animate-pulse" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
               {phase === 'revealing' ? 'Almost Ready' : 'Planning Day'}
             </p>
-            <p className="mt-1 text-sm font-medium text-zinc-100 transition-opacity duration-300">
+            <p className="mt-1 text-sm font-medium text-foreground transition-opacity duration-300">
               {statusText}
             </p>
           </div>

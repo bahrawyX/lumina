@@ -621,11 +621,11 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                   <Select value={String(quickAddDuration)} onValueChange={(value) => setQuickAddDuration(Number(value))}>
                     <SelectTrigger
                       aria-label="Task duration"
-                      className="flex-none h-7 w-[62px] rounded-md border-white/10 bg-white/[0.03] px-1.5 text-[10px] text-zinc-200"
+                      className="flex-none h-7 w-[62px] rounded-md border-border/40 bg-muted/30 px-1.5 text-[10px] text-muted-foreground"
                     >
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="w-[72px] border-white/10 bg-zinc-950/95 text-zinc-100 backdrop-blur-md">
+                    <SelectContent className="w-[72px] border-border bg-popover/95 text-foreground backdrop-blur-md">
                       <SelectItem className="text-[11px]" value="15">15m</SelectItem>
                       <SelectItem className="text-[11px]" value="30">30m</SelectItem>
                       <SelectItem className="text-[11px]" value="45">45m</SelectItem>

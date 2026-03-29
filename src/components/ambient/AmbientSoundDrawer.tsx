@@ -100,12 +100,13 @@ export default function AmbientSoundDrawer() {
                   step={0.05}
                   value={volume}
                   onChange={handleVolumeChange}
+                  aria-label="Volume"
                   className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-[hsl(var(--primary))] bg-muted"
                 />
               </div>
 
               {/* Sound grid */}
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {TRACKS.map((t) => {
                   const active = activeTrack === t.id && isPlaying;
                   return (

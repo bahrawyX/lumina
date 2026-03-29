@@ -91,7 +91,7 @@ export default function LoginButton() {
         </button>
       </div>
       {errorMessage && (
-        <p className="mt-2 text-[11px] text-red-500">{errorMessage}</p>
+        <p className="mt-2 text-[11px] text-destructive">{errorMessage}</p>
       )}
     </div>
   );

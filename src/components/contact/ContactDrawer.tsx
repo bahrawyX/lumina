@@ -190,7 +190,7 @@ export default function ContactDrawer({ open, onClose }: ContactDrawerProps) {
                   {errors.message ? (
                     <p className="text-xs text-destructive">{errors.message}</p>
                   ) : <span />}
-                  <span className="text-[10px] text-muted-foreground/50 tabular-nums">{message.length} / 1000</span>
+                  <span className={`text-[10px] tabular-nums ${message.length > 900 ? 'text-destructive' : 'text-muted-foreground/50'}`}>{message.length} / 1000</span>
                 </div>
               </div>
 

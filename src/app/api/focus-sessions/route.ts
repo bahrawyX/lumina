@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   try {
     const db = getDatabase();
 
-    // Fetch current user streak data
+    // Fetch current user streak data (outside transaction — read-only)
     const [userRow] = await db
       .select({
         coins: users.coins,
@@ -110,68 +110,73 @@ export async function POST(req: NextRequest) {
 
     const coinsEarned = streakUpdate.coins - previousCoins;
 
-    // Insert focus session
-    const [row] = await db
-      .insert(focusSessions)
-      .values({
-        userId,
-        taskId: typeof body.taskId === 'string' && body.taskId ? body.taskId : null,
-        startTime: startTs,
-        endTime: endTs,
-        durationMinutes,
-        coinsEarned,
-      })
-      .returning({ id: focusSessions.id });
+    // All writes in a single transaction for atomicity
+    const result = await db.transaction(async (tx) => {
+      // Insert focus session
+      const [row] = await tx
+        .insert(focusSessions)
+        .values({
+          userId,
+          taskId: typeof body.taskId === 'string' && body.taskId ? body.taskId : null,
+          startTime: startTs,
+          endTime: endTs,
+          durationMinutes,
+          coinsEarned,
+        })
+        .returning({ id: focusSessions.id });
 
-    // Update user streak + coin fields
-    await db
-      .update(users)
-      .set({
-        coins: streakUpdate.coins,
-        dailyStreak: streakUpdate.dailyStreak,
-        bestDailyStreak: streakUpdate.bestDailyStreak,
-        sessionStreak: streakUpdate.sessionStreak,
-        bestSessionStreak: streakUpdate.bestSessionStreak,
-        lastFocusDate: streakUpdate.lastFocusDate,
-        lastSessionAt: streakUpdate.lastSessionAt,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId));
+      // Update user streak + coin fields
+      await tx
+        .update(users)
+        .set({
+          coins: streakUpdate.coins,
+          dailyStreak: streakUpdate.dailyStreak,
+          bestDailyStreak: streakUpdate.bestDailyStreak,
+          sessionStreak: streakUpdate.sessionStreak,
+          bestSessionStreak: streakUpdate.bestSessionStreak,
+          lastFocusDate: streakUpdate.lastFocusDate,
+          lastSessionAt: streakUpdate.lastSessionAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
 
-    // Check for new achievements
-    const existingAchievements = await db
-      .select({ type: achievements.type })
-      .from(achievements)
-      .where(eq(achievements.userId, userId));
+      // Check for new achievements
+      const existingAchievements = await tx
+        .select({ type: achievements.type })
+        .from(achievements)
+        .where(eq(achievements.userId, userId));
 
-    const existingTypes = new Set(existingAchievements.map((a) => a.type));
-    const newTypes = checkNewAchievements(
-      {
-        sessionStreak: streakUpdate.sessionStreak,
-        dailyStreak: streakUpdate.dailyStreak,
-        coins: streakUpdate.coins,
-      },
-      previousCoins,
-      existingTypes,
-    );
+      const existingTypes = new Set(existingAchievements.map((a) => a.type));
+      const newTypes = checkNewAchievements(
+        {
+          sessionStreak: streakUpdate.sessionStreak,
+          dailyStreak: streakUpdate.dailyStreak,
+          coins: streakUpdate.coins,
+        },
+        previousCoins,
+        existingTypes,
+      );
 
-    const newAchievements: { type: string; unlockedAt: string }[] = [];
-    for (const type of newTypes) {
-      const [ach] = await db
-        .insert(achievements)
-        .values({ userId, type })
-        .returning({ unlockedAt: achievements.unlockedAt });
-      newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
-    }
+      const newAchievements: { type: string; unlockedAt: string }[] = [];
+      for (const type of newTypes) {
+        const [ach] = await tx
+          .insert(achievements)
+          .values({ userId, type })
+          .returning({ unlockedAt: achievements.unlockedAt });
+        newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
+      }
+
+      return { sessionId: row.id, newAchievements };
+    });
 
     return NextResponse.json(
       {
-        id: row.id,
+        id: result.sessionId,
         coinsEarned,
         newCoins: streakUpdate.coins,
         dailyStreak: streakUpdate.dailyStreak,
         sessionStreak: streakUpdate.sessionStreak,
-        newAchievements,
+        newAchievements: result.newAchievements,
       },
       { status: 201 },
     );

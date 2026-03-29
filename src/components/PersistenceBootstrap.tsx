@@ -82,7 +82,8 @@ export default function PersistenceBootstrap() {
     // Run all fetches in parallel — no sequential blocking.
     // Always call hydrateFromDb (even with empty array) so dbHydrated becomes
     // true and the stores never fall back to localStorage as a live data source.
-    void Promise.all([
+    // Use allSettled so one failure doesn't prevent other stores from hydrating
+    void Promise.allSettled([
       preferencesHydrated
         ? Promise.resolve()
         : fetch('/api/users/preferences')
@@ -125,9 +126,12 @@ export default function PersistenceBootstrap() {
 
       // Hydrate streak store from API
       useStreakStore.getState().hydrateFromAPI().catch(() => {}),
-    ]).catch((err) => {
+    ]).then((results) => {
       if (isDev) {
-        console.warn('[PersistenceBootstrap] Unexpected hydration error:', err);
+        const rejected = results.filter((r) => r.status === 'rejected');
+        if (rejected.length > 0) {
+          console.warn('[PersistenceBootstrap] Some hydrations failed:', rejected);
+        }
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

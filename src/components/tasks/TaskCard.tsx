@@ -276,7 +276,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                   <DropdownMenuContent
                     align="start"
                     sideOffset={6}
-                    className="w-36 border-white/10 bg-zinc-950/85 backdrop-blur-md"
+                    className="w-36 border-border bg-popover/95 backdrop-blur-md"
                     onCloseAutoFocus={(e) => e.preventDefault()}
                   >
                     {PRIORITY_OPTIONS.map((priority) => {

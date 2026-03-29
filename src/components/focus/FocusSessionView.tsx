@@ -169,8 +169,8 @@ export const FocusSessionView: React.FC = () => {
       >
         <div className="space-y-5">
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">Focus session paused. Did you finish this task?</h3>
-            <p className="mt-1 text-sm text-zinc-400">If not, we will save your remaining timer so you can resume later.</p>
+            <h3 className="text-base font-semibold text-foreground">Focus session paused. Did you finish this task?</h3>
+            <p className="mt-1 text-sm text-muted-foreground">If not, we will save your remaining timer so you can resume later.</p>
           </div>
           <div className="grid gap-3">
             <button

@@ -129,11 +129,12 @@ const FocusPage: React.FC = () => {
           </TabsList>
         </div>
 
-        <TabsContent value="focus" className="flex-1 min-h-0 mt-0">
+        {/* forceMount keeps timers alive across tab switches; hidden via data-[state=inactive] */}
+        <TabsContent value="focus" forceMount className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
           <FocusSessionView />
         </TabsContent>
 
-        <TabsContent value="pomodoro" className="flex-1 min-h-0 mt-0 overflow-y-auto">
+        <TabsContent value="pomodoro" forceMount className="flex-1 min-h-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
           <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
             {moodLogsLoaded && moodLogs.length >= 3 && (
               <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
@@ -145,7 +146,7 @@ const FocusPage: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="stopwatch" className="flex-1 min-h-0 mt-0 overflow-y-auto">
+        <TabsContent value="stopwatch" forceMount className="flex-1 min-h-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
           <div className="max-w-lg mx-auto px-4 py-8">
             <StopwatchView />
           </div>

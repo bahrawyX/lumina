@@ -67,7 +67,7 @@ export default function GoogleLoginButton({
       >
         {isLoading ? "Redirecting to Google..." : label}
       </button>
-      {error ? <p className="text-xs text-red-500">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
