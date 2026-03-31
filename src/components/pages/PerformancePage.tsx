@@ -12,6 +12,7 @@ import { computeBestDay } from '@/utils/performance/bestDay';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { LottieAnimation, STREAK_FIRE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 
 // ── Metric card ───────────────────────────────────────────────────────────────
 
@@ -80,8 +81,20 @@ const StreakStatsRow: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Daily Streak</span>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-lg select-none">🔥</span>
+          <div className="flex items-center gap-1.5">
+            {dailyStreak > 0 ? (
+              <LottieAnimation
+                path="/animations/streak-fire.json"
+                layerColorMap={STREAK_FIRE_LAYER_MAP}
+                width={32}
+                height={40}
+                loop={true}
+                autoplay={true}
+                className="flex-shrink-0"
+              />
+            ) : (
+              <span className="text-lg select-none">🔥</span>
+            )}
             <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
               {dailyStreak}
             </span>

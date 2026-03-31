@@ -1,10 +1,7 @@
-'use client';
+"use client";
 
-import React, { useState, useCallback, useRef } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FocusSessionView } from '@/components/focus/FocusSessionView';
+import React, { useState, useCallback } from 'react';
 import PomodoroView from '@/components/focus/PomodoroView';
-import StopwatchView from '@/components/focus/StopwatchView';
 import PomodoroFeedbackModal from '@/components/focus/PomodoroFeedbackModal';
 import AchievementModal from '@/components/focus/AchievementModal';
 import MoodAnalysisCard from '@/components/focus/MoodAnalysisCard';
@@ -15,19 +12,18 @@ import * as moodPersistence from '@/lib/persistence/moodPersistence';
 import { toast } from 'sonner';
 import type { MoodValue, MoodLog, FocusSessionResult } from '@/types';
 
-const FocusPage: React.FC = () => {
+export default function PomodoroPage() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
   const [moodLogsLoaded, setMoodLogsLoaded] = useState(false);
   const [achievementOpen, setAchievementOpen] = useState(false);
   const [currentAchievement, setCurrentAchievement] = useState<string | null>(null);
-  const achievementQueueRef = useRef<string[]>([]);
+  const achievementQueueRef = React.useRef<string[]>([]);
 
   const applySessionResult = useStreakStore((s) => s.applySessionResult);
   const userTimezone = useOnboardingStore((s) => s.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // Load mood logs once
   React.useEffect(() => {
     if (moodLogsLoaded) return;
     moodPersistence.fetchMoodLogs(30).then((logs) => {
@@ -55,14 +51,12 @@ const FocusPage: React.FC = () => {
         setLastSessionId(result.id);
         applySessionResult(result);
 
-        // Queue achievement modals
         if (result.newAchievements.length > 0) {
           achievementQueueRef.current = result.newAchievements.map((a) => a.type);
           setCurrentAchievement(achievementQueueRef.current[0]);
           setAchievementOpen(true);
         }
 
-        // Add to focus store session history
         const session = {
           id: result.id,
           taskId: '',
@@ -121,54 +115,16 @@ const FocusPage: React.FC = () => {
   }, [lastSessionId]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <Tabs defaultValue="focus" className="flex flex-col h-full" data-tutorial="focus-tabs">
-        <div className="px-2 lg:px-4 pt-1 pb-3">
-          <TabsList className="bg-muted/30 border border-border/60 p-0.5 rounded-lg h-auto">
-            <TabsTrigger
-              value="focus"
-              className="text-sm py-1.5 px-4 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              Focus Timer
-            </TabsTrigger>
-            <TabsTrigger
-              value="pomodoro"
-              className="text-sm py-1.5 px-4 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              Pomodoro
-            </TabsTrigger>
-            <TabsTrigger
-              value="stopwatch"
-              className="text-sm py-1.5 px-4 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              Stopwatch
-            </TabsTrigger>
-          </TabsList>
-        </div>
-
-        {/* forceMount keeps timers alive across tab switches; hidden via data-[state=inactive] */}
-        <TabsContent value="focus" forceMount className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
-          <FocusSessionView />
-        </TabsContent>
-
-        <TabsContent value="pomodoro" forceMount className="flex-1 min-h-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
-          <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
-            {moodLogsLoaded && moodLogs.length >= 3 && (
-              <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
-            )}
-            <PomodoroView
-              onSessionComplete={handleSessionComplete}
-              onRequestFeedback={handleRequestFeedback}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="stopwatch" forceMount className="flex-1 min-h-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
-          <div className="max-w-lg mx-auto px-4 py-8">
-            <StopwatchView />
-          </div>
-        </TabsContent>
-      </Tabs>
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="max-w-lg mx-auto w-full px-4 py-4 space-y-4">
+        {moodLogsLoaded && moodLogs.length >= 3 && (
+          <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
+        )}
+        <PomodoroView
+          onSessionComplete={handleSessionComplete}
+          onRequestFeedback={handleRequestFeedback}
+        />
+      </div>
 
       <PomodoroFeedbackModal
         open={feedbackOpen}
@@ -182,6 +138,4 @@ const FocusPage: React.FC = () => {
       />
     </div>
   );
-};
-
-export default FocusPage;
+}

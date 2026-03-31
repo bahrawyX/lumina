@@ -113,6 +113,12 @@ const LogOutIcon: React.FC<{ size?: number; className?: string }> = ({ size = 15
   </svg>
 );
 
+const PomodoroIcon: React.FC<{ size?: number; strokeWidth?: number; className?: string }> = ({ size = 16, strokeWidth = 1.5, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2" /><path d="M9 2h6" /><path d="M12 2v2" />
+  </svg>
+);
+
 const PlanDayIcon: React.FC<{ size?: number; strokeWidth?: number; className?: string }> = ({ size = 16, strokeWidth = 1.5, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -729,7 +735,7 @@ const AppSidebar: React.FC = () => {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => {
-                      startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength);
+                      router.push('/pomodoro');
                     }}
                     data-tutorial="ignite-flow"
                     className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-transparent hover:bg-muted/60 border border-border/50 text-muted-foreground hover:text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
@@ -788,6 +794,14 @@ const AppSidebar: React.FC = () => {
                   href="/"
                   onClick={() => router.push('/')}
                   dataTutorial="nav-calendar"
+                />
+                <WorkspaceItem
+                  icon={PomodoroIcon}
+                  label="Pomodoro"
+                  isActive={pathname === '/pomodoro'}
+                  collapsed={isSidebarCollapsed}
+                  href="/pomodoro"
+                  onClick={() => router.push('/pomodoro')}
                 />
                 <WorkspaceItem
                   icon={SparklesIcon}

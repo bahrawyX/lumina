@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,6 +188,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
   // ── Settings Panel ───────────────────────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
+  const [showComplete, setShowComplete] = useState(false);
   const [localWorkMins, setLocalWorkMins] = useState(focusSessionLength);
   const [localShortBreakMins, setLocalShortBreakMins] = useState(5);
   const [localLongBreakMins, setLocalLongBreakMins] = useState(20);
@@ -228,7 +230,13 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           endTime,
           duration: localWorkMins * 60,
         });
-        onRequestFeedback(null);
+
+        // Show completion animation, then open feedback
+        setShowComplete(true);
+        setTimeout(() => {
+          setShowComplete(false);
+          onRequestFeedback(null);
+        }, 2000);
       }
 
       // Play chime to signal work session end
@@ -364,6 +372,28 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             {phaseEmoji(phase)}
           </motion.span>
         </div>
+
+        {/* Completion animation overlay */}
+        <AnimatePresence>
+          {showComplete && (
+            <motion.div
+              className="absolute inset-0 flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <LottieAnimation
+                path="/animations/pomodoro-complete.json"
+                layerColorMap={POMODORO_COMPLETE_LAYER_MAP}
+                width={RING_SIZE}
+                height={RING_SIZE}
+                loop={false}
+                autoplay={true}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Control buttons */}

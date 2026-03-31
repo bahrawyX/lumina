@@ -1,11 +1,7 @@
 "use client";
 
-import { FocusSessionView } from "@/components/focus/FocusSessionView";
+import FocusPage from "@/components/pages/FocusPage";
 
 export default function Page() {
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <FocusSessionView />
-    </div>
-  );
+  return <FocusPage />;
 }

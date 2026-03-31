@@ -9,6 +9,7 @@ import type { Task, TaskPriority, TaskStatus } from '../../types/task';
 import { getDoingFocusHint } from '../../utils/taskBoard';
 import { TaskCard } from './TaskCard';
 import { useVirtualWindow } from '../../hooks/useVirtualWindow';
+import { LottieAnimation, EMPTY_STATE_TASKS_LAYER_MAP } from '../ui/LottieAnimation';
 
 // ── Column status accent colors ───────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
             onAddTask(id);
           }
         }}
-        className={`flex-1 rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 cursor-pointer ${
+        className={`flex-1 flex flex-col rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 cursor-pointer ${
           isDragOver
             ? 'border-primary/30 bg-primary/10'
             : 'border-border/30 bg-muted/20 hover:bg-muted/30'
@@ -108,7 +109,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
           <div
             ref={viewportRef}
-            className="h-full overflow-y-auto no-scrollbar"
+            className={`overflow-y-auto no-scrollbar ${tasks.length > 0 ? 'h-full' : ''}`}
             data-virtualized="true"
           >
             <div
@@ -140,19 +141,25 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
         {/* Empty state hint */}
         {tasks.length === 0 && (
           <div
-            className="w-full flex flex-col items-center justify-center h-[80px] gap-2 rounded-xl group/empty pointer-events-none"
+            className="w-full flex-1 flex flex-col items-center justify-center gap-2 rounded-xl group/empty pointer-events-none"
           >
             {isDragOver ? (
               <p className="text-[11px] text-muted-foreground/50 select-none">Drop here</p>
             ) : (
               <>
-                <div className="flex items-center justify-center w-6 h-6 rounded-lg border border-dashed border-muted-foreground/20 group-hover/empty:border-primary/40 group-hover/empty:text-primary/60 text-muted-foreground/30 transition-colors">
-                  <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                </div>
+                <LottieAnimation
+                  path="/animations/empty-state-tasks.json"
+                  layerColorMap={EMPTY_STATE_TASKS_LAYER_MAP}
+                  width={80}
+                  height={80}
+                  loop={true}
+                  autoplay={true}
+                />
                 <p className="text-[11px] text-muted-foreground/40 select-none transition-colors">
-                  Click to add a task
+                  {id === 'todo' ? 'No tasks yet' :
+                   id === 'doing' ? 'Nothing in progress' :
+                   id === 'done' ? 'Nothing completed yet' :
+                   'No tasks'}
                 </p>
               </>
             )}

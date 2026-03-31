@@ -9,6 +9,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { focusSessionSelectionToMinutes } from '../lib/focusSettings';
 import { cn } from '../lib/utils';
+import { LottieAnimation, ONBOARDING_COMPLETE_LAYER_MAP } from './ui/LottieAnimation';
 import TimePicker from './TimePicker';
 import { useLuminaAuthClient } from './AuthProvider';
 import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
@@ -910,19 +911,31 @@ StepFocusGoals.displayName = 'StepFocusGoals';
    STEP 7 — Completion
 ══════════════════════════════════════════════════════════════════════════════ */
 const StepCompletion = memo<{ name?: string; isGuest?: boolean }>(({ name, isGuest }) => (
-  <div className="space-y-6">
+  <div className="relative space-y-6">
+    {/* Sparkle celebration background */}
+    <div className="absolute -top-8 -left-4 -right-4 h-[200px] pointer-events-none">
+      <LottieAnimation
+        path="/animations/onboarding-complete.json"
+        layerColorMap={ONBOARDING_COMPLETE_LAYER_MAP}
+        width="100%"
+        height="100%"
+        loop={false}
+        autoplay={true}
+      />
+    </div>
+
     <motion.div
       initial={{ scale: 0.8, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ delay: 0.1, duration: 0.4, ease: [0.34, 1.2, 0.64, 1] }}
-      className="w-12 h-12 rounded-xl border border-primary/30 bg-primary/[0.08] flex items-center justify-center"
+      className="relative z-10 w-12 h-12 rounded-xl border border-primary/30 bg-primary/[0.08] flex items-center justify-center"
     >
       <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
       </svg>
     </motion.div>
 
-    <div className="space-y-2">
+    <div className="relative z-10 space-y-2">
       <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
         You're ready{name ? `, ${name.split(' ')[0]}` : ''}.
       </h1>

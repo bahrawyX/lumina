@@ -9,18 +9,21 @@ import EventModal from "@/components/EventModal";
 import Toaster from "@/components/ui/Toaster";
 import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
 import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Toaster as SonnerToaster } from "sonner";
 import { useCalendarStore } from "@/store/useCalendarStore";
 import { ViewType } from "@/types";
 import { useCalendarEventsStore } from "@/store/useCalendarEventsStore";
 import { useOnboardingStore, useOnboardingHydrated } from "@/store/useOnboardingStore";
+import { useTaskBoardStore } from "@/store/useTaskBoardStore";
+import { useFocusStore } from "@/store/useFocusStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
 import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
+import { LottieAnimation, LOADING_PULSE_LAYER_MAP } from "@/components/ui/LottieAnimation";
 
 const MOBILE_NAV_ITEMS = [
   {
@@ -60,11 +63,11 @@ const MOBILE_NAV_ITEMS = [
     ),
   },
   {
-    href: '/focus',
-    label: 'Focus',
+    href: '/pomodoro',
+    label: 'Pomodoro',
     icon: (
       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
+        <circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/>
       </svg>
     ),
   },
@@ -120,6 +123,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
   const onboardingHydrated = useOnboardingHydrated();
   const isGuest = useGuestStore((s) => s.isGuest);
+  const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
+  const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
+  const focusHydrated = useFocusStore((s) => s.dbHydrated);
+  const allHydrated = eventsHydrated && tasksHydrated && focusHydrated;
   const router = useRouter();
   const pathname = usePathname();
 
@@ -255,6 +262,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      {/* Hydration loading overlay */}
+      <AnimatePresence>
+        {onboardingCompleted && !allHydrated && (
+          <motion.div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-background"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          >
+            <div className="flex flex-col items-center gap-4">
+              <LottieAnimation
+                path="/animations/loading-pulse.json"
+                layerColorMap={LOADING_PULSE_LAYER_MAP}
+                width={64}
+                height={16}
+                loop={true}
+                autoplay={true}
+              />
+              <p className="text-xs text-muted-foreground">Loading Lumina...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

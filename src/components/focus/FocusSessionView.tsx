@@ -69,11 +69,8 @@ export const FocusSessionView: React.FC = () => {
   const router = useRouter();
   const [showInterruptionPrompt, setShowInterruptionPrompt] = React.useState(false);
 
-  useEffect(() => {
-    if (!activeSession) {
-      router.replace('/tasks');
-    }
-  }, [activeSession, router]);
+  // No redirect — FocusSessionView is now embedded in the tabbed FocusPage.
+  // When there's no active session, we show an empty state instead.
 
   const handleRequestInterruption = React.useCallback(() => {
     if (!activeSession) return;
@@ -106,7 +103,23 @@ export const FocusSessionView: React.FC = () => {
     router.push('/tasks');
   }, [activeSession, getElapsedSecs, updateTask, cancelSession, router]);
 
-  if (!activeSession) return null;
+  if (!activeSession) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+          <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+            <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+          </svg>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">No active focus session</p>
+          <p className="text-xs text-muted-foreground max-w-[260px]">
+            Start a focus session from your task board, or use the Pomodoro timer.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex flex-col h-full min-h-0 overflow-hidden">
