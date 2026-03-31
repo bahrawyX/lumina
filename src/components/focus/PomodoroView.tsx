@@ -4,6 +4,13 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -524,11 +531,14 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   );
 };
 
-// ── Duration Control Sub-component ───────────────────────────────────────────
+// ── Duration Picker Sub-component ───────────────────────────────────────────
+
+const DURATION_HOURS = Array.from({ length: 5 }, (_, i) => String(i));
+const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
 interface DurationControlProps {
   label: string;
-  value: number;
+  value: number;        // total minutes
   onChange: (value: number) => void;
   min: number;
   max: number;
@@ -542,31 +552,64 @@ const DurationControl: React.FC<DurationControlProps> = ({
   min,
   max,
   disabled = false,
-}) => (
-  <div className={`flex items-center justify-between ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-    <span className="text-sm text-foreground">{label}</span>
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => onChange(Math.max(min, value - 1))}
-        className="w-8 h-8 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground flex items-center justify-center text-lg transition-colors"
-        aria-label={`Decrease ${label} duration`}
-      >
-        -
-      </button>
-      <span className="w-12 text-center font-mono text-sm font-semibold text-foreground tabular-nums">
-        {value}m
-      </span>
-      <button
-        type="button"
-        onClick={() => onChange(Math.min(max, value + 1))}
-        className="w-8 h-8 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground flex items-center justify-center text-lg transition-colors"
-        aria-label={`Increase ${label} duration`}
-      >
-        +
-      </button>
+}) => {
+  const hours = Math.floor(value / 60);
+  const mins = value % 60;
+
+  const handleHourChange = (h: string) => {
+    const total = Number(h) * 60 + mins;
+    onChange(Math.max(min, Math.min(max, total)));
+  };
+
+  const handleMinChange = (m: string) => {
+    const total = hours * 60 + Number(m);
+    onChange(Math.max(min, Math.min(max, total)));
+  };
+
+  const displayStr = hours > 0 ? `${hours}h ${String(mins).padStart(2, '0')}m` : `${mins}m`;
+
+  return (
+    <div className={`flex flex-col gap-1.5 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-foreground font-medium">{label}</span>
+        <div className="flex items-center gap-1.5 h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-muted-foreground">
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="opacity-50 shrink-0">
+            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+          </svg>
+          <span className="text-foreground font-mono text-xs tabular-nums">{displayStr}</span>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Select value={String(hours)} onValueChange={handleHourChange} disabled={disabled}>
+          <SelectTrigger className="flex-1 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="max-h-48">
+            {DURATION_HOURS.map((h) => (
+              <SelectItem key={h} value={h} className="tabular-nums">
+                {h}h
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <span className="flex items-center text-muted-foreground font-medium text-sm select-none">:</span>
+
+        <Select value={String(mins).padStart(2, '0')} onValueChange={handleMinChange} disabled={disabled}>
+          <SelectTrigger className="flex-1 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="max-h-48">
+            {DURATION_MINUTES.map((m) => (
+              <SelectItem key={m} value={m} className="tabular-nums">
+                {m}m
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default PomodoroView;
