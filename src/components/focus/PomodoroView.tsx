@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import {
   Select,
@@ -14,8 +15,6 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Phase = 'work' | 'short_break' | 'long_break';
-
 interface PomodoroViewProps {
   onSessionComplete: (data: { startTime: string; endTime: string; duration: number }) => void;
   onRequestFeedback: (focusSessionId: string | null) => void;
@@ -23,16 +22,12 @@ interface PomodoroViewProps {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SHORT_BREAK_SECS = 5 * 60;
-const LONG_BREAK_SECS = 20 * 60;
-const DEFAULT_SESSIONS_PER_CYCLE = 4;
 const SESSIONS_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
 const RING_SIZE = 220;
 const RING_STROKE = 6;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Format seconds as MM:SS. */
 function formatTime(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
   const m = Math.floor(s / 60);
@@ -40,13 +35,10 @@ function formatTime(totalSeconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
-/** Generate a simple completion chime using the Web Audio API. */
 function playChime(): void {
   try {
     const ctx = new AudioContext();
     const now = ctx.currentTime;
-
-    // Two-tone ascending chime: C5 then E5
     const frequencies = [523.25, 659.25];
     frequencies.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -61,19 +53,8 @@ function playChime(): void {
       osc.start(now + i * 0.2);
       osc.stop(now + i * 0.2 + 0.6);
     });
-
-    // Close context after sounds finish
     setTimeout(() => ctx.close().catch(() => {}), 2000);
-  } catch {
-    // Web Audio not available — silent fallback
-  }
-}
-
-/** Get the label for a phase. */
-function phaseLabel(phase: Phase, sessionCount: number, totalSessions: number): string {
-  if (phase === 'work') return `Work Session ${sessionCount + 1} of ${totalSessions}`;
-  if (phase === 'short_break') return 'Short Break';
-  return 'Long Break';
+  } catch { /* silent */ }
 }
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
@@ -170,27 +151,11 @@ const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth
       style={{ transform: 'rotate(-90deg)' }}
       aria-hidden
     >
-      {/* Muted track */}
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} opacity={0.5} />
       <circle
-        cx={cx}
-        cy={cx}
-        r={r}
-        fill="none"
-        stroke="hsl(var(--muted))"
-        strokeWidth={strokeWidth}
-        opacity={0.5}
-      />
-      {/* Primary progress arc */}
-      <circle
-        cx={cx}
-        cy={cx}
-        r={r}
-        fill="none"
-        stroke="hsl(var(--primary))"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={dashOffset}
+        cx={cx} cy={cx} r={r} fill="none"
+        stroke="hsl(var(--primary))" strokeWidth={strokeWidth} strokeLinecap="round"
+        strokeDasharray={circumference} strokeDashoffset={dashOffset}
         style={{ transition: 'stroke-dashoffset 1s linear' }}
       />
     </svg>
@@ -199,19 +164,12 @@ const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth
 
 // ── Session Dots ─────────────────────────────────────────────────────────────
 
-interface SessionDotsProps {
-  completed: number;
-  total: number;
-}
-
-const SessionDots: React.FC<SessionDotsProps> = ({ completed, total }) => (
+const SessionDots: React.FC<{ completed: number; total: number }> = ({ completed, total }) => (
   <div className="flex items-center gap-2">
     {Array.from({ length: total }, (_, i) => (
       <motion.div
         key={i}
-        className={`w-2.5 h-2.5 rounded-full transition-colors ${
-          i < completed ? 'bg-primary' : 'bg-muted'
-        }`}
+        className={`w-2.5 h-2.5 rounded-full transition-colors ${i < completed ? 'bg-primary' : 'bg-muted'}`}
         initial={false}
         animate={i < completed ? { scale: [1, 1.3, 1] } : {}}
         transition={{ duration: 0.3 }}
@@ -223,168 +181,137 @@ const SessionDots: React.FC<SessionDotsProps> = ({ completed, total }) => (
 // ── Main Component ───────────────────────────────────────────────────────────
 
 const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onRequestFeedback }) => {
-  // ── Settings ─────────────────────────────────────────────────────────────
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
 
-  // ── Timer State ──────────────────────────────────────────────────────────
-  const [phase, setPhase] = useState<Phase>('work');
-  const [elapsed, setElapsed] = useState(0);
-  const [sessionCount, setSessionCount] = useState(0); // completed work sessions in cycle
-  const [isRunning, setIsRunning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  // ── Store state ────────────────────────────────────────────────────────────
+  const phase = usePomodoroStore((s) => s.phase);
+  const isRunning = usePomodoroStore((s) => s.isRunning);
+  const isPaused = usePomodoroStore((s) => s.isPaused);
+  const sessionCount = usePomodoroStore((s) => s.sessionCount);
+  const workMins = usePomodoroStore((s) => s.workMins);
+  const shortBreakMins = usePomodoroStore((s) => s.shortBreakMins);
+  const longBreakMins = usePomodoroStore((s) => s.longBreakMins);
+  const sessionsPerCycle = usePomodoroStore((s) => s.sessionsPerCycle);
+  const showCelebration = usePomodoroStore((s) => s.showCelebration);
+  const workSessionStartedAt = usePomodoroStore((s) => s.workSessionStartedAt);
 
-  // ── Settings Panel ───────────────────────────────────────────────────────
+  const storeStart = usePomodoroStore((s) => s.start);
+  const storePause = usePomodoroStore((s) => s.pause);
+  const storeResume = usePomodoroStore((s) => s.resume);
+  const storeSkip = usePomodoroStore((s) => s.skip);
+  const storeReset = usePomodoroStore((s) => s.reset);
+  const storeTick = usePomodoroStore((s) => s.tick);
+  const getElapsedSecs = usePomodoroStore((s) => s.getElapsedSecs);
+  const getPhaseDurationSecs = usePomodoroStore((s) => s.getPhaseDurationSecs);
+  const dismissCelebration = usePomodoroStore((s) => s.dismissCelebration);
+
+  // ── Display state (re-rendered every second) ───────────────────────────────
+  const [displayElapsed, setDisplayElapsed] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [showComplete, setShowComplete] = useState(false);
-  const [localWorkMins, setLocalWorkMins] = useState(focusSessionLength);
-  const [localShortBreakMins, setLocalShortBreakMins] = useState(5);
-  const [localLongBreakMins, setLocalLongBreakMins] = useState(20);
-  const [localSessionsPerCycle, setLocalSessionsPerCycle] = useState(DEFAULT_SESSIONS_PER_CYCLE);
-
-  // ── Refs ──────────────────────────────────────────────────────────────────
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionStartRef = useRef<string | null>(null);
+  const completionHandledRef = useRef(false);
 
-  // Sync local work minutes when the store value changes (e.g. on hydration)
+  // Sync work minutes from settings store on mount
   useEffect(() => {
-    setLocalWorkMins(focusSessionLength);
+    const current = usePomodoroStore.getState().workMins;
+    if (current === 25 && focusSessionLength !== 25) {
+      usePomodoroStore.getState().setWorkMins(focusSessionLength);
+    }
   }, [focusSessionLength]);
 
-  // ── Derived Values ───────────────────────────────────────────────────────
-
-  /** Duration of the current phase in seconds. */
-  const phaseDuration = useMemo(() => {
-    if (phase === 'work') return localWorkMins * 60;
-    if (phase === 'short_break') return localShortBreakMins * 60;
-    return localLongBreakMins * 60;
-  }, [phase, localWorkMins, localShortBreakMins, localLongBreakMins]);
-
-  const remaining = Math.max(0, phaseDuration - elapsed);
-  const progress = phaseDuration > 0 ? Math.min(1, elapsed / phaseDuration) : 0;
-
-  // ── Phase Transition Logic ───────────────────────────────────────────────
-
-  /** Advance to the next phase in the pomodoro cycle. */
-  const advancePhase = useCallback(() => {
-    if (phase === 'work') {
-      const newCount = sessionCount + 1;
-      setSessionCount(newCount);
-
-      // Fire completion callback for the work session
-      if (sessionStartRef.current) {
-        const endTime = new Date().toISOString();
-        onSessionComplete({
-          startTime: sessionStartRef.current,
-          endTime,
-          duration: localWorkMins * 60,
-        });
-
-        // Show completion animation, then open feedback
-        setShowComplete(true);
-        setTimeout(() => {
-          setShowComplete(false);
-          onRequestFeedback(null);
-        }, 2000);
-      }
-
-      // Play chime to signal work session end
-      playChime();
-
-      // Determine next phase: long break every N sessions, else short break
-      if (newCount >= localSessionsPerCycle) {
-        setPhase('long_break');
-        setSessionCount(0); // reset cycle
-      } else {
-        setPhase('short_break');
-      }
-    } else {
-      // After any break, go back to work
-      setPhase('work');
-    }
-
-    // Reset timer for the new phase
-    setElapsed(0);
-    setIsRunning(false);
-    setIsPaused(false);
-    sessionStartRef.current = null;
-  }, [phase, sessionCount, localWorkMins, localSessionsPerCycle, onSessionComplete, onRequestFeedback]);
-
-  // ── Timer Tick ───────────────────────────────────────────────────────────
-
+  // ── Ticker — runs every second while active ────────────────────────────────
   useEffect(() => {
     if (isRunning && !isPaused) {
-      intervalRef.current = setInterval(() => {
-        setElapsed((prev) => {
-          const next = prev + 1;
-          return next;
-        });
-      }, 1000);
+      const tick = () => {
+        setDisplayElapsed(getElapsedSecs());
+        const result = storeTick();
+        if (result.completed && result.phase === 'work') {
+          playChime();
+        }
+      };
+      // Initial sync
+      setDisplayElapsed(getElapsedSecs());
+      intervalRef.current = setInterval(tick, 1000);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      setDisplayElapsed(getElapsedSecs());
     }
-
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     };
-  }, [isRunning, isPaused]);
+  }, [isRunning, isPaused, getElapsedSecs, storeTick]);
 
-  // Check for phase completion in a separate effect to avoid stale closures
+  // ── Handle celebration (fire callback + feedback modal) ────────────────────
   useEffect(() => {
-    if (isRunning && elapsed >= phaseDuration) {
-      advancePhase();
+    if (showCelebration && !completionHandledRef.current) {
+      completionHandledRef.current = true;
+
+      // Fire session complete callback
+      if (workSessionStartedAt) {
+        const endTime = new Date().toISOString();
+        onSessionComplete({
+          startTime: workSessionStartedAt,
+          endTime,
+          duration: workMins * 60,
+        });
+      }
+
+      // Show Lottie for 2.5s then open feedback
+      setTimeout(() => {
+        dismissCelebration();
+        onRequestFeedback(null);
+        completionHandledRef.current = false;
+      }, 2500);
     }
-  }, [elapsed, phaseDuration, isRunning, advancePhase]);
+  }, [showCelebration, workSessionStartedAt, workMins, onSessionComplete, onRequestFeedback, dismissCelebration]);
 
-  // ── Actions ──────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const phaseDuration = getPhaseDurationSecs();
+  const remaining = Math.max(0, phaseDuration - displayElapsed);
+  const progress = phaseDuration > 0 ? Math.min(1, displayElapsed / phaseDuration) : 0;
 
+  const phaseLabel = useMemo(() => {
+    if (phase === 'work') return `Work Session ${sessionCount + 1} of ${sessionsPerCycle}`;
+    if (phase === 'short_break') return 'Short Break';
+    return 'Long Break';
+  }, [phase, sessionCount, sessionsPerCycle]);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
   const handleStart = useCallback(() => {
     if (!isRunning) {
-      // Starting fresh
-      setIsRunning(true);
-      setIsPaused(false);
-      if (phase === 'work') {
-        sessionStartRef.current = new Date().toISOString();
-      }
+      storeStart();
     } else if (isPaused) {
-      // Resuming from pause
-      setIsPaused(false);
+      storeResume();
     }
-  }, [isRunning, isPaused, phase]);
+  }, [isRunning, isPaused, storeStart, storeResume]);
 
   const handlePause = useCallback(() => {
-    if (isRunning && !isPaused) {
-      setIsPaused(true);
-    }
-  }, [isRunning, isPaused]);
+    storePause();
+  }, [storePause]);
 
   const handleSkip = useCallback(() => {
-    advancePhase();
-  }, [advancePhase]);
+    storeSkip();
+  }, [storeSkip]);
 
   const handleReset = useCallback(() => {
-    setElapsed(0);
-    setIsRunning(false);
-    setIsPaused(false);
-    sessionStartRef.current = null;
-  }, []);
+    storeReset();
+    setDisplayElapsed(0);
+  }, [storeReset]);
 
-  // ── Settings Handlers ────────────────────────────────────────────────────
-
+  // ── Settings handlers ──────────────────────────────────────────────────────
   const handleWorkMinsChange = useCallback((value: number) => {
     const clamped = Math.max(1, Math.min(240, value));
-    setLocalWorkMins(clamped);
-    // Persist to settings store so other components see the change
+    usePomodoroStore.getState().setWorkMins(clamped);
     useSettingsStore.getState().setFocusSessionLength(clamped);
   }, []);
 
-  // ── Render ───────────────────────────────────────────────────────────────
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-8 px-4">
       {/* Phase label */}
@@ -394,19 +321,15 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         animate={{ opacity: 1, y: 0 }}
         className="text-sm uppercase tracking-widest text-muted-foreground font-medium"
       >
-        {phaseLabel(phase, sessionCount, localSessionsPerCycle)}
+        {phaseLabel}
       </motion.p>
 
-      {/* Circular progress ring with time display */}
+      {/* Circular progress ring */}
       <div className="relative flex items-center justify-center">
         <ProgressRing progress={progress} size={RING_SIZE} strokeWidth={RING_STROKE} />
 
-        {/* Time + emoji overlay (centered inside ring) */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <motion.span
-            key={remaining}
-            className="font-mono text-5xl font-bold text-foreground tabular-nums leading-none"
-          >
+          <motion.span key={remaining} className="font-mono text-5xl font-bold text-foreground tabular-nums leading-none">
             {formatTime(remaining)}
           </motion.span>
           <motion.span
@@ -421,9 +344,9 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           </motion.span>
         </div>
 
-        {/* Completion animation overlay */}
+        {/* Completion Lottie */}
         <AnimatePresence>
-          {showComplete && (
+          {showCelebration && (
             <motion.div
               className="absolute inset-0 flex items-center justify-center"
               initial={{ opacity: 0 }}
@@ -446,7 +369,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
       {/* Control buttons */}
       <div className="flex items-center gap-3">
-        {/* Start / Pause */}
         {!isRunning || isPaused ? (
           <motion.button
             type="button"
@@ -469,7 +391,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           </motion.button>
         )}
 
-        {/* Skip to next phase */}
         <motion.button
           type="button"
           onClick={handleSkip}
@@ -480,9 +401,8 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           Skip
         </motion.button>
 
-        {/* Reset (only visible when timer has been started) */}
         <AnimatePresence>
-          {(isRunning || elapsed > 0) && (
+          {(isRunning || displayElapsed > 0) && (
             <motion.button
               type="button"
               onClick={handleReset}
@@ -502,15 +422,15 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         </AnimatePresence>
       </div>
 
-      {/* Session dots — shows progress through the cycle */}
+      {/* Session dots */}
       <div className="flex flex-col items-center gap-1.5">
-        <SessionDots completed={sessionCount} total={localSessionsPerCycle} />
+        <SessionDots completed={sessionCount} total={sessionsPerCycle} />
         <span className="text-xs text-muted-foreground">
-          {sessionCount} of {localSessionsPerCycle} sessions
+          {sessionCount} of {sessionsPerCycle} sessions
         </span>
       </div>
 
-      {/* Collapsible settings section */}
+      {/* Settings */}
       <div className="w-full max-w-xs">
         <button
           type="button"
@@ -518,10 +438,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-card border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <span className="font-medium">Timer Settings</span>
-          <motion.div
-            animate={{ rotate: showSettings ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
+          <motion.div animate={{ rotate: showSettings ? 180 : 0 }} transition={{ duration: 0.2 }}>
             <ChevronDownIcon />
           </motion.div>
         </button>
@@ -536,39 +453,14 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
               className="overflow-hidden"
             >
               <div className="flex flex-col gap-4 pt-3 px-1">
-                {/* Work duration */}
-                <DurationControl
-                  label="Work"
-                  value={localWorkMins}
-                  onChange={handleWorkMinsChange}
-                  min={1}
-                  max={240}
-                  disabled={isRunning && phase === 'work'}
-                />
-                {/* Short break duration */}
-                <DurationControl
-                  label="Short Break"
-                  value={localShortBreakMins}
-                  onChange={setLocalShortBreakMins}
-                  min={1}
-                  max={30}
-                  disabled={isRunning && phase === 'short_break'}
-                />
-                {/* Long break duration */}
-                <DurationControl
-                  label="Long Break"
-                  value={localLongBreakMins}
-                  onChange={setLocalLongBreakMins}
-                  min={1}
-                  max={60}
-                  disabled={isRunning && phase === 'long_break'}
-                />
-                {/* Sessions per cycle */}
+                <DurationControl label="Work" value={workMins} onChange={handleWorkMinsChange} min={1} max={240} disabled={isRunning && phase === 'work'} />
+                <DurationControl label="Short Break" value={shortBreakMins} onChange={(v) => usePomodoroStore.getState().setShortBreakMins(v)} min={1} max={30} disabled={isRunning && phase === 'short_break'} />
+                <DurationControl label="Long Break" value={longBreakMins} onChange={(v) => usePomodoroStore.getState().setLongBreakMins(v)} min={1} max={60} disabled={isRunning && phase === 'long_break'} />
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-foreground font-medium">Sessions per Cycle</span>
                   <Select
-                    value={String(localSessionsPerCycle)}
-                    onValueChange={(v) => setLocalSessionsPerCycle(Number(v))}
+                    value={String(sessionsPerCycle)}
+                    onValueChange={(v) => usePomodoroStore.getState().setSessionsPerCycle(Number(v))}
                     disabled={isRunning}
                   >
                     <SelectTrigger className="w-20 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
@@ -576,9 +468,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
                     </SelectTrigger>
                     <SelectContent>
                       {SESSIONS_OPTIONS.map((n) => (
-                        <SelectItem key={n} value={String(n)} className="tabular-nums">
-                          {n}
-                        </SelectItem>
+                        <SelectItem key={n} value={String(n)} className="tabular-nums">{n}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -592,28 +482,21 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   );
 };
 
-// ── Duration Picker Sub-component ───────────────────────────────────────────
+// ── Duration Picker ──────────────────────────────────────────────────────────
 
 const DURATION_HOURS = Array.from({ length: 5 }, (_, i) => String(i));
 const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
 interface DurationControlProps {
   label: string;
-  value: number;        // total minutes
+  value: number;
   onChange: (value: number) => void;
   min: number;
   max: number;
   disabled?: boolean;
 }
 
-const DurationControl: React.FC<DurationControlProps> = ({
-  label,
-  value,
-  onChange,
-  min,
-  max,
-  disabled = false,
-}) => {
+const DurationControl: React.FC<DurationControlProps> = ({ label, value, onChange, min, max, disabled = false }) => {
   const hours = Math.floor(value / 60);
   const mins = value % 60;
 
@@ -647,24 +530,18 @@ const DurationControl: React.FC<DurationControlProps> = ({
           </SelectTrigger>
           <SelectContent className="max-h-48">
             {DURATION_HOURS.map((h) => (
-              <SelectItem key={h} value={h} className="tabular-nums">
-                {h}h
-              </SelectItem>
+              <SelectItem key={h} value={h} className="tabular-nums">{h}h</SelectItem>
             ))}
           </SelectContent>
         </Select>
-
         <span className="flex items-center text-muted-foreground font-medium text-sm select-none">:</span>
-
         <Select value={String(mins).padStart(2, '0')} onValueChange={handleMinChange} disabled={disabled}>
           <SelectTrigger className="flex-1 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="max-h-48">
             {DURATION_MINUTES.map((m) => (
-              <SelectItem key={m} value={m} className="tabular-nums">
-                {m}m
-              </SelectItem>
+              <SelectItem key={m} value={m} className="tabular-nums">{m}m</SelectItem>
             ))}
           </SelectContent>
         </Select>

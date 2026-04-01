@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-03-29 (v2 — streaks, pomodoro, ambient, stopwatch, contact)
+> Last updated: 2026-04-01 (v3 — persistent pomodoro store, floating widget, emoji→icon migration, neon removal)
 
 ---
 
@@ -33,7 +33,7 @@ This is the single source of truth for the Lumina codebase. It covers:
 | Daily Plan | `/plan` | Schedule tasks into the day with drag-drop time slots |
 | Focus | `/focus` | Pomodoro-style timer with session tracking |
 | Performance | `/performance` | GitHub-style contribution heatmap and focus stats |
-| Intelligence | `/intelligence` | AI-generated scheduling recommendations |
+| Insights | `/intelligence` | Schedule analysis and recommendations (formerly "Intelligence") |
 | Onboarding | `/onboarding` | Multi-step onboarding flow with auth |
 
 ---

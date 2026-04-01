@@ -9,6 +9,7 @@ import EventModal from "@/components/EventModal";
 import Toaster from "@/components/ui/Toaster";
 import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
 import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
+import PomodoroFloatingWidget from "@/components/focus/PomodoroFloatingWidget";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster as SonnerToaster } from "sonner";
 import { useCalendarStore } from "@/store/useCalendarStore";
@@ -336,6 +337,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <TutorialOverlay />
         <AmbientSoundDrawer />
         <FloatingAmbientPlayer />
+        <PomodoroFloatingWidget />
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">
           <div className="grid grid-cols-5 px-1 pt-1.5 pb-1.5">
