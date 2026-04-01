@@ -156,8 +156,8 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
           select-none cursor-grab active:cursor-grabbing
           transition-all duration-[120ms] ease-out
           ${isDragOverlay
-            ? 'shadow-2xl ring-1 ring-primary/20 border-border/80'
-            : 'shadow-sm hover:shadow-md hover:-translate-y-[1px] border-border/60 hover:border-border/90'
+            ? 'shadow-2xl ring-1 ring-primary/20 border-border'
+            : 'shadow-sm hover:shadow-md hover:-translate-y-[1px] border-border hover:border-border'
           }
         `}
         {...listeners}

@@ -12,6 +12,13 @@ import {
   contactMessageSchema,
 } from '@/lib/validation';
 import type { ContactType } from '@/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface ContactDrawerProps {
   open: boolean;
@@ -144,15 +151,19 @@ export default function ContactDrawer({ open, onClose }: ContactDrawerProps) {
               {/* Type select */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Type</label>
-                <select
+                <Select
                   value={type}
-                  onChange={(e) => { setType(e.target.value as ContactType); validateField('type', e.target.value); }}
-                  className="w-full px-3 py-2.5 rounded-lg bg-background border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 transition-colors appearance-none cursor-pointer"
+                  onValueChange={(v) => { setType(v as ContactType); validateField('type', v); }}
                 >
-                  {TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full h-10 rounded-lg bg-background border border-border text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TYPE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Subject */}

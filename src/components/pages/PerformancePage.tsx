@@ -25,7 +25,7 @@ interface MetricCardProps {
 }
 
 const MetricCard: React.FC<MetricCardProps> = ({ label, value, sub, accent = 'text-primary' }) => (
-  <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+  <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
     <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">{label}</span>
     <span className={`font-display text-2xl font-bold tabular-nums leading-none ${accent}`}>{value}</span>
     {sub && <span className="text-[11px] text-muted-foreground/50 mt-0.5">{sub}</span>}
@@ -59,7 +59,7 @@ const DayBar: React.FC<{ day: string; mins: number; maxMins: number; isBest: boo
 const ContextPill: React.FC<{ name: string; count: number; total: number }> = ({ name, count, total }) => {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-muted/30 border border-border/40">
+    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-muted/30 border border-border/70">
       <span className="text-xs font-medium text-foreground truncate">{name}</span>
       <span className="text-[11px] tabular-nums text-muted-foreground">{count} <span className="text-muted-foreground/40">({pct}%)</span></span>
     </div>
@@ -80,7 +80,7 @@ const StreakStatsRow: React.FC = () => {
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Daily Streak</span>
           <div className="flex items-center gap-1.5">
             {dailyStreak > 0 ? (
@@ -102,7 +102,7 @@ const StreakStatsRow: React.FC = () => {
             <span className="text-xs text-muted-foreground">days</span>
           </div>
         </div>
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Session Streak</span>
           <div className="flex items-baseline gap-1.5">
             <LightningIcon size={22} />
@@ -111,7 +111,7 @@ const StreakStatsRow: React.FC = () => {
             </span>
           </div>
         </div>
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Best Day</span>
           <div className="flex items-baseline gap-1.5">
             <TrophyIcon size={22} />
@@ -121,7 +121,7 @@ const StreakStatsRow: React.FC = () => {
           </div>
           {best && <span className="text-[11px] text-muted-foreground/50">{Math.floor(best.totalMinutes / 60)}h {best.totalMinutes % 60}m focused</span>}
         </div>
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Coins</span>
           <div className="flex items-baseline gap-1.5">
             <CoinIcon size={22} />
@@ -133,7 +133,7 @@ const StreakStatsRow: React.FC = () => {
       </div>
 
       {showRecovery && (
-        <div className="rounded-2xl bg-card border border-border/60 p-4 flex items-center justify-between gap-3">
+        <div className="rounded-2xl bg-card border border-border p-4 flex items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">Lost your streak?</p>
             <p className="text-xs text-muted-foreground">You had a {bestDailyStreak}-day streak. Restore it to keep going.</p>
@@ -286,7 +286,7 @@ const PerformancePage: React.FC = () => {
             {/* Metric cards skeleton */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[1, 2, 3, 4].map(i => (
-                <div key={i} className="flex flex-col gap-2 p-4 rounded-2xl bg-card border border-border/60">
+                <div key={i} className="flex flex-col gap-2 p-4 rounded-2xl bg-card border border-border">
                   <Skeleton className="h-3 w-20 rounded" />
                   <Skeleton className="h-8 w-16 rounded-md" />
                   <Skeleton className="h-3 w-24 rounded" />
@@ -331,7 +331,7 @@ const PerformancePage: React.FC = () => {
           <ContributionHeatmap />
 
           {noData ? (
-            <div className="rounded-2xl border border-border/40 bg-card/60 px-6 py-12 flex flex-col items-center justify-center gap-3">
+            <div className="rounded-2xl border border-border bg-card px-6 py-12 flex flex-col items-center justify-center gap-3">
               <p className="text-lg font-medium text-muted-foreground/60">No activity this week yet</p>
               <p className="text-sm text-muted-foreground/40">Start scheduling events and completing tasks to see your weekly review details.</p>
             </div>

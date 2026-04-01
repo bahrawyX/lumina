@@ -6,9 +6,9 @@
 @layer base {
   :root {
     /* Light mode */
-    --background:   0 0% 100%;
+    --background:   40 20% 98%;           /* warm off-white to match bg-warm-50 */
     --foreground:   222 47% 11%;
-    --card:         0 0% 100%;
+    --card:         0 0% 100%;            /* pure white — lifts off warm background */
     --card-foreground: 222 47% 11%;
     --popover:      0 0% 100%;
     --popover-foreground: 222 47% 11%;
@@ -16,14 +16,14 @@
     --primary-foreground: 0 0% 100%;
     --secondary:    240 4% 96%;
     --secondary-foreground: 222 47% 11%;
-    --muted:        240 5% 96%;
+    --muted:        220 14% 95%;
     --muted-foreground: 215 16% 47%;
     --accent:       249 66% 95%;
     --accent-foreground: 249 66% 35%;
     --destructive:  0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border:       220 13% 91%;
-    --input:        220 13% 91%;
+    --border:       220 13% 87%;          /* slightly darker for better contrast */
+    --input:        220 13% 87%;
     --ring:         249 66% 61%;
     --radius:       0.5rem;
   }

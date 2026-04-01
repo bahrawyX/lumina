@@ -100,10 +100,10 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
             onAddTask(id);
           }
         }}
-        className={`flex-1 flex flex-col rounded-2xl border p-1.5 min-h-[120px] backdrop-blur-md transition-colors duration-300 cursor-pointer ${
+        className={`flex-1 flex flex-col rounded-2xl border p-1.5 min-h-[120px] transition-colors duration-300 cursor-pointer ${
           isDragOver
             ? 'border-primary/30 bg-primary/10'
-            : 'border-border/30 bg-muted/20 hover:bg-muted/30'
+            : 'border-border/50 bg-muted/40 hover:bg-muted/50'
         }`}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
