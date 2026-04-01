@@ -102,6 +102,12 @@
   --hover-line-bg:      rgba(162,148,240,0.65);
 }
 
+/* ─── App shell fade-in (avoids hydration mismatch from motion.div) ──────── */
+@keyframes appShellFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* ─── Theme transitions ───────────────────────────────────────────────────── */
 *, *::before, *::after {
   transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),

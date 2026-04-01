@@ -301,11 +301,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+      <div
         className="flex h-screen w-full bg-warm-50 dark:bg-neutral-dark overflow-hidden text-gray-800 dark:text-gray-100 antialiased selection:bg-primary selection:text-white"
+        style={{ animation: 'appShellFadeIn 0.4s cubic-bezier(0.4,0,0.2,1) both' }}
       >
         <div className="hidden md:flex md:h-full">
           <Sidebar />
@@ -366,7 +364,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </div>
         </nav>
-      </motion.div>
+      </div>
     </>
   );
 }
