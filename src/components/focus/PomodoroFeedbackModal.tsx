@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { MOOD_ICONS, TomatoIcon } from "@/components/ui/AnimatedIcons";
+import { MOOD_ICONS } from "@/components/ui/AnimatedIcons";
 
 type Mood = "great" | "good" | "okay" | "tired" | "bad";
 
@@ -58,7 +58,7 @@ function PomodoroFeedbackModal({ open, onSubmit }: PomodoroFeedbackModalProps) {
         >
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
-              <TomatoIcon size={20} /> How was that session?
+              How was that session?
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
               Your mood helps us understand your patterns

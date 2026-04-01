@@ -98,19 +98,21 @@ const SkipIcon: React.FC = () => (
   </svg>
 );
 
-const TomatoIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
+const TimerIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
   <motion.svg
     width={size}
     height={size}
     viewBox="0 0 24 24"
     fill="none"
-    animate={{ scale: [1, 1.06, 1] }}
-    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+    animate={{ scale: [1, 1.04, 1] }}
+    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
   >
-    <path d="M12 4c-1 0-2-.5-2-2h4c0 1.5-1 2-2 2z" fill="hsl(var(--primary))" opacity={0.6} />
-    <ellipse cx="12" cy="14" rx="8" ry="8" fill="hsl(var(--destructive))" />
-    <ellipse cx="10" cy="12" rx="2.5" ry="3.5" fill="hsl(var(--destructive))" opacity={0.7} />
-    <ellipse cx="12" cy="14" rx="6" ry="6" fill="none" stroke="hsl(var(--destructive))" strokeWidth={0.5} opacity={0.3} />
+    <circle cx="12" cy="13" r="8" stroke="hsl(var(--primary))" strokeWidth={1.5} fill="none" />
+    <circle cx="12" cy="13" r="6.5" stroke="hsl(var(--primary))" strokeWidth={0.5} opacity={0.2} fill="none" />
+    <line x1="12" y1="13" x2="12" y2="9" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeLinecap="round" />
+    <line x1="12" y1="13" x2="15" y2="13" stroke="hsl(var(--primary))" strokeWidth={1.2} strokeLinecap="round" opacity={0.7} />
+    <line x1="10" y1="3" x2="14" y2="3" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeLinecap="round" />
+    <line x1="12" y1="3" x2="12" y2="5" stroke="hsl(var(--primary))" strokeWidth={1.2} strokeLinecap="round" />
   </motion.svg>
 );
 
@@ -413,9 +415,9 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             animate={{ opacity: 1, scale: 1 }}
             className="mt-2"
             role="img"
-            aria-label={phase === 'work' ? 'Tomato' : 'Coffee'}
+            aria-label={phase === 'work' ? 'Timer' : 'Coffee'}
           >
-            {phase === 'work' ? <TomatoIcon size={28} /> : <CoffeeIcon size={28} />}
+            {phase === 'work' ? <TimerIcon size={28} /> : <CoffeeIcon size={28} />}
           </motion.span>
         </div>
 
@@ -450,7 +452,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             type="button"
             onClick={handleStart}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-6 h-11 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+            className="flex items-center gap-2 px-6 h-11 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
           >
             <PlayIcon />
             {!isRunning ? 'Start' : 'Resume'}
@@ -460,7 +462,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             type="button"
             onClick={handlePause}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-6 h-11 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+            className="flex items-center gap-2 px-6 h-11 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
           >
             <PauseIcon />
             Pause

@@ -123,10 +123,6 @@ export const FocusSessionView: React.FC = () => {
 
   return (
     <div className="relative flex flex-col h-full min-h-0 overflow-hidden">
-      {/* Ambient background glow */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="w-[600px] h-[600px] rounded-full bg-primary/5 blur-[120px] -translate-y-16" />
-      </div>
 
       {/* Header */}
       <div className="relative z-10 flex-shrink-0 px-6 pt-5 pb-2">

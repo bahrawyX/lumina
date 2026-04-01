@@ -33,8 +33,8 @@ export const CELL_HOVER_CLS = [
   'cursor-pointer select-none',
   'transition-[box-shadow,background-color]',
   'duration-[130ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]',
-  'hover:shadow-[0_0_0_1.5px_rgba(109,89,224,0.20),0_0_10px_rgba(0,0,0,0.06)]',
-  'dark:hover:shadow-[0_0_0_1.5px_rgba(109,89,224,0.26),0_0_10px_rgba(0,0,0,0.26)]',
+  'hover:shadow-[0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.04)]',
+  'dark:hover:shadow-[0_2px_8px_rgba(0,0,0,0.2),0_0_0_1px_rgba(255,255,255,0.04)]',
   'hover:bg-white dark:hover:bg-neutral-panel',
 ].join(' ');
 
@@ -51,7 +51,7 @@ export const WEEKDAY_LABEL_CLS =
   'text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-500';
 
 /** Today circle badge */
-export const TODAY_BADGE_CLS = 'font-display bg-primary text-white shadow-sm shadow-primary/30';
+export const TODAY_BADGE_CLS = 'font-display bg-primary text-white shadow-sm';
 
 /** Normal (non-today) date number */
 export const DATE_NUMBER_CLS = 'font-display text-gray-700 dark:text-gray-300';

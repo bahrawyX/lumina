@@ -10,7 +10,7 @@ import { CATEGORIES } from "../constants";
 import { parseEventNaturalLanguage } from "../services/geminiService";
 import { uid } from "../lib/uid";
 import { timeToMinutes, minutesToTime } from "../utils/dateUtils";
-import { GoogleProviderIcon, OutlookProviderIcon, SparkIcon, TrashIcon } from "./icons";
+import { GoogleProviderIcon, OutlookProviderIcon, EditIcon, TrashIcon } from "./icons";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -152,10 +152,10 @@ const EventModal: React.FC = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => setSmartOpen((o) => !o)}
-                aria-label="AI quick-parse"
+                aria-label="Quick parse"
                 className={smartOpen ? "text-primary bg-primary/10" : ""}
               >
-                <SparkIcon className="h-4 w-4" />
+                <EditIcon className="h-4 w-4" />
               </Button>
             )}
           </div>
@@ -166,7 +166,7 @@ const EventModal: React.FC = () => {
           )}
         </DialogHeader>
 
-        {/* AI parse strip */}
+        {/* Quick parse strip */}
         {smartOpen && !activeEvent && (
           <div className="flex gap-2 px-6 py-3 border-b bg-muted/30">
             <Input

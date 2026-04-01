@@ -112,9 +112,6 @@ export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption })
     <div className="flex flex-col items-center gap-10">
       <div className="relative flex items-center justify-center">
         <FocusProgress progress={progress} size={280} strokeWidth={4} />
-        {timerState === 'running' && (
-          <div className="absolute w-40 h-40 rounded-full bg-primary/8 blur-2xl pointer-events-none" />
-        )}
         <div className="absolute flex flex-col items-center gap-2 select-none">
           <span className="font-mono text-[52px] font-extralight tracking-tight text-foreground tabular-nums leading-none">
             {formatSecs(remainingSecs)}
@@ -140,7 +137,7 @@ export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption })
         <button
           type="button"
           onClick={handleFinish}
-          className="flex items-center gap-2 px-7 h-12 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.97] transition-all shadow-lg shadow-primary/20"
+          className="flex items-center gap-2 px-7 h-12 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.97] transition-all"
         >
           <CheckIcon />
           Finish session

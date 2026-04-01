@@ -69,7 +69,7 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
           <button
             type="button"
             onClick={onToggleInsights}
-            title={insightsOpen ? 'Close AI insights' : 'Open AI insights'}
+            title={insightsOpen ? 'Close insights' : 'Open insights'}
             className={`flex items-center justify-center w-9 h-9 md:w-8 md:h-8 rounded-xl border transition-colors flex-shrink-0 ${
               insightsOpen
                 ? 'border-primary/40 bg-primary/15 text-primary'

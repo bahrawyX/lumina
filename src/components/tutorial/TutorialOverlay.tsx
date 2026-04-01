@@ -72,8 +72,8 @@ const STEPS: TutorialStep[] = [
   {
     target: 'nav-intelligence',
     icon: '✦',
-    title: 'Intelligence',
-    desc: 'AI insights that learn your patterns and suggest smarter ways to structure your week.',
+    title: 'Insights',
+    desc: 'View patterns from your schedule and focus history to structure your week better.',
   },
   {
     target: 'nav-performance',
@@ -192,7 +192,7 @@ const AnimatedCursor = ({ x, y }: { x: number; y: number }) => (
         height="22"
         viewBox="0 0 20 20"
         fill="none"
-        style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5)) drop-shadow(0 0 3px rgba(109,89,224,0.5))' }}
+        style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}
       >
         <path
           d="M3.5 1.5v15.2l3.3-3.3a1 1 0 0 1 .7-.3H15L3.5 1.5Z"

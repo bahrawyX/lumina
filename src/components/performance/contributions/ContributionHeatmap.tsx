@@ -47,7 +47,7 @@ const ContributionHeatmap: React.FC = () => {
   }, [contributionYear.bestStreak, contributionYear.mostActiveMonth]);
 
   return (
-    <section className="rounded-2xl border border-border/50 bg-card/85 p-4 shadow-[0_8px_24px_rgba(0,0,0,0.18)] md:p-5">
+    <section className="rounded-2xl border border-border/50 bg-card/85 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.08)] md:p-5">
       <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <h3 className="font-display text-lg font-semibold tracking-tight text-foreground">

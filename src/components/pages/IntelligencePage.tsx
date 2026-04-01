@@ -8,7 +8,7 @@ const IntelligencePage: React.FC = () => {
     <>
       <header className="flex items-center justify-between mb-6 lg:mb-10 px-2 lg:px-4">
         <h2 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">
-          Intelligence Engine
+          Insights
         </h2>
       </header>
 

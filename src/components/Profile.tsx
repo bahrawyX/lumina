@@ -192,7 +192,7 @@ const Profile: React.FC = () => {
       </header>
 
       {/* -- Metrics ------------------------------------------------------------ */}
-      <Section title="Intelligence" subtitle="Derived from your schedule and focus history">
+      <Section title="Insights" subtitle="Derived from your schedule and focus history">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Metric
             label="Focus Streak"

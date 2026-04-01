@@ -16,7 +16,7 @@ import {
   PlusIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  SparkIcon as SparklesIcon,
+  LightbulbIcon as InsightsIcon,
   MonthIcon as LayoutGridIcon,
   TargetIcon as BarChart3Icon,
   TimerIcon,
@@ -755,12 +755,12 @@ const AppSidebar: React.FC = () => {
 
         {/* ── Content ────────────────────────────────────────────── */}
         <SidebarContent className="px-2 py-3 gap-1 no-scrollbar">
-          {/* Intelligence insights */}
+          {/* Insights */}
           {!isSidebarCollapsed && insights.length > 0 && (
             <SidebarGroup className="px-2 mb-2">
               <SidebarGroupLabel className="flex items-center gap-2 px-1">
-                <SparklesIcon size={10} className="text-primary/50" />
-                Intelligence
+                <InsightsIcon size={10} className="text-primary/50" />
+                Insights
               </SidebarGroupLabel>
               <SidebarGroupContent className="space-y-2 mt-1">
                 {insights.map((insight) => (
@@ -804,8 +804,8 @@ const AppSidebar: React.FC = () => {
                   onClick={() => router.push('/pomodoro')}
                 />
                 <WorkspaceItem
-                  icon={SparklesIcon}
-                  label="Intelligence"
+                  icon={InsightsIcon}
+                  label="Insights"
                   isActive={isIntelligencePage}
                   collapsed={isSidebarCollapsed}
                   href="/intelligence"

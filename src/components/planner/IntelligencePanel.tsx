@@ -93,8 +93,8 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
             <div className="h-full flex flex-col">
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold tracking-wide text-foreground">Explainability Panel</h3>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Actionable intelligence for your day</p>
+                  <h3 className="text-sm font-semibold tracking-wide text-foreground">Insights Panel</h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Actionable insights for your day</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
