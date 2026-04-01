@@ -63,6 +63,7 @@ interface DailyPlanViewProps {
 export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, insightsOpen }) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+  const dbHydrated = useDailyPlanStore((s) => s.dbHydrated);
 
   const today = todayKey();
   const todayDate = useMemo(() => new Date(), []);
@@ -457,7 +458,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (!mounted) {
+  if (!mounted || !dbHydrated) {
     return (
       <div className="flex flex-col h-full gap-5">
         {/* Header skeleton */}

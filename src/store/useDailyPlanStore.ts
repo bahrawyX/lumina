@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { format, parseISO, isValid } from 'date-fns';
-import { getStorageItem, setStorageItem } from '@/lib/storage';
+import { toast } from 'sonner';
 import { uid } from '@/lib/uid';
+import * as plannerPersistence from '@/lib/persistence/plannerPersistence';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,9 +20,15 @@ export interface PlannedTaskItem {
 interface DailyPlanState {
   plansByDate: Record<string, PlannedTaskItem[]>;
 
-  // Actions
+  /** True once the store has been hydrated from the DB (or marked as failed). */
+  dbHydrated: boolean;
+
+  // ── Hydration ─────────────────────────────────────────────────────────────
+  hydrateFromDb: (items: PlannedTaskItem[]) => void;
+  hydrateFromDbFailed: () => void;
+
+  // ── Actions ───────────────────────────────────────────────────────────────
   addPlanItem: (taskId: string, planDate: string, startTime: string, endTime: string) => PlannedTaskItem | null;
-  /** Atomically add multiple plan items for a date in a single state update. Returns the created items. */
   batchAddPlanItems: (planDate: string, items: { taskId: string; startTime: string; endTime: string }[]) => PlannedTaskItem[];
   removePlanItem: (planItemId: string, planDate: string) => void;
   removeAllByTaskId: (taskId: string) => void;
@@ -30,9 +37,7 @@ interface DailyPlanState {
   getPlanItemsForDate: (planDate: string) => PlannedTaskItem[];
 }
 
-// ── Storage ───────────────────────────────────────────────────────────────────
-
-const STORAGE_KEY = 'lumina_daily_plans';
+// ── Validation helpers ───────────────────────────────────────────────────────
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
@@ -40,82 +45,69 @@ const TIME_RE = /^\d{2}:\d{2}$/;
 function isValidDate(v: unknown): v is string {
   if (typeof v !== 'string') return false;
   if (!DATE_ONLY_RE.test(v)) return false;
-  const d = parseISO(v);
-  return isValid(d);
+  return isValid(parseISO(v));
 }
 
 function isValidTime(v: unknown): v is string {
   return typeof v === 'string' && TIME_RE.test(v);
 }
 
-function normalizeItem(raw: Record<string, unknown>, index: number): PlannedTaskItem | null {
-  if (
-    typeof raw.id !== 'string' || !raw.id.trim() ||
-    typeof raw.taskId !== 'string' || !raw.taskId.trim() ||
-    !isValidDate(raw.planDate) ||
-    !isValidTime(raw.startTime) ||
-    !isValidTime(raw.endTime)
-  ) return null;
+// ── Error toast ──────────────────────────────────────────────────────────────
 
-  const now = new Date().toISOString();
-  return {
-    id: raw.id.trim(),
-    taskId: raw.taskId.trim(),
-    planDate: raw.planDate,
-    startTime: raw.startTime,
-    endTime: raw.endTime,
-    order: typeof raw.order === 'number' && Number.isFinite(raw.order) ? raw.order : index,
-    createdAt: typeof raw.createdAt === 'string' && !Number.isNaN(Date.parse(raw.createdAt)) ? raw.createdAt : now,
-    updatedAt: typeof raw.updatedAt === 'string' && !Number.isNaN(Date.parse(raw.updatedAt)) ? raw.updatedAt : now,
-  };
+function showSaveError(retryFn?: () => void) {
+  toast.error("Couldn't save your plan. Changes may not persist.", {
+    action: retryFn ? { label: 'Retry', onClick: retryFn } : undefined,
+    duration: 5000,
+  });
 }
 
-function loadPlans(): Record<string, PlannedTaskItem[]> {
-  try {
-    const raw = getStorageItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+// ── Guest check (non-hook, reads store directly) ─────────────────────────────
 
-    const result: Record<string, PlannedTaskItem[]> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (!isValidDate(key)) continue;
-      if (!Array.isArray(value)) continue;
-      const items: PlannedTaskItem[] = [];
-      value.forEach((entry, i) => {
-        if (!entry || typeof entry !== 'object') return;
-        const item = normalizeItem(entry as Record<string, unknown>, i);
-        if (item) items.push(item);
-      });
-      items.sort((a, b) => a.order - b.order);
-      // re-assign stable order
-      result[key] = items.map((item, i) => ({ ...item, order: i }));
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-function savePlans(plans: Record<string, PlannedTaskItem[]>): void {
+function isGuestUser(): boolean {
   try {
-    setStorageItem(STORAGE_KEY, JSON.stringify(plans));
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('lumina-guest') : null;
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { state?: { isGuest?: boolean } };
+    return parsed?.state?.isGuest === true;
   } catch {
-    // quota — fail silently
+    return false;
   }
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
-  plansByDate: loadPlans(),
+  plansByDate: {},
+  dbHydrated: false,
+
+  // ── Hydration ─────────────────────────────────────────────────────────────
+
+  hydrateFromDb: (items) => {
+    const grouped: Record<string, PlannedTaskItem[]> = {};
+    for (const item of items) {
+      if (!grouped[item.planDate]) grouped[item.planDate] = [];
+      grouped[item.planDate].push(item);
+    }
+    // Sort each date by order, re-assign stable sequential order
+    for (const date of Object.keys(grouped)) {
+      grouped[date].sort((a, b) => a.order - b.order);
+      grouped[date] = grouped[date].map((item, i) => ({ ...item, order: i }));
+    }
+    set({ plansByDate: grouped, dbHydrated: true });
+  },
+
+  hydrateFromDbFailed: () => {
+    // Mark as hydrated so the UI unblocks. Plans stay empty — no localStorage fallback.
+    set({ dbHydrated: true });
+  },
+
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   addPlanItem: (taskId, planDate, startTime, endTime) => {
     if (!isValidDate(planDate) || !isValidTime(startTime) || !isValidTime(endTime)) return null;
     if (!taskId.trim()) return null;
 
     const existing = get().plansByDate[planDate] ?? [];
-    // Prevent duplicate task ↔ date pairing
     if (existing.some((item) => item.taskId === taskId)) return null;
 
     const now = new Date().toISOString();
@@ -130,12 +122,33 @@ export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
       updatedAt: now,
     };
 
+    // Optimistic update
     set((state) => {
       const dateItems = [...(state.plansByDate[planDate] ?? []), newItem];
-      const next = { ...state.plansByDate, [planDate]: dateItems };
-      savePlans(next);
-      return { plansByDate: next };
+      return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
     });
+
+    // Persist (skip for guests)
+    if (!isGuestUser()) {
+      plannerPersistence.createOne(newItem).then((dbId) => {
+        // Replace client-generated ID with DB ID
+        set((state) => {
+          const dateItems = (state.plansByDate[planDate] ?? []).map((item) =>
+            item.id === newItem.id ? { ...item, id: dbId } : item,
+          );
+          return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
+        });
+      }).catch(() => {
+        // Rollback
+        set((state) => {
+          const dateItems = (state.plansByDate[planDate] ?? []).filter((i) => i.id !== newItem.id);
+          return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
+        });
+        showSaveError(() => {
+          get().addPlanItem(taskId, planDate, startTime, endTime);
+        });
+      });
+    }
 
     return newItem;
   },
@@ -167,58 +180,127 @@ export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
 
     if (newItems.length === 0) return [];
 
+    // Optimistic update
     set((state) => {
       const dateItems = [...(state.plansByDate[planDate] ?? []), ...newItems];
-      const next = { ...state.plansByDate, [planDate]: dateItems };
-      savePlans(next);
-      return { plansByDate: next };
+      return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
     });
+
+    // Persist (skip for guests)
+    if (!isGuestUser()) {
+      plannerPersistence.createMany(newItems).then((idMap) => {
+        // Replace client IDs with DB IDs
+        set((state) => {
+          const dateItems = (state.plansByDate[planDate] ?? []).map((item) => {
+            const dbId = idMap.get(item.id);
+            return dbId ? { ...item, id: dbId } : item;
+          });
+          return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
+        });
+      }).catch(() => {
+        // Rollback all new items
+        const newIds = new Set(newItems.map((i) => i.id));
+        set((state) => {
+          const dateItems = (state.plansByDate[planDate] ?? []).filter((i) => !newIds.has(i.id));
+          return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
+        });
+        showSaveError();
+      });
+    }
 
     return newItems;
   },
 
   removePlanItem: (planItemId, planDate) => {
+    const removed = (get().plansByDate[planDate] ?? []).find((i) => i.id === planItemId);
+
+    // Optimistic update
     set((state) => {
-      const dateItems = (state.plansByDate[planDate] ?? []).filter((i) => i.id !== planItemId);
-      // Re-assign order after removal
-      const reordered = dateItems.map((item, idx) => ({ ...item, order: idx }));
-      const next = { ...state.plansByDate, [planDate]: reordered };
-      savePlans(next);
-      return { plansByDate: next };
+      const dateItems = (state.plansByDate[planDate] ?? [])
+        .filter((i) => i.id !== planItemId)
+        .map((item, idx) => ({ ...item, order: idx }));
+      return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
     });
+
+    // Persist
+    if (!isGuestUser() && removed) {
+      plannerPersistence.deleteOne(planItemId).catch(() => {
+        // Rollback: re-add the item
+        set((state) => {
+          const dateItems = [...(state.plansByDate[planDate] ?? []), removed]
+            .sort((a, b) => a.order - b.order)
+            .map((item, idx) => ({ ...item, order: idx }));
+          return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
+        });
+        showSaveError();
+      });
+    }
   },
 
   removeAllByTaskId: (taskId) => {
+    const snapshot = { ...get().plansByDate };
+
+    // Collect all items being removed (for rollback + DB delete)
+    const removedItems: PlannedTaskItem[] = [];
+    for (const items of Object.values(snapshot)) {
+      removedItems.push(...items.filter((i) => i.taskId === taskId));
+    }
+
+    // Optimistic update
     set((state) => {
       const next: Record<string, PlannedTaskItem[]> = {};
       for (const [date, items] of Object.entries(state.plansByDate)) {
-        const filtered = items
+        next[date] = items
           .filter((i) => i.taskId !== taskId)
           .map((item, idx) => ({ ...item, order: idx }));
-        next[date] = filtered;
       }
-      savePlans(next);
       return { plansByDate: next };
     });
+
+    // Persist
+    if (!isGuestUser()) {
+      Promise.all(removedItems.map((item) => plannerPersistence.deleteOne(item.id).catch(() => null))).catch(() => {
+        // Rollback
+        set(() => ({ plansByDate: snapshot }));
+        showSaveError();
+      });
+    }
   },
 
   updatePlanItem: (planItemId, planDate, patch) => {
-    // Validate time fields in the patch before persisting
     if (patch.startTime !== undefined && !isValidTime(patch.startTime)) return;
     if (patch.endTime !== undefined && !isValidTime(patch.endTime)) return;
+
+    const current = (get().plansByDate[planDate] ?? []).find((i) => i.id === planItemId);
+    if (!current) return;
+
+    // Optimistic update
     set((state) => {
       const dateItems = (state.plansByDate[planDate] ?? []).map((item) =>
         item.id === planItemId
           ? { ...item, ...patch, updatedAt: new Date().toISOString() }
-          : item
+          : item,
       );
-      const next = { ...state.plansByDate, [planDate]: dateItems };
-      savePlans(next);
-      return { plansByDate: next };
+      return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
     });
+
+    // Persist time changes only (order is client-side)
+    if (!isGuestUser() && (patch.startTime || patch.endTime)) {
+      plannerPersistence.updateOne(planItemId, patch, current).catch(() => {
+        // Rollback
+        set((state) => {
+          const dateItems = (state.plansByDate[planDate] ?? []).map((item) =>
+            item.id === planItemId ? current : item,
+          );
+          return { plansByDate: { ...state.plansByDate, [planDate]: dateItems } };
+        });
+        showSaveError();
+      });
+    }
   },
 
   reorderPlanItems: (planDate, orderedIds) => {
+    // Reorder is purely client-side (no DB column for order).
     set((state) => {
       const current = state.plansByDate[planDate] ?? [];
       const idToItem = new Map(current.map((i) => [i.id, i]));
@@ -227,9 +309,7 @@ export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
         const item = idToItem.get(id);
         if (item) reordered.push({ ...item, order: index, updatedAt: new Date().toISOString() });
       });
-      const next = { ...state.plansByDate, [planDate]: reordered };
-      savePlans(next);
-      return { plansByDate: next };
+      return { plansByDate: { ...state.plansByDate, [planDate]: reordered } };
     });
   },
 

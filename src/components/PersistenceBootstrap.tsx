@@ -20,7 +20,7 @@
  * - Hydrates only once (guarded by useRef + store.dbHydrated flag)
  * - Runs in parallel — no sequential blocking
  * - No polling, no refetch loops, no hot-path interference
- * - Does NOT touch useDailyPlanStore (planner domain is deferred)
+ * - Hydrates useDailyPlanStore from /api/planner-items
  */
 
 import { useEffect, useRef } from 'react';
@@ -28,11 +28,13 @@ import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useDailyPlanStore } from '@/store/useDailyPlanStore';
 import { useStreakStore } from '@/store/useStreakStore';
 import { authClient } from '@/lib/auth-client';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
+import * as plannerPersistence from '@/lib/persistence/plannerPersistence';
 
 // migrateMany stubs — imported to satisfy any callers referencing them
 export { migrateMany as migrateEventsMany } from '@/lib/persistence/eventsPersistence';
@@ -57,6 +59,10 @@ export default function PersistenceBootstrap() {
   const hydrateFocusFailed = useFocusStore((s) => s.hydrateFromDbFailed);
   const setFocusUserId = useFocusStore((s) => s.setUserId);
 
+  const hydratePlanner = useDailyPlanStore((s) => s.hydrateFromDb);
+  const hydratePlannerFailed = useDailyPlanStore((s) => s.hydrateFromDbFailed);
+  const plannerHydrated = useDailyPlanStore((s) => s.dbHydrated);
+
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
@@ -68,7 +74,7 @@ export default function PersistenceBootstrap() {
   useEffect(() => {
     // Guard against double-run in StrictMode / remounts
     if (hasRun.current) return;
-    if (eventsHydrated && tasksHydrated && focusHydrated) return;
+    if (eventsHydrated && tasksHydrated && focusHydrated && plannerHydrated) return;
     hasRun.current = true;
 
     // Propagate userId to stores so localStorage writes are namespaced.
@@ -122,6 +128,14 @@ export default function PersistenceBootstrap() {
             .then((sessions) => hydrateFocus(sessions))
             .catch(() => {
               if (isDev) hydrateFocusFailed();
+            }),
+
+      plannerHydrated
+        ? Promise.resolve()
+        : plannerPersistence.fetchAllForCurrentUser()
+            .then((items) => hydratePlanner(items))
+            .catch(() => {
+              hydratePlannerFailed();
             }),
 
       // Hydrate streak store from API
