@@ -83,19 +83,28 @@ export const TrophyIcon: React.FC<IconProps> = ({ size = 18, className }) => (
 // ── Coin ─────────────────────────────────────────────────────────────────────
 
 export const CoinIcon: React.FC<IconProps> = ({ size = 18, className }) => (
-  <motion.svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    className={className}
-    animate={{ rotateY: [0, 180, 360] }}
-    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-    style={{ transformStyle: 'preserve-3d' }}
-  >
-    <circle cx="12" cy="12" r="10" fill="hsl(var(--primary))" opacity={0.2} stroke="hsl(var(--primary))" strokeWidth={1.5} />
-    <text x="12" y="16" textAnchor="middle" fontSize="11" fontWeight="700" fill="hsl(var(--primary))">C</text>
-  </motion.svg>
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    {/* Outer ring */}
+    <circle cx="12" cy="12" r="10" fill="hsl(var(--primary))" opacity={0.12} stroke="hsl(var(--primary))" strokeWidth={1.5} />
+    {/* Inner ring */}
+    <circle cx="12" cy="12" r="7" fill="none" stroke="hsl(var(--primary))" strokeWidth={0.8} opacity={0.25} />
+    {/* Star/emblem in center */}
+    <path
+      d="M12 7l1.3 2.6L16 10.2l-1.9 1.8.4 2.8L12 13.5l-2.5 1.3.4-2.8L8 10.2l2.7-.6L12 7z"
+      fill="hsl(var(--primary))"
+      opacity={0.5}
+    />
+    {/* Subtle gleam */}
+    <motion.circle
+      cx="9"
+      cy="9"
+      r="1.5"
+      fill="hsl(var(--primary))"
+      opacity={0}
+      animate={{ opacity: [0, 0.4, 0] }}
+      transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+    />
+  </svg>
 );
 
 // ── Gem / Diamond ────────────────────────────────────────────────────────────
