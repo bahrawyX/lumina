@@ -60,7 +60,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
               : placeholder}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-auto p-0 bg-popover border-border shadow-lg" align="start">
           <Calendar
             mode="single"
             selected={selected}

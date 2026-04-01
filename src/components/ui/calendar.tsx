@@ -29,7 +29,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        "bg-background group/calendar p-3 [--cell-size:2rem]",
+        "bg-popover text-popover-foreground group/calendar p-3 [--cell-size:2rem]",
         className
       )}
       captionLayout={captionLayout}
@@ -109,7 +109,7 @@ function Calendar({
           defaultClassNames.today
         ),
         outside: cn(
-          "text-muted-foreground aria-selected:text-muted-foreground",
+          "text-muted-foreground/50 aria-selected:text-muted-foreground/50",
           defaultClassNames.outside
         ),
         disabled: cn(
