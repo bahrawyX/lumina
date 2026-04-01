@@ -3,9 +3,9 @@ import { motion } from 'framer-motion';
 import IconBase, { IconProps } from './IconBase';
 
 export const CloseIcon: React.FC<IconProps> = (props) => (
-    <IconBase {...props} whileHover="hover">
-        <motion.line x1="18" y1="6" x2="6" y2="18" variants={{ hover: { scale: 0.8 } }} transition={{ duration: 0.15 }} style={{ originX: '12px', originY: '12px' }} />
-        <motion.line x1="6" y1="6" x2="18" y2="18" variants={{ hover: { scale: 1.2 } }} transition={{ duration: 0.15 }} style={{ originX: '12px', originY: '12px' }} />
+    <IconBase {...props}>
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
     </IconBase>
 );
 

@@ -7,10 +7,9 @@ import { useCalendarEventsStore } from "../store/useCalendarEventsStore";
 import { usePlannerStore } from "../store/usePlannerStore";
 import { CalendarEvent, EventCategory } from "../types";
 import { CATEGORIES } from "../constants";
-import { parseEventNaturalLanguage } from "../services/geminiService";
 import { uid } from "../lib/uid";
 import { timeToMinutes, minutesToTime } from "../utils/dateUtils";
-import { GoogleProviderIcon, OutlookProviderIcon, EditIcon, TrashIcon } from "./icons";
+import { GoogleProviderIcon, OutlookProviderIcon, TrashIcon } from "./icons";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -63,9 +62,6 @@ const EventModal: React.FC = () => {
     startTime: "09:00", endTime: "10:00", category: "Work", location: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSmartLoading, setIsSmartLoading] = useState(false);
-  const [smartInput, setSmartInput] = useState("");
-  const [smartOpen, setSmartOpen] = useState(false);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -81,7 +77,7 @@ const EventModal: React.FC = () => {
         startTime, endTime, category: "Work", location: "",
       });
     }
-    setErrors({}); setSmartInput(""); setSmartOpen(false);
+    setErrors({});
   }, [activeEvent, initialDateForNewEvent, initialTimeForNewEvent, isModalOpen]);
 
   /* Auto-adjust end time */
@@ -92,16 +88,6 @@ const EventModal: React.FC = () => {
     if (e <= s) setFormData((prev) => ({ ...prev, endTime: minutesToTime(Math.min(1435, s + 30)) }));
   }, [formData.startTime, formData.endTime]);
 
-  const handleSmartParse = async () => {
-    if (!smartInput.trim()) return;
-    setIsSmartLoading(true);
-    const parsed = await parseEventNaturalLanguage(smartInput);
-    if (parsed) {
-      setFormData((prev) => ({ ...prev, ...parsed, category: (parsed.category as EventCategory) || prev.category }));
-      setSmartInput(""); setSmartOpen(false);
-    }
-    setIsSmartLoading(false);
-  };
 
   const handleSave = () => {
     const result = eventSchema.safeParse(formData);
@@ -147,17 +133,6 @@ const EventModal: React.FC = () => {
                     ? 'Edit Event'
                     : 'Add Event'}
             </DialogTitle>
-            {!activeEvent && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSmartOpen((o) => !o)}
-                aria-label="Quick parse"
-                className={smartOpen ? "text-primary bg-primary/10" : ""}
-              >
-                <EditIcon className="h-4 w-4" />
-              </Button>
-            )}
           </div>
           {isExternalEvent && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -166,27 +141,6 @@ const EventModal: React.FC = () => {
           )}
         </DialogHeader>
 
-        {/* Quick parse strip */}
-        {smartOpen && !activeEvent && (
-          <div className="flex gap-2 px-6 py-3 border-b bg-muted/30">
-            <Input
-              autoFocus
-              placeholder="e.g. 'Team standup at 9am'"
-              value={smartInput}
-              onChange={(e) => setSmartInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSmartParse()}
-              className="h-8 text-sm"
-            />
-            <Button
-              size="sm"
-              onClick={handleSmartParse}
-              disabled={isSmartLoading}
-              className="h-8 px-3 shrink-0"
-            >
-              {isSmartLoading ? "…" : "Parse"}
-            </Button>
-          </div>
-        )}
 
         {/* Form */}
         <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[65vh]">
@@ -196,7 +150,7 @@ const EventModal: React.FC = () => {
             <Label htmlFor="evt-title">Event Name</Label>
             <Input
               id="evt-title"
-              autoFocus={!smartOpen}
+              autoFocus
               placeholder="Enter event name"
               value={formData.title || ""}
               onChange={(e) => { setFormData({ ...formData, title: e.target.value }); setErrors((p) => ({ ...p, title: "" })); }}
