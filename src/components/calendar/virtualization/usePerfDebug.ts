@@ -76,7 +76,7 @@ export function usePerfDebug(
     const domNodes = document.querySelectorAll('[data-hover-card]').length;
 
     overlayRef.current.textContent = [
-      `🔍 LUMINA PERF DEBUG`,
+      `LUMINA PERF DEBUG`,
       `rendered: ${stats.rendered}`,
       `skipped:  ${stats.skipped}`,
       `total:    ${stats.total}`,

@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { MOOD_ICONS, TomatoIcon } from "@/components/ui/AnimatedIcons";
 
 type Mood = "great" | "good" | "okay" | "tired" | "bad";
 
@@ -17,12 +18,12 @@ interface PomodoroFeedbackModalProps {
   onSubmit: (mood: Mood, note?: string) => void;
 }
 
-const MOOD_OPTIONS: { value: Mood; emoji: string; label: string }[] = [
-  { value: "great", emoji: "\uD83D\uDD25", label: "Amazing" },
-  { value: "good", emoji: "\uD83D\uDE0A", label: "Good" },
-  { value: "okay", emoji: "\uD83D\uDE10", label: "Okay" },
-  { value: "tired", emoji: "\uD83D\uDE34", label: "Tired" },
-  { value: "bad", emoji: "\uD83D\uDE1E", label: "Rough" },
+const MOOD_OPTIONS: { value: Mood; label: string }[] = [
+  { value: "great", label: "Amazing" },
+  { value: "good", label: "Good" },
+  { value: "okay", label: "Okay" },
+  { value: "tired", label: "Tired" },
+  { value: "bad", label: "Rough" },
 ];
 
 const NOTE_MAX = 140;
@@ -56,8 +57,8 @@ function PomodoroFeedbackModal({ open, onSubmit }: PomodoroFeedbackModalProps) {
           className="flex flex-col gap-5"
         >
           <DialogHeader>
-            <DialogTitle className="text-foreground">
-              {"\uD83C\uDF45"} How was that session?
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <TomatoIcon size={20} /> How was that session?
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
               Your mood helps us understand your patterns
@@ -81,9 +82,10 @@ function PomodoroFeedbackModal({ open, onSubmit }: PomodoroFeedbackModalProps) {
                       : "border-border bg-muted/50 text-foreground hover:bg-muted"
                   }`}
                 >
-                  <span className="text-2xl" role="img" aria-label={mood.label}>
-                    {mood.emoji}
-                  </span>
+                  {(() => {
+                    const MoodIcon = MOOD_ICONS[mood.value];
+                    return MoodIcon ? <MoodIcon size={28} /> : null;
+                  })()}
                   <span className="text-xs font-medium">{mood.label}</span>
                 </motion.button>
               );

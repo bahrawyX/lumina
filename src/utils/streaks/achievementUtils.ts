@@ -12,7 +12,8 @@ interface UserAchievementFields {
 export interface AchievementRule {
   type: string;
   label: string;
-  emoji: string;
+  /** Icon key used in the UI to render an animated icon (e.g. 'medal', 'trophy', 'fire', 'star', 'coin'). */
+  icon: string;
   message: string;
   check: (current: UserAchievementFields, previousCoins: number) => boolean;
 }
@@ -21,42 +22,42 @@ export const ACHIEVEMENT_RULES: AchievementRule[] = [
   {
     type: 'session_milestone_5',
     label: '5-session streak',
-    emoji: '\uD83C\uDFC5',
+    icon: 'medal',
     message: '5-session streak! Keep it up.',
     check: (s) => s.sessionStreak >= 5 && s.sessionStreak % 5 === 0,
   },
   {
     type: 'session_milestone_10',
     label: '10-session streak',
-    emoji: '\uD83C\uDFC6',
+    icon: 'trophy',
     message: '10 sessions in a row! You\'re on fire.',
     check: (s) => s.sessionStreak >= 10 && s.sessionStreak % 10 === 0,
   },
   {
     type: 'daily_streak_7',
     label: '7-day streak',
-    emoji: '\uD83D\uDD25',
+    icon: 'fire',
     message: '7-day streak! You\'re building real consistency.',
     check: (s) => s.dailyStreak === 7,
   },
   {
     type: 'daily_streak_30',
     label: '30-day streak',
-    emoji: '\u2B50',
+    icon: 'star',
     message: '30-day streak! Incredible discipline.',
     check: (s) => s.dailyStreak === 30,
   },
   {
     type: 'coins_100',
     label: '100 coins earned',
-    emoji: '\uD83D\uDCB0',
+    icon: 'coin',
     message: 'You\'ve earned 100 coins!',
     check: (s, prevCoins) => s.coins >= 100 && prevCoins < 100,
   },
   {
     type: 'coins_500',
     label: '500 coins earned',
-    emoji: '\uD83D\uDCB0',
+    icon: 'coin',
     message: 'You\'ve earned 500 coins! Focus master.',
     check: (s, prevCoins) => s.coins >= 500 && prevCoins < 500,
   },

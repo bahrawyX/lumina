@@ -25,7 +25,8 @@ interface PomodoroViewProps {
 
 const SHORT_BREAK_SECS = 5 * 60;
 const LONG_BREAK_SECS = 20 * 60;
-const SESSIONS_PER_CYCLE = 4;
+const DEFAULT_SESSIONS_PER_CYCLE = 4;
+const SESSIONS_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
 const RING_SIZE = 220;
 const RING_STROKE = 6;
 
@@ -69,15 +70,10 @@ function playChime(): void {
 }
 
 /** Get the label for a phase. */
-function phaseLabel(phase: Phase, sessionCount: number): string {
-  if (phase === 'work') return `Work Session ${sessionCount + 1} of ${SESSIONS_PER_CYCLE}`;
+function phaseLabel(phase: Phase, sessionCount: number, totalSessions: number): string {
+  if (phase === 'work') return `Work Session ${sessionCount + 1} of ${totalSessions}`;
   if (phase === 'short_break') return 'Short Break';
   return 'Long Break';
-}
-
-/** Get the emoji for a phase. */
-function phaseEmoji(phase: Phase): string {
-  return phase === 'work' ? '\uD83C\uDF45' : '\u2615';
 }
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
@@ -99,6 +95,48 @@ const SkipIcon: React.FC = () => (
   <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor">
     <polygon points="5 4 15 12 5 20 5 4" />
     <rect x="17" y="4" width="3" height="16" rx="1" />
+  </svg>
+);
+
+const TomatoIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
+  <motion.svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    animate={{ scale: [1, 1.06, 1] }}
+    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+  >
+    <path d="M12 4c-1 0-2-.5-2-2h4c0 1.5-1 2-2 2z" fill="hsl(var(--primary))" opacity={0.6} />
+    <ellipse cx="12" cy="14" rx="8" ry="8" fill="hsl(var(--destructive))" />
+    <ellipse cx="10" cy="12" rx="2.5" ry="3.5" fill="hsl(var(--destructive))" opacity={0.7} />
+    <ellipse cx="12" cy="14" rx="6" ry="6" fill="none" stroke="hsl(var(--destructive))" strokeWidth={0.5} opacity={0.3} />
+  </motion.svg>
+);
+
+const CoffeeIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <rect x="4" y="10" width="12" height="10" rx="2" fill="hsl(var(--muted-foreground))" opacity={0.25} />
+    <rect x="5" y="11" width="10" height="8" rx="1.5" fill="hsl(var(--muted-foreground))" opacity={0.15} />
+    <path d="M16 12h2a2 2 0 0 1 0 4h-2" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} opacity={0.3} />
+    <motion.path
+      d="M8 8c0-2 1-3 0-4"
+      stroke="hsl(var(--muted-foreground))"
+      strokeWidth={1.2}
+      strokeLinecap="round"
+      opacity={0.4}
+      animate={{ y: [0, -1.5, 0], opacity: [0.4, 0.2, 0.4] }}
+      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+    />
+    <motion.path
+      d="M11 8c0-2 1-3 0-4"
+      stroke="hsl(var(--muted-foreground))"
+      strokeWidth={1.2}
+      strokeLinecap="round"
+      opacity={0.3}
+      animate={{ y: [0, -1.5, 0], opacity: [0.3, 0.15, 0.3] }}
+      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+    />
   </svg>
 );
 
@@ -199,6 +237,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const [localWorkMins, setLocalWorkMins] = useState(focusSessionLength);
   const [localShortBreakMins, setLocalShortBreakMins] = useState(5);
   const [localLongBreakMins, setLocalLongBreakMins] = useState(20);
+  const [localSessionsPerCycle, setLocalSessionsPerCycle] = useState(DEFAULT_SESSIONS_PER_CYCLE);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -249,8 +288,8 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
       // Play chime to signal work session end
       playChime();
 
-      // Determine next phase: long break every SESSIONS_PER_CYCLE, else short break
-      if (newCount >= SESSIONS_PER_CYCLE) {
+      // Determine next phase: long break every N sessions, else short break
+      if (newCount >= localSessionsPerCycle) {
         setPhase('long_break');
         setSessionCount(0); // reset cycle
       } else {
@@ -266,7 +305,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     setIsRunning(false);
     setIsPaused(false);
     sessionStartRef.current = null;
-  }, [phase, sessionCount, localWorkMins, onSessionComplete, onRequestFeedback]);
+  }, [phase, sessionCount, localWorkMins, localSessionsPerCycle, onSessionComplete, onRequestFeedback]);
 
   // ── Timer Tick ───────────────────────────────────────────────────────────
 
@@ -353,7 +392,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         animate={{ opacity: 1, y: 0 }}
         className="text-sm uppercase tracking-widest text-muted-foreground font-medium"
       >
-        {phaseLabel(phase, sessionCount)}
+        {phaseLabel(phase, sessionCount, localSessionsPerCycle)}
       </motion.p>
 
       {/* Circular progress ring with time display */}
@@ -372,11 +411,11 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             key={phase}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mt-2 text-2xl"
+            className="mt-2"
             role="img"
             aria-label={phase === 'work' ? 'Tomato' : 'Coffee'}
           >
-            {phaseEmoji(phase)}
+            {phase === 'work' ? <TomatoIcon size={28} /> : <CoffeeIcon size={28} />}
           </motion.span>
         </div>
 
@@ -461,11 +500,11 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         </AnimatePresence>
       </div>
 
-      {/* Session dots — shows progress through the 4-session cycle */}
+      {/* Session dots — shows progress through the cycle */}
       <div className="flex flex-col items-center gap-1.5">
-        <SessionDots completed={sessionCount} total={SESSIONS_PER_CYCLE} />
+        <SessionDots completed={sessionCount} total={localSessionsPerCycle} />
         <span className="text-xs text-muted-foreground">
-          {sessionCount} of {SESSIONS_PER_CYCLE} sessions
+          {sessionCount} of {localSessionsPerCycle} sessions
         </span>
       </div>
 
@@ -522,6 +561,26 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
                   max={60}
                   disabled={isRunning && phase === 'long_break'}
                 />
+                {/* Sessions per cycle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground font-medium">Sessions per Cycle</span>
+                  <Select
+                    value={String(localSessionsPerCycle)}
+                    onValueChange={(v) => setLocalSessionsPerCycle(Number(v))}
+                    disabled={isRunning}
+                  >
+                    <SelectTrigger className="w-20 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SESSIONS_OPTIONS.map((n) => (
+                        <SelectItem key={n} value={String(n)} className="tabular-nums">
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </motion.div>
           )}

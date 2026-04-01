@@ -23,7 +23,7 @@ import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
-import { LottieAnimation, LOADING_PULSE_LAYER_MAP } from "@/components/ui/LottieAnimation";
+
 
 const MOBILE_NAV_ITEMS = [
   {
@@ -271,16 +271,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.4, ease: 'easeOut' }}
           >
-            <div className="flex flex-col items-center gap-4">
-              <LottieAnimation
-                path="/animations/loading-pulse.json"
-                layerColorMap={LOADING_PULSE_LAYER_MAP}
-                width={64}
-                height={16}
-                loop={true}
-                autoplay={true}
-              />
-              <p className="text-xs text-muted-foreground">Loading Lumina...</p>
+            <div className="flex flex-col items-center gap-5">
+              {/* Elegant spinning ring loader */}
+              <div className="relative w-10 h-10">
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-primary/20"
+                />
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                />
+                <motion.div
+                  className="absolute inset-[6px] rounded-full border-[1.5px] border-transparent border-b-primary/50"
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                />
+              </div>
+              <motion.p
+                className="text-xs text-muted-foreground font-medium tracking-wide"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.3 }}
+              >
+                Loading Lumina
+              </motion.p>
             </div>
           </motion.div>
         )}

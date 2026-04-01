@@ -13,6 +13,7 @@ import ContributionHeatmap from '@/components/performance/contributions/Contribu
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LottieAnimation, STREAK_FIRE_LAYER_MAP } from '@/components/ui/LottieAnimation';
+import { FireIcon, LightningIcon, TrophyIcon, CoinIcon, GemIcon } from '@/components/ui/AnimatedIcons';
 
 // ── Metric card ───────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ const StreakStatsRow: React.FC = () => {
                 className="flex-shrink-0"
               />
             ) : (
-              <span className="text-lg select-none">🔥</span>
+              <FireIcon size={22} />
             )}
             <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
               {dailyStreak}
@@ -104,7 +105,7 @@ const StreakStatsRow: React.FC = () => {
         <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Session Streak</span>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-lg select-none">⚡</span>
+            <LightningIcon size={22} />
             <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
               {sessionStreak}
             </span>
@@ -113,7 +114,7 @@ const StreakStatsRow: React.FC = () => {
         <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Best Day</span>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-lg select-none">🏆</span>
+            <TrophyIcon size={22} />
             <span className="font-display text-lg font-bold leading-none text-foreground">
               {best ? best.label : '—'}
             </span>
@@ -123,7 +124,7 @@ const StreakStatsRow: React.FC = () => {
         <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border/60 shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Coins</span>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-lg select-none">🪙</span>
+            <CoinIcon size={22} />
             <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
               {coins}
             </span>
@@ -142,7 +143,7 @@ const StreakStatsRow: React.FC = () => {
             onClick={() => setRecoveryOpen(true)}
             className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary/10 border border-primary/30 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
           >
-            Restore Streak 💎
+            <span className="flex items-center gap-1.5">Restore Streak <GemIcon size={16} /></span>
           </button>
         </div>
       )}

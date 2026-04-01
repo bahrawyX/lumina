@@ -106,7 +106,7 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
                 Planning…
               </>
             ) : (
-              'Plan My Day ✨'
+              'Plan My Day'
             )}
           </button>
         )}

@@ -4,9 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
 
 const PLANNING_STEPS = [
-  '🧠 Analyzing priorities...',
-  '⚙️ Optimizing focus windows...',
-  '✨ Crafting your perfect day...',
+  'Analyzing priorities...',
+  'Optimizing focus windows...',
+  'Crafting your perfect day...',
 ] as const;
 
 interface PlanningModalProps {
@@ -30,7 +30,7 @@ export const PlanningModal: React.FC<PlanningModalProps> = ({ open, phase = 'pla
   }, [open]);
 
   const statusText = phase === 'revealing'
-    ? '🎉 Finalizing timeline reveal...'
+    ? 'Finalizing timeline reveal...'
     : PLANNING_STEPS[stepIndex];
 
   return (

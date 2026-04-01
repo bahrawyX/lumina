@@ -32,7 +32,7 @@ const STEPS: TutorialStep[] = [
   },
   {
     target: 'nav-calendar',
-    icon: '🗓',
+    icon: '\u25A3',
     title: 'Your Calendar',
     desc: 'Month, week, and day views. Click to explore — drag events to instantly reschedule anything.',
   },

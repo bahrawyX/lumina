@@ -5,13 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAmbientStore } from '@/store/useAmbientStore';
 import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import type { AmbientTrack } from '@/types';
+import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
 
-const TRACKS: { id: AmbientTrack; emoji: string; label: string }[] = [
-  { id: 'white', emoji: '\uD83C\uDF2B\uFE0F', label: 'White Noise' },
-  { id: 'rainfall', emoji: '\uD83C\uDF27\uFE0F', label: 'Rainfall' },
-  { id: 'brown', emoji: '\uD83D\uDFE4', label: 'Brown Noise' },
-  { id: 'forest', emoji: '\uD83C\uDF32', label: 'Forest' },
-  { id: 'ocean', emoji: '\uD83C\uDF0A', label: 'Ocean' },
+const TRACKS: { id: AmbientTrack; label: string }[] = [
+  { id: 'white', label: 'White Noise' },
+  { id: 'rainfall', label: 'Rainfall' },
+  { id: 'brown', label: 'Brown Noise' },
+  { id: 'forest', label: 'Forest' },
+  { id: 'ocean', label: 'Ocean' },
 ];
 
 export default function AmbientSoundDrawer() {
@@ -120,7 +121,10 @@ export default function AmbientSoundDrawer() {
                           : 'border-border bg-muted/50 hover:bg-muted'
                       }`}
                     >
-                      <span className="text-3xl select-none">{t.emoji}</span>
+                      {(() => {
+                        const AmbIcon = AMBIENT_ICONS[t.id];
+                        return AmbIcon ? <AmbIcon size={32} /> : null;
+                      })()}
                       <span className={`text-xs font-medium ${active ? 'text-primary' : 'text-muted-foreground'}`}>
                         {t.label}
                       </span>

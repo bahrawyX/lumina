@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { MoodLog, MoodValue } from '@/types';
+import { MOOD_ICONS, ChartIcon } from '@/components/ui/AnimatedIcons';
 
 const MOOD_SCORES: Record<MoodValue, number> = {
   great: 5,
@@ -12,12 +13,12 @@ const MOOD_SCORES: Record<MoodValue, number> = {
   bad: 1,
 };
 
-const MOOD_EMOJIS: Record<MoodValue, string> = {
-  great: '\uD83D\uDD25',
-  good: '\uD83D\uDE0A',
-  okay: '\uD83D\uDE10',
-  tired: '\uD83D\uDE34',
-  bad: '\uD83D\uDE1E',
+const MOOD_LABELS: Record<MoodValue, string> = {
+  great: 'great',
+  good: 'good',
+  okay: 'okay',
+  tired: 'tired',
+  bad: 'bad',
 };
 
 const STORAGE_KEY = 'lumina_last_mood_analysis';
@@ -68,10 +69,9 @@ export default function MoodAnalysisCard({ moodLogs, onDismiss }: MoodAnalysisCa
     else if (diff <= -0.5) trend = 'down';
     else trend = 'stable';
 
-    const emojiStr = moods.map((m) => MOOD_EMOJIS[m]).join(' ');
-    const moodLabels = moods.join(', ');
+    const moodLabels = moods.map((m) => MOOD_LABELS[m]).join(', ');
 
-    return { trend, avg, emojiStr, moodLabels, showReflection: trend === 'down' || (trend === 'stable' && avg <= 2.5) };
+    return { trend, avg, moods, moodLabels, showReflection: trend === 'down' || (trend === 'stable' && avg <= 2.5) };
   }, [shouldShow, moodLogs]);
 
   const handleDismiss = useCallback(() => {
@@ -92,7 +92,7 @@ export default function MoodAnalysisCard({ moodLogs, onDismiss }: MoodAnalysisCa
       >
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-sm">📊</span>
+            <ChartIcon size={16} />
             <span className="text-sm font-semibold text-foreground">Your last 3 days</span>
           </div>
           <button
@@ -119,8 +119,17 @@ export default function MoodAnalysisCard({ moodLogs, onDismiss }: MoodAnalysisCa
         </div>
 
         {/* Mood summary */}
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          You logged {analysis.emojiStr} ({analysis.moodLabels}){' '}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground leading-relaxed">
+          <span>You logged</span>
+          <span className="flex items-center gap-0.5">
+            {analysis.moods.map((m, i) => {
+              const Icon = MOOD_ICONS[m];
+              return Icon ? <Icon key={i} size={16} /> : null;
+            })}
+          </span>
+          <span>({analysis.moodLabels})</span>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{' '}
           {analysis.trend === 'up' && '— nice momentum!'}
           {analysis.trend === 'stable' && analysis.avg > 2.5 && '— consistent is good.'}
           {(analysis.trend === 'down' || (analysis.trend === 'stable' && analysis.avg <= 2.5)) && '— hang in there.'}

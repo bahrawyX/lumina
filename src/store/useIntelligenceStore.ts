@@ -223,7 +223,7 @@ export const useIntelligenceStore = create<IntelligenceStoreState>((set, get) =>
         appliedRecommendationIds: addAppliedRecommendationId(state.appliedRecommendationIds, recommendation.id),
       }));
 
-      return { applied: true, message: '✨ Task scheduled!' };
+      return { applied: true, message: 'Task scheduled!' };
     }
 
     if (recommendation.type === 'conflict') {
@@ -275,7 +275,7 @@ export const useIntelligenceStore = create<IntelligenceStoreState>((set, get) =>
         appliedRecommendationIds: addAppliedRecommendationId(state.appliedRecommendationIds, recommendation.id),
       }));
 
-      return { applied: true, message: `✨ Conflict resolved! Task moved to ${body.scheduledStart}.` };
+      return { applied: true, message: `Conflict resolved! Task moved to ${body.scheduledStart}.` };
     }
 
     if (recommendation.type === 'overload') {
@@ -315,7 +315,7 @@ export const useIntelligenceStore = create<IntelligenceStoreState>((set, get) =>
         appliedRecommendationIds: addAppliedRecommendationId(state.appliedRecommendationIds, recommendation.id),
       }));
 
-      return { applied: true, message: '🧘 Overload prevented. Low priority tasks deferred to tomorrow.' };
+      return { applied: true, message: 'Overload prevented. Low priority tasks deferred to tomorrow.' };
     }
 
     if (recommendation.type === 'focus_window') {
@@ -360,7 +360,7 @@ export const useIntelligenceStore = create<IntelligenceStoreState>((set, get) =>
         appliedRecommendationIds: addAppliedRecommendationId(state.appliedRecommendationIds, recommendation.id),
       }));
 
-      return { applied: true, message: '🛡️ Focus window protected!' };
+      return { applied: true, message: 'Focus window protected!' };
     }
 
     return { applied: false, message: 'This recommendation type cannot be auto-applied yet.' };

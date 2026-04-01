@@ -23,7 +23,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
         {/* Preload frequently-used Lottie animations */}
-        <link rel="preload" href="/animations/loading-pulse.json" as="fetch" crossOrigin="anonymous" />
         <link rel="preload" href="/animations/pomodoro-complete.json" as="fetch" crossOrigin="anonymous" />
         <link rel="preload" href="/animations/streak-fire.json" as="fetch" crossOrigin="anonymous" />
       </head>

@@ -55,7 +55,7 @@ export const FreeTimePanel: React.FC<FreeTimePanelProps> = React.memo(({ summary
 
   const coverageLabel = useMemo(() => {
     if (plannedCount === 0) return 'Nothing planned yet';
-    if (unplannedCount === 0) return 'All tasks planned 🎉';
+    if (unplannedCount === 0) return 'All tasks planned!';
     return `${unplannedCount} task${unplannedCount === 1 ? '' : 's'} still free`;
   }, [plannedCount, unplannedCount]);
 

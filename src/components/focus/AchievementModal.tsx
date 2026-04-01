@@ -4,6 +4,15 @@ import React from 'react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { LottieAnimation, ACHIEVEMENT_LAYER_MAP } from '@/components/ui/LottieAnimation'
 import { getAchievementInfo } from '@/utils/streaks/achievementUtils'
+import { MedalIcon, TrophyIcon, FireIcon, StarIcon, CoinIcon } from '@/components/ui/AnimatedIcons'
+
+const ACHIEVEMENT_ICON_MAP: Record<string, React.FC<{ size?: number }>> = {
+  medal: MedalIcon,
+  trophy: TrophyIcon,
+  fire: FireIcon,
+  star: StarIcon,
+  coin: CoinIcon,
+}
 
 interface AchievementModalProps {
   achievementType: string | null
@@ -32,7 +41,10 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
             loop={false}
             autoplay={true}
           />
-          <span className="text-4xl select-none">{info.emoji}</span>
+          {(() => {
+            const IconComp = ACHIEVEMENT_ICON_MAP[info.icon]
+            return IconComp ? <IconComp size={48} /> : null
+          })()}
           <div className="space-y-1">
             <h3 className="font-display text-lg font-semibold text-foreground">
               {info.label}
