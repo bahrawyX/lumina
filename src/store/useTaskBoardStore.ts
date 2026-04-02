@@ -263,14 +263,21 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   },
 
   unlinkEvent: (eventId) => {
+    const affectedIds: string[] = [];
     set((state) => {
-      const next = state.tasks.map((task) =>
-        task.linkedEventId === eventId
-          ? { ...task, linkedEventId: null, updatedAt: new Date().toISOString() }
-          : task
-      );
+      const next = state.tasks.map((task) => {
+        if (task.linkedEventId === eventId) {
+          affectedIds.push(task.id);
+          return { ...task, linkedEventId: null, updatedAt: new Date().toISOString() };
+        }
+        return task;
+      });
       saveTasks(next, state.userId);
       return { tasks: next };
+    });
+    // Persist the unlink to DB for each affected task
+    affectedIds.forEach((taskId) => {
+      tasksPersistence.updateOne(taskId, { linkedEventId: null });
     });
   },
 

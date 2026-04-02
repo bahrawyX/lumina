@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       remainingFocusTime: row.remainingFocusTime ?? null,
       order: index,
       context: null,
-      linkedEventId: null,
+      linkedEventId: row.linkedEventId ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime } = body as {
+  const { title, description, status, priority, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId } = body as {
     title?: string;
     description?: string;
     status?: string;
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
     scheduledStart?: string | null;
     scheduledEnd?: string | null;
     remainingFocusTime?: number | null;
+    linkedEventId?: string | null;
   };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
         scheduledStart: normalizeTimeString(scheduledStart),
         scheduledEnd: normalizeTimeString(scheduledEnd),
         remainingFocusTime: normalizeRemainingFocusTime(remainingFocusTime),
+        linkedEventId: typeof linkedEventId === 'string' && linkedEventId.trim() ? linkedEventId : null,
       })
       .returning({ id: tasks.id });
 

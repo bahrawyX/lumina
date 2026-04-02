@@ -74,6 +74,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       const ts = new Date(body.dueDate);
       if (!isNaN(ts.getTime())) patch.dueDate = ts;
     }
+    if (body.linkedEventId === null) patch.linkedEventId = null;
+    else if (typeof body.linkedEventId === 'string' && body.linkedEventId.trim()) {
+      patch.linkedEventId = body.linkedEventId;
+    }
 
     await db
       .update(tasks)

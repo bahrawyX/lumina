@@ -685,16 +685,16 @@ Returns array:
   "remainingFocusTime": 600,
   "order": 0,
   "context": null,
-  "linkedEventId": null
+  "linkedEventId": "uuid|null"
 }
 ```
 
 #### `POST /api/tasks`
 Required: `title`
-Optional: `description`, `status`, `priority`, `dueDate`, `durationMinutes`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`
+Optional: `description`, `status`, `priority`, `dueDate`, `durationMinutes`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`, `linkedEventId`
 
 #### `PATCH /api/tasks/[id]`
-Patchable: `title`, `description`, `status` (todo|doing|in_progress|done|archived), `priority`, `durationMinutes`, `dueDate`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`
+Patchable: `title`, `description`, `status` (todo|doing|in_progress|done|archived), `priority`, `durationMinutes`, `dueDate`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`, `linkedEventId`
 
 #### `DELETE /api/tasks/[id]`
 Response: `{ "ok": true }`
@@ -1138,6 +1138,13 @@ Inactive item: `text-muted-foreground`
 - `RecurrenceSelector.tsx`: presets + custom builder
 - `EditRecurrenceDialog.tsx`: scope picker for edit/delete operations
 - EventModal integration for create/edit/delete with recurrence
+
+### 20.8 Task ↔ Event Two-Way Link — COMPLETE
+- `linked_event_id` UUID column added to tasks table with FK → events(id) ON DELETE SET NULL
+- Tasks API GET/POST/PATCH all handle `linkedEventId` (was hardcoded to `null` before)
+- `unlinkEvent` store method now persists the unlink to DB via `tasksPersistence.updateOne`
+- Bidirectional cascade: deleting event nulls task's `linkedEventId` (DB FK), deleting task nulls event's `linkedTaskId` (DB FK)
+- Index on `tasks.linked_event_id` for reverse lookups
 
 ### 20.7 Natural Language Event Input — COMPLETE
 - `POST /api/intelligence/parse-event`: server-side Gemini 2.0 Flash NL→structured event parser

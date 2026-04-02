@@ -40,12 +40,14 @@ export const tasks = pgTable(
     scheduledStart: varchar('scheduled_start', { length: 5 }),
     scheduledEnd: varchar('scheduled_end', { length: 5 }),
     remainingFocusTime: integer('remaining_focus_time'),
+    linkedEventId: uuid('linked_event_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('tasks_user_id_idx').on(table.userId),
     index('tasks_status_idx').on(table.status),
+    index('tasks_linked_event_id_idx').on(table.linkedEventId),
     check('tasks_estimated_minutes_check', sql`${table.estimatedMinutes} > 0`),
   ]
 );
