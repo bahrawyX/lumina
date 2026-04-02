@@ -34,6 +34,7 @@ export interface ApiEvent {
   syncStatus?: 'local_only' | 'synced' | 'pending_update' | 'pending_delete';
   meetingUrl?: string;
   organizerEmail?: string;
+  createdViaNL?: boolean;
 }
 
 function mapCanonicalToUiSource(provider: CanonicalProvider | undefined, source: CanonicalSource | undefined): 'lumina' | 'outlook' {
@@ -109,6 +110,7 @@ export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
       source: mapCanonicalToUiSource(event.provider, event.source),
       outlookId: event.externalEventId,
       linkedTaskId: event.linkedTaskId ?? null,
+      createdViaNL: event.createdViaNL === true,
     }));
     return mapped;
   } catch {

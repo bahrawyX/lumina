@@ -70,6 +70,7 @@ export const events = pgTable(
     recurringEventId: uuid('recurring_event_id'),
     originalStartTime: timestamp('original_start_time', { withTimezone: true }),
     isRecurrenceException: boolean('is_recurrence_exception').notNull().default(false),
+    createdViaNl: boolean('created_via_nl').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

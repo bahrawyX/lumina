@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
 import {
@@ -8,12 +8,15 @@ import {
 } from './icons';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { parseCommitment } from '../lib/parseCommitment';
 import { EVENT_COLORS } from '../constants';
 import notify from '../utils/notify';
 import { uid } from '../lib/uid';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Separator } from './ui/separator';
+import ParsedEventConfirmCard from './intelligence/ParsedEventConfirmCard';
+import type { ParsedEventData } from './intelligence/ParsedEventConfirmCard';
+import type { RecurrenceRule } from '../types';
+import { buildRRule } from '../lib/recurrence/rruleEngine';
 
 /* --- Section wrapper -------------------------------------------------------- */
 const Section: React.FC<{
@@ -67,6 +70,8 @@ const Profile: React.FC = () => {
   const [newGoalText, setNewGoalText] = useState('');
   const [commitmentText, setCommitmentText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [parsedEvent, setParsedEvent] = useState<ParsedEventData | null>(null);
   const commitmentInputRef = useRef<HTMLInputElement>(null);
   const [editForm, setEditForm] = useState({
     name: profile.name,
@@ -87,44 +92,140 @@ const Profile: React.FC = () => {
     if (newGoalText.trim()) { addGoal(newGoalText.trim()); setNewGoalText(''); }
   };
 
-  const handleCreateCommitment = async (e: React.FormEvent) => {
+  const handleParseCommitment = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     const raw = commitmentText.trim();
     if (!raw || isParsing) return;
+    if (raw.length < 3) {
+      toast.error("Too short. Try something like \"Meeting at 4pm\"");
+      return;
+    }
     setIsParsing(true);
-    const loadingId = toast.loading('Analyzing commitment…');
     try {
-      const parsed = await parseCommitment(raw);
-      const id = uid('ev_');
-      addEvent({
-        id,
-        title: parsed.title,
-        description: `Created from commitment: "${raw}"`,
-        date: parsed.date,
-        startTime: parsed.startTime,
-        endTime: parsed.endTime,
-        category: parsed.category,
-        color: EVENT_COLORS[parsed.category],
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        completed: false,
+      const res = await fetch('/api/intelligence/parse-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: raw,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          referenceDate: new Date().toISOString().slice(0, 10),
+        }),
       });
-      calculateIntelligence();
-      toast.dismiss(loadingId);
-      toast.success(`Event created: ${parsed.title}`, {
-        description: `${parsed.date} · ${parsed.startTime}–${parsed.endTime}`,
-      });
-      setCommitmentText('');
-      setTimeout(() => commitmentInputRef.current?.focus(), 100);
-    } catch (err) {
-      console.error('Commitment parse error:', err);
-      toast.dismiss(loadingId);
-      toast.error("Couldn't understand the commitment", {
-        description: 'Try adding a time or date. E.g. "Meeting at 4pm on the 23rd"',
-      });
+      if (!res.ok) {
+        toast.error("Couldn't understand that. Try being more specific.");
+        return;
+      }
+      const data = await res.json();
+      if (data.parsed) {
+        setParsedEvent(data.parsed as ParsedEventData);
+      } else {
+        toast.error("Couldn't understand that. Try being more specific.");
+      }
+    } catch {
+      toast.error("Couldn't understand that. Try being more specific.");
     } finally {
       setIsParsing(false);
     }
-  };
+  }, [commitmentText, isParsing]);
+
+  const handleConfirmEvent = useCallback(async () => {
+    if (!parsedEvent) return;
+    setIsConfirming(true);
+    try {
+      // Build recurrence data for the API
+      let recurrencePayload: { rrule: string; exdates?: string[]; until?: string } | undefined;
+      let recurrenceForStore: RecurrenceRule | undefined;
+
+      if (parsedEvent.recurrence) {
+        const r = parsedEvent.recurrence;
+        const rrule = buildRRule({
+          freq: r.frequency.toLowerCase() as 'daily' | 'weekly' | 'monthly' | 'yearly',
+          interval: r.interval,
+          byDay: r.weekDays.length > 0 ? r.weekDays : undefined,
+          count: r.endMode === 'after_count' && r.endCount ? r.endCount : undefined,
+          until: r.endMode === 'on_date' && r.endDate ? r.endDate : undefined,
+        });
+        recurrencePayload = { rrule };
+        if (r.endDate) recurrencePayload.until = r.endDate;
+
+        // Map weekDays to day-of-week numbers for the store
+        const dayMap: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+        recurrenceForStore = {
+          frequency: r.frequency,
+          interval: r.interval,
+          daysOfWeek: r.weekDays.map(d => dayMap[d]).filter((n): n is number => n !== undefined),
+          endCondition: r.endMode === 'after_count' && r.endCount
+            ? { type: 'COUNT', count: r.endCount }
+            : r.endMode === 'on_date' && r.endDate
+              ? { type: 'UNTIL', untilDate: r.endDate }
+              : { type: 'NEVER' },
+          rrule,
+        };
+      }
+
+      const eventBody = {
+        title: parsedEvent.title,
+        description: parsedEvent.description ?? `Created from commitment`,
+        date: parsedEvent.date,
+        startTime: parsedEvent.startTime,
+        endTime: parsedEvent.endTime,
+        category: 'Work',
+        location: parsedEvent.location,
+        isAllDay: parsedEvent.isAllDay,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        createdViaNL: true,
+        recurrence: recurrencePayload,
+      };
+
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventBody),
+      });
+
+      if (!res.ok) {
+        toast.error('Failed to add event. Try again.');
+        return;
+      }
+
+      const data = await res.json();
+
+      // Add to store optimistically
+      addEvent({
+        id: data.id,
+        title: parsedEvent.title,
+        description: parsedEvent.description ?? `Created from commitment`,
+        date: parsedEvent.date,
+        startTime: parsedEvent.startTime,
+        endTime: parsedEvent.endTime,
+        category: 'Work',
+        color: EVENT_COLORS['Work'] ?? '#6D59E0',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        completed: false,
+        location: parsedEvent.location ?? undefined,
+        recurrence: recurrenceForStore,
+        createdViaNL: true,
+      });
+
+      calculateIntelligence();
+      toast.success('Added to calendar');
+      setParsedEvent(null);
+      setCommitmentText('');
+      setTimeout(() => commitmentInputRef.current?.focus(), 100);
+    } catch {
+      toast.error('Failed to add event. Try again.');
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [parsedEvent, addEvent, calculateIntelligence]);
+
+  const handleEditParsedEvent = useCallback(() => {
+    if (!parsedEvent) return;
+    // Open EventModal pre-populated with parsed date/time
+    const { openModal } = useCalendarStore.getState();
+    openModal(undefined, parsedEvent.date, parsedEvent.startTime);
+    setParsedEvent(null);
+  }, [parsedEvent]);
 
   const fragLabel =
     intel.fragmentationScore < 30 ? 'Low' :
@@ -138,9 +239,9 @@ const Profile: React.FC = () => {
   const densityM = Math.round(((intel.schedulingDensity / 100) * 1440) % 60);
 
   const commitmentEvents = events
-    .filter(e => e.description?.startsWith('Created from commitment:'))
+    .filter(e => e.createdViaNL || e.description?.startsWith('Created from commitment:'))
     .sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime))
-    .slice(0, 8);
+    .slice(0, 5);
 
   const focusSessions = events.filter(e => e.completed && e.category === 'Focus').slice(-5).reverse();
 
@@ -269,11 +370,11 @@ const Profile: React.FC = () => {
             title="Commitments"
             subtitle="Smart scheduling – describe an event in plain English"
           >
-            <form onSubmit={handleCreateCommitment} className="relative">
+            <form onSubmit={handleParseCommitment} className="relative">
               <input
                 ref={commitmentInputRef}
                 type="text"
-                placeholder='e.g. "Meeting with Sarah at 4pm on the 23rd"'
+                placeholder='e.g. "Standup every weekday at 9am for 30 mins"'
                 value={commitmentText}
                 onChange={e => setCommitmentText(e.target.value)}
                 disabled={isParsing}
@@ -289,6 +390,20 @@ const Profile: React.FC = () => {
                   : <PlusIcon size={15} strokeWidth={1.5} />}
               </button>
             </form>
+
+            {/* Confirmation card */}
+            <AnimatePresence mode="wait">
+              {parsedEvent && (
+                <ParsedEventConfirmCard
+                  key="confirm-card"
+                  parsed={parsedEvent}
+                  onConfirm={handleConfirmEvent}
+                  onEdit={handleEditParsedEvent}
+                  onDismiss={() => setParsedEvent(null)}
+                  isLoading={isConfirming}
+                />
+              )}
+            </AnimatePresence>
 
             {commitmentEvents.length > 0 ? (
               <div className="space-y-1 max-h-64 overflow-y-auto no-scrollbar">

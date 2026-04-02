@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-01 (v3 — persistent pomodoro store, floating widget, emoji→icon migration, neon removal)
+> Last updated: 2026-04-02 (v4 — RFC 5545 recurring events, NL event input via Gemini, created_via_nl tracking)
 
 ---
 
@@ -106,8 +106,9 @@ src/
 │   ├── api/
 │   │   ├── auth/[...all]/route.ts  ← BetterAuth catch-all handler
 │   │   ├── events/
-│   │   │   ├── route.ts            ← GET (list) / POST (create)
-│   │   │   └── [id]/route.ts       ← GET / PATCH / DELETE
+│   │   │   ├── route.ts            ← GET (list) / POST (create, supports recurrence + createdViaNL)
+│   │   │   ├── [id]/route.ts       ← GET / PATCH / DELETE (editScope for recurring)
+│   │   │   └── expand/route.ts     ← GET: expand recurring events into virtual instances
 │   │   ├── tasks/
 │   │   │   ├── route.ts            ← GET / POST
 │   │   │   └── [id]/route.ts       ← PATCH / DELETE
@@ -131,7 +132,9 @@ src/
 │   │   ├── external-events/
 │   │   │   ├── all/route.ts
 │   │   │   └── [provider]/route.ts
-│   │   ├── intelligence/route.ts
+│   │   ├── intelligence/
+│   │   │   ├── route.ts              ← GET: AI schedule analysis (includes recurring instances)
+│   │   │   └── parse-event/route.ts  ← POST: Gemini NL→structured event parser (server-side only)
 │   │   ├── users/preferences/route.ts
 │   │   └── maintenance/cleanup-external-events/route.ts
 │   ├── globals.css
@@ -159,6 +162,8 @@ src/
 │   │   ├── PomodoroFeedbackModal.tsx ← Post-session mood selection (5 emojis, forced choice)
 │   │   ├── MoodAnalysisCard.tsx   ← 3-day mood trend card, shown above Pomodoro timer
 │   │   └── StopwatchView.tsx     ← HH:MM:SS.cs, requestAnimationFrame, up to 20 laps
+│   ├── intelligence/
+│   │   └── ParsedEventConfirmCard.tsx ← NL parse confirmation with confidence border + ambiguity warnings
 │   ├── icons/                     ← All SVG icon components + barrel index.ts
 │   ├── pages/
 │   │   ├── CalendarPage.tsx        ← data-tutorial="cal-view-tabs" on TabsList
@@ -635,16 +640,28 @@ Note: `completed`, `category`, `linkedTaskId` are synthesized defaults (not in D
 
 #### `POST /api/events`
 Required: `title`, `date`
-Optional: `startTime`, `endTime`, `description`, `location`, `isAllDay`
-Response: `{ "id": "uuid" }`
+Optional: `startTime`, `endTime`, `description`, `location`, `isAllDay`, `timezone`, `category`, `color`, `completed`, `linkedTaskId`, `externalEventId`, `meetingUrl`, `organizerEmail`, `createdViaNL` (boolean), `recurrence: { rrule, exdates?, until? }`
+Response: `{ "id": "uuid", "event": {...}, "recurrence": {...} | null }`
 
 #### `PATCH /api/events/[id]`
 Patchable: `title`, `description`, `location`, `isAllDay`, `date`+`startTime`, `date`+`endTime`
 Ownership checked: `events.userId = session.user.id`
+Supports `editScope: 'this' | 'this_and_following' | 'all'` for recurring events.
 Response: `{ "ok": true }`
 
 #### `DELETE /api/events/[id]`
-Ownership checked. Response: `{ "ok": true }`
+Ownership checked. Supports `?editScope=this|this_and_following|all` for recurring events.
+Response: `{ "ok": true }`
+
+#### `GET /api/events/expand`
+Query params: `start` (ISO), `end` (ISO). Max 366-day window.
+Returns `{ instances: [...] }` — virtual expanded instances of recurring events with composite IDs `masterEventId:isoDate`.
+
+#### `POST /api/intelligence/parse-event`
+Server-side Gemini NL→structured event parser. API key never exposed to client.
+Body: `{ text: string (3-500 chars), timezone: string, referenceDate: "YYYY-MM-DD" }`
+Response: `{ parsed: ParsedEventData, raw: string }` or `{ error: string, raw?: string }`.
+`ParsedEventData`: `{ title, date, startTime, endTime, isAllDay, location, description, recurrence, confidence (0-1), ambiguities[] }`.
 
 ---
 
@@ -1112,6 +1129,22 @@ Inactive item: `text-muted-foreground`
 - Zod inline validation on blur, character counter, rate limiting (60s)
 - `POST /api/contact` → `contact_submissions` table
 - Sidebar has "Contact" paper-plane icon button
+
+### 20.6 RFC 5545 Recurring Events — COMPLETE
+- `event_recurrence` table with RRULE text, exdates array, recurrence end
+- `rruleEngine.ts`: parse, expand, build, describe RRULEs via `rrule` npm package
+- `GET /api/events/expand`: virtual instance expansion with 366-day window cap
+- Edit scope semantics: `this` (exdate + exception), `this_and_following` (DB transaction series split), `all` (update master)
+- `RecurrenceSelector.tsx`: presets + custom builder
+- `EditRecurrenceDialog.tsx`: scope picker for edit/delete operations
+- EventModal integration for create/edit/delete with recurrence
+
+### 20.7 Natural Language Event Input — COMPLETE
+- `POST /api/intelligence/parse-event`: server-side Gemini 2.0 Flash NL→structured event parser
+- `ParsedEventConfirmCard.tsx`: inline confirmation with confidence-based border (amber < 0.7, emerald ≥ 0.7)
+- Profile.tsx Commitments section rewritten: parse → confirm → add flow
+- `created_via_nl` boolean column on events table for analytics
+- Gemini API key server-side only — never in client bundle
 
 ---
 

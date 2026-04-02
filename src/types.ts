@@ -65,6 +65,7 @@ export interface CalendarEvent {
   outlookId?: string;
   organizer?: string;
   linkedTaskId?: string | null;
+  createdViaNL?: boolean;
 }
 
 export interface EventInstance extends CalendarEvent {

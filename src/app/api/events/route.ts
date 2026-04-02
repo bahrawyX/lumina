@@ -75,6 +75,7 @@ function mapRowToApiEvent(
     recurringEventId: row.recurringEventId ?? undefined,
     originalStartTime: row.originalStartTime?.toISOString() ?? undefined,
     isRecurrenceException: row.isRecurrenceException,
+    createdViaNL: row.createdViaNl,
   };
 }
 
@@ -146,6 +147,7 @@ export async function POST(req: NextRequest) {
     sourceUpdatedAt: rawSourceUpdatedAt,
     meetingUrl,
     organizerEmail,
+    createdViaNL: rawCreatedViaNL,
   } = body;
 
   const title = typeof rawTitle === 'string' ? rawTitle.trim() : '';
@@ -240,6 +242,7 @@ export async function POST(req: NextRequest) {
         source,
         externalId: normalizedExternalEventId,
         lastSyncedAt: sourceUpdatedAt,
+        createdViaNl: rawCreatedViaNL === true,
       })
       .returning();
 
