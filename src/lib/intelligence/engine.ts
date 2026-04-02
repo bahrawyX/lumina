@@ -18,12 +18,15 @@ function countByProvider(provider: IntelligenceProvider, providerCounts: Record<
 export function runIntelligenceEngine(input: IntelligenceInput): IntelligenceOutput {
   const dedupedEvents = dedupeCalendarEvents(input.calendarEvents);
 
+  const plannedItems = input.plannedItems ?? [];
+
   const focusWindows = detectFocusWindows({
     events: dedupedEvents,
     rangeStartIso: input.rangeStartIso,
     rangeEndIso: input.rangeEndIso,
     timezone: input.timezone,
     minFocusWindowMinutes: input.minFocusWindowMinutes,
+    plannedItems,
   });
 
   const conflicts = detectConflicts({
@@ -47,6 +50,7 @@ export function runIntelligenceEngine(input: IntelligenceInput): IntelligenceOut
   const taskSuggestions = suggestTaskTimeSlots({
     tasks: input.tasks,
     focusWindows,
+    plannedItems,
   });
 
   const recommendations = buildRecommendations({
@@ -54,6 +58,7 @@ export function runIntelligenceEngine(input: IntelligenceInput): IntelligenceOut
     conflicts,
     overloads,
     taskSuggestions,
+    plannedItems,
   });
 
   const providerCounts = dedupedEvents.reduce(

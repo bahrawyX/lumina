@@ -8,6 +8,7 @@ import { useIntelligenceStore } from '@/store/useIntelligenceStore';
 
 interface IntelligenceRecommendationCardProps {
   recommendation: Recommendation;
+  plannedTaskIds?: Set<string>;
 }
 
 function priorityTone(priority: Recommendation['priority']): string {
@@ -24,9 +25,14 @@ function acceptLabel(type: Recommendation['type']): string {
   return 'Accept';
 }
 
-export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendationCardProps> = ({ recommendation }) => {
+export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendationCardProps> = ({ recommendation, plannedTaskIds }) => {
   const applyRecommendation = useIntelligenceStore((s) => s.applyRecommendation);
   const [isApplying, setIsApplying] = React.useState(false);
+
+  // Check if this task_plan recommendation is for an already-planned task
+  const isAlreadyPlanned = recommendation.type === 'task_plan'
+    && plannedTaskIds
+    && recommendation.relatedIds?.some((id) => plannedTaskIds.has(id));
 
   const handleApply = async () => {
     if (isApplying) return;
@@ -65,14 +71,20 @@ export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendation
       </div>
 
       <div className="mt-3 flex items-center justify-end">
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={isApplying}
-          className="h-8 px-3 rounded-lg bg-primary/10 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/15 disabled:opacity-40 transition-colors"
-        >
-          {isApplying ? 'Applying...' : acceptLabel(recommendation.type)}
-        </button>
+        {isAlreadyPlanned ? (
+          <span className="bg-primary/10 text-primary text-xs rounded-full px-2 py-0.5">
+            Already planned ✓
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={isApplying}
+            className="h-8 px-3 rounded-lg bg-primary/10 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/15 disabled:opacity-40 transition-colors"
+          >
+            {isApplying ? 'Applying...' : acceptLabel(recommendation.type)}
+          </button>
+        )}
       </div>
     </motion.article>
   );

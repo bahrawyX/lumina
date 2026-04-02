@@ -28,6 +28,13 @@ export interface IntelligenceFocusSession {
   durationMinutes: number;
 }
 
+export interface IntelligencePlannedItem {
+  taskId: string;
+  taskTitle: string;
+  startIso: string;
+  endIso: string;
+}
+
 export interface IntelligenceInput {
   userId: string;
   timezone: string;
@@ -37,6 +44,7 @@ export interface IntelligenceInput {
   calendarEvents: IntelligenceCalendarEvent[];
   tasks: IntelligenceTask[];
   focusSessions: IntelligenceFocusSession[];
+  plannedItems?: IntelligencePlannedItem[];
 }
 
 export interface FocusWindow {

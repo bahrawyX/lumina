@@ -5,7 +5,7 @@ import {
   type TimeInterval,
 } from './calendarAnalysis';
 import { scoreFocusWindow } from './scoring';
-import type { FocusWindow, IntelligenceCalendarEvent } from './types';
+import type { FocusWindow, IntelligenceCalendarEvent, IntelligencePlannedItem } from './types';
 
 export function detectFocusWindows(args: {
   events: IntelligenceCalendarEvent[];
@@ -15,6 +15,7 @@ export function detectFocusWindows(args: {
   minFocusWindowMinutes: number;
   workdayStartHour?: number;
   workdayEndHour?: number;
+  plannedItems?: IntelligencePlannedItem[];
 }): FocusWindow[] {
   const windows = createWorkingDayWindows(
     args.rangeStartIso,
@@ -27,12 +28,19 @@ export function detectFocusWindows(args: {
   const focusWindows: FocusWindow[] = [];
 
   for (const dayWindow of windows) {
-    const busy: TimeInterval[] = args.events
+    const eventBusy: TimeInterval[] = args.events
       .filter((event) => !event.isAllDay)
       .map((event) => ({
         startMs: new Date(event.startIso).getTime(),
         endMs: new Date(event.endIso).getTime(),
-      }))
+      }));
+
+    const plannedBusy: TimeInterval[] = (args.plannedItems ?? []).map((item) => ({
+      startMs: new Date(item.startIso).getTime(),
+      endMs: new Date(item.endIso).getTime(),
+    }));
+
+    const busy: TimeInterval[] = [...eventBusy, ...plannedBusy]
       .filter((slot) => slot.endMs > dayWindow.startMs && slot.startMs < dayWindow.endMs)
       .map((slot) => ({
         startMs: Math.max(slot.startMs, dayWindow.startMs),

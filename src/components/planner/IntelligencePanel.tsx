@@ -2,7 +2,9 @@
 
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useIntelligenceStore } from '@/store/useIntelligenceStore';
+import { useIntelligenceStore, getPlannedTaskIds } from '@/store/useIntelligenceStore';
+import { useDailyPlanStore, todayKey } from '@/store/useDailyPlanStore';
+import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { IntelligenceRecommendationCard } from './IntelligenceRecommendationCard';
 
 interface IntelligencePanelProps {
@@ -64,6 +66,12 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
     if (!open) return;
     fetchIntelligence();
   }, [open, fetchIntelligence]);
+
+  const plannedTaskIds = React.useMemo(() => getPlannedTaskIds(), [data]);
+  const todayPlanItems = useDailyPlanStore((s) => s.plansByDate[todayKey()] ?? []);
+  const allTasks = useTaskBoardStore((s) => s.tasks);
+  const openTaskCount = allTasks.filter((t) => t.status !== 'done').length;
+  const allOpenTasksPlanned = openTaskCount > 0 && todayPlanItems.length >= openTaskCount;
 
   const visibleRecommendations = (data?.recommendations ?? []).filter(
     (item) => !appliedRecommendationIds.includes(item.id),
@@ -138,11 +146,18 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
                         <IntelligenceRecommendationCard
                           key={recommendation.id}
                           recommendation={recommendation}
+                          plannedTaskIds={plannedTaskIds}
                         />
                       ))}
                     </AnimatePresence>
 
-                    {visibleRecommendations.length === 0 && (
+                    {visibleRecommendations.length === 0 && allOpenTasksPlanned && (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        Your day is fully planned. Nice work.
+                      </p>
+                    )}
+
+                    {visibleRecommendations.length === 0 && !allOpenTasksPlanned && (
                       <div className="rounded-xl border border-border/40 bg-muted/20 p-4 text-sm text-muted-foreground">
                         No pending recommendations right now.
                       </div>

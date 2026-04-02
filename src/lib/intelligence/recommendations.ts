@@ -1,4 +1,4 @@
-import type { Conflict, FocusWindow, Overload, Recommendation, TaskSuggestion } from './types';
+import type { Conflict, FocusWindow, IntelligencePlannedItem, Overload, Recommendation, TaskSuggestion } from './types';
 
 function buildId(prefix: string, value: string): string {
   return `${prefix}:${value}`;
@@ -9,6 +9,7 @@ export function buildRecommendations(args: {
   conflicts: Conflict[];
   overloads: Overload[];
   taskSuggestions: TaskSuggestion[];
+  plannedItems?: IntelligencePlannedItem[];
 }): Recommendation[] {
   const recommendations: Recommendation[] = [];
 
@@ -56,7 +57,10 @@ export function buildRecommendations(args: {
     });
   }
 
+  const plannedTaskIds = new Set((args.plannedItems ?? []).map((item) => item.taskId));
+
   for (const suggestion of args.taskSuggestions.slice(0, 5)) {
+    if (plannedTaskIds.has(suggestion.taskId)) continue;
     recommendations.push({
       id: buildId('task', suggestion.taskId),
       type: 'task_plan',

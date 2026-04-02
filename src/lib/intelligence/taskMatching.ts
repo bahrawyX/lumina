@@ -1,5 +1,5 @@
 import { scoreTaskSuggestion } from './scoring';
-import type { FocusWindow, IntelligenceTask, TaskSuggestion } from './types';
+import type { FocusWindow, IntelligencePlannedItem, IntelligenceTask, TaskSuggestion } from './types';
 
 function priorityWeight(priority: IntelligenceTask['priority']): number {
   if (priority === 'high') return 3;
@@ -10,9 +10,13 @@ function priorityWeight(priority: IntelligenceTask['priority']): number {
 export function suggestTaskTimeSlots(args: {
   tasks: IntelligenceTask[];
   focusWindows: FocusWindow[];
+  plannedItems?: IntelligencePlannedItem[];
 }): TaskSuggestion[] {
+  const plannedTaskIds = new Set((args.plannedItems ?? []).map((item) => item.taskId));
+
   const openTasks = args.tasks
     .filter((task) => task.status !== 'done')
+    .filter((task) => !plannedTaskIds.has(task.id))
     .sort((a, b) => {
       const priorityDiff = priorityWeight(b.priority) - priorityWeight(a.priority);
       if (priorityDiff !== 0) return priorityDiff;

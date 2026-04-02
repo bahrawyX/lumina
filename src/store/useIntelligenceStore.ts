@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Recommendation, IntelligenceOutput } from '@/lib/intelligence/types';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
+import { useDailyPlanStore, todayKey } from '@/store/useDailyPlanStore';
 import type { CalendarEvent } from '@/types';
 
 const CACHE_MS = 60_000;
@@ -161,6 +162,13 @@ async function patchTask(taskId: string, body: Record<string, unknown>): Promise
   });
 
   return res.ok;
+}
+
+/** Returns the set of task IDs that are already planned for today. */
+export function getPlannedTaskIds(): Set<string> {
+  const today = todayKey();
+  const planItems = useDailyPlanStore.getState().plansByDate[today] ?? [];
+  return new Set(planItems.map((item) => item.taskId));
 }
 
 export const useIntelligenceStore = create<IntelligenceStoreState>((set, get) => ({

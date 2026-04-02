@@ -9,6 +9,7 @@ import { timeToMinutes, formatDateISO } from '../utils/dateUtils';
 import notify from '../utils/notify';
 import { useTaskBoardStore } from './useTaskBoardStore';
 import { useCalendarEventsStore } from './useCalendarEventsStore';
+import { useDailyPlanStore, todayKey } from './useDailyPlanStore';
 import { uid } from '@/lib/uid';
 import { getStorageItem, setStorageItem, removeStorageItem, readStorageJSON } from '@/lib/storage';
 
@@ -319,9 +320,13 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     }
 
     // ── 2. Scheduling Density ─────────────────────────────────────────────────
+    const todayPlanItems = useDailyPlanStore.getState().plansByDate[todayStr] ?? [];
     let dayTotalMinutes = 0;
     todayEvents.forEach(e => {
       dayTotalMinutes += Math.max(0, timeToMinutes(e.endTime) - timeToMinutes(e.startTime));
+    });
+    todayPlanItems.forEach(p => {
+      dayTotalMinutes += Math.max(0, timeToMinutes(p.endTime) - timeToMinutes(p.startTime));
     });
     const schedulingDensity = Math.min(100, Math.round((dayTotalMinutes / 1440) * 100));
 
@@ -361,6 +366,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     });
 
     // ── 7. Best Focus Slot (next 3 days, 8–18, prefer peak hour) ─────────────
+    // Include planned items as busy time alongside calendar events
+    const planStore = useDailyPlanStore.getState();
     const peakHour = sortedHours.length > 0 ? parseInt(sortedHours[0][0], 10) : 9;
     let suggestedFocusSlot: IntelligenceProfile['suggestedFocusSlot'];
     outer: for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
@@ -368,17 +375,23 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       d.setDate(d.getDate() + dayOffset);
       const dStr = formatDateISO(d);
       const dayEvs = events.filter(e => e.date === dStr);
+      const dayPlanItems = planStore.plansByDate[dStr] ?? [];
       const startHours = [...Array.from({ length: 10 }, (_, i) => Math.max(8, peakHour - 1) + i)]
         .filter(h => h <= 16); // latest start for 90min block = 16:00
       for (const startH of startHours) {
         const slotStart = startH * 60;
         const slotEnd = slotStart + 90;
-        const isFree = !dayEvs.some(e => {
+        const eventConflict = dayEvs.some(e => {
           const eStart = timeToMinutes(e.startTime);
           const eEnd = timeToMinutes(e.endTime);
           return eStart < slotEnd && eEnd > slotStart;
         });
-        if (isFree) {
+        const planConflict = dayPlanItems.some(p => {
+          const pStart = timeToMinutes(p.startTime);
+          const pEnd = timeToMinutes(p.endTime);
+          return pStart < slotEnd && pEnd > slotStart;
+        });
+        if (!eventConflict && !planConflict) {
           suggestedFocusSlot = {
             date: dStr,
             start: `${pad(startH)}:00`,

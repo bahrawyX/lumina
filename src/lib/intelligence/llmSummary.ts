@@ -1,7 +1,8 @@
-import type { IntelligenceOutput } from './types';
+import type { IntelligenceOutput, IntelligencePlannedItem } from './types';
 
 export interface IntelligenceSummaryOptions {
   useLlm?: boolean;
+  plannedItems?: IntelligencePlannedItem[];
 }
 
 export async function buildIntelligenceNarrative(
@@ -12,12 +13,27 @@ export async function buildIntelligenceNarrative(
   // This wrapper is intentionally optional and fallback-safe.
   const topRec = output.recommendations[0]?.explanation;
   const topFocus = output.focusWindows[0];
+  const items = _options?.plannedItems ?? [];
 
-  if (!topRec && !topFocus) return null;
+  const parts: string[] = [];
 
-  if (topRec && topFocus) {
-    return `${topRec} Best uninterrupted slot: ${topFocus.durationMinutes} minutes.`;
+  // Add planner context if items exist (cap at 5 to avoid bloat)
+  if (items.length > 0) {
+    const totalMinutes = items.reduce((sum, item) => {
+      const start = new Date(item.startIso).getTime();
+      const end = new Date(item.endIso).getTime();
+      return sum + Math.round((end - start) / 60_000);
+    }, 0);
+    const hours = (totalMinutes / 60).toFixed(1);
+    const names = items.slice(0, 5).map((item) => item.taskTitle);
+    const nameList = names.join(', ') + (items.length > 5 ? ` (+${items.length - 5} more)` : '');
+    parts.push(`${items.length} items planned today (${hours}h): ${nameList}.`);
   }
 
-  return topRec ?? `Best uninterrupted slot is ${topFocus?.durationMinutes ?? 0} minutes.`;
+  if (topRec) parts.push(topRec);
+  if (topFocus) parts.push(`Best uninterrupted slot: ${topFocus.durationMinutes} minutes.`);
+
+  if (parts.length === 0) return null;
+
+  return parts.join(' ');
 }
