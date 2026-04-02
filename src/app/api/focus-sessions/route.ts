@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { focusSessions, users, achievements } from '@/db/schema';
+import { focusSessions, users, achievements, tasks } from '@/db/schema';
 import { computeStreakUpdate } from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const mapped = rows.map((row) => ({
       id: row.id,
       taskId: row.taskId ?? '',
-      taskTitle: '',
+      taskTitle: row.taskTitle ?? null,
       startTime: row.startTime.toISOString(),
       endTime: row.endTime.toISOString(),
       duration: row.durationMinutes * 60,
@@ -110,6 +110,20 @@ export async function POST(req: NextRequest) {
 
     const coinsEarned = streakUpdate.coins - previousCoins;
 
+    // Resolve task title before the transaction (read-only lookup)
+    const rawTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
+    // Prefer client-sent taskTitle, but validate/fallback to DB lookup
+    const rawTaskTitle = typeof body.taskTitle === 'string' && body.taskTitle.trim() ? body.taskTitle.trim() : null;
+    let taskTitle: string | null = rawTaskTitle;
+    if (rawTaskId && !taskTitle) {
+      const [taskRow] = await db
+        .select({ title: tasks.title })
+        .from(tasks)
+        .where(and(eq(tasks.id, rawTaskId), eq(tasks.userId, userId)))
+        .limit(1);
+      taskTitle = taskRow?.title ?? null;
+    }
+
     // All writes in a single transaction for atomicity
     const result = await db.transaction(async (tx) => {
       // Insert focus session
@@ -117,7 +131,8 @@ export async function POST(req: NextRequest) {
         .insert(focusSessions)
         .values({
           userId,
-          taskId: typeof body.taskId === 'string' && body.taskId ? body.taskId : null,
+          taskId: rawTaskId,
+          taskTitle,
           startTime: startTs,
           endTime: endTs,
           durationMinutes,

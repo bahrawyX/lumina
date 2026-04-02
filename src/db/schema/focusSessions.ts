@@ -6,6 +6,7 @@ import {
   pgTable,
   timestamp,
   uuid,
+  varchar,
 } from 'drizzle-orm/pg-core';
 import { tasks } from './tasks';
 import { users } from './users';
@@ -18,6 +19,7 @@ export const focusSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    taskTitle: varchar('task_title', { length: 512 }),
     startTime: timestamp('start_time', { withTimezone: true }).notNull(),
     endTime: timestamp('end_time', { withTimezone: true }).notNull(),
     durationMinutes: integer('duration_minutes').notNull(),

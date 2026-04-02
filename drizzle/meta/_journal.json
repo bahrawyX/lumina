@@ -57,6 +57,13 @@
       "when": 1774900000000,
       "tag": "0007_streaks_achievements_mood",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775000000000,
+      "tag": "0008_focus_session_task_title",
+      "breakpoints": true
     }
   ]
 }

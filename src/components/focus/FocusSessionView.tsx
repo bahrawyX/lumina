@@ -42,7 +42,7 @@ export const FocusDoneView: React.FC = () => {
         <h2 className="text-2xl font-semibold text-foreground">Session complete</h2>
         {latest && (
           <p className="text-sm text-muted-foreground">
-            {latest.taskTitle} · {formatDuration(latest.duration)}
+            {latest.taskTitle ?? <span className="text-muted-foreground">Deep work</span>} · {formatDuration(latest.duration)}
           </p>
         )}
       </div>
@@ -148,7 +148,7 @@ export const FocusSessionView: React.FC = () => {
                   className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border border-border/30"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-medium text-foreground/80 truncate">{s.taskTitle}</p>
+                    <p className="text-[12px] font-medium text-foreground/80 truncate">{s.taskTitle ?? <span className="text-muted-foreground">Deep work</span>}</p>
                     <p className="text-[10px] text-muted-foreground/50 mt-0.5">{formatDate(s.startTime)}</p>
                   </div>
                   <div className="ml-3 flex items-center gap-2 flex-shrink-0">

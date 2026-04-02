@@ -7,7 +7,7 @@ import { uid } from '@/lib/uid';
 export interface FocusSession {
   id: string;
   taskId: string;
-  taskTitle: string;
+  taskTitle: string | null;
   startTime: string;   // ISO
   endTime: string;     // ISO — set on finish/cancel
   duration: number;    // seconds actually elapsed
