@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, gt, gte, lt } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { events, focusSessions, integrations, tasks } from '@/db/schema';
+import { events, focusSessions, integrations, plannerItems, tasks } from '@/db/schema';
 import { fetchGoogleExternalEvents } from '@/lib/integrations/google/fetchExternalEvents';
 import { fetchMicrosoftExternalEvents } from '@/lib/integrations/microsoft/fetchExternalEvents';
 import { getEnabledCalendarIds } from '@/lib/integrations/enabledCalendars';
@@ -11,6 +11,7 @@ import { runIntelligenceEngine } from '@/lib/intelligence/engine';
 import type {
   IntelligenceCalendarEvent,
   IntelligenceFocusSession,
+  IntelligencePlannedItem,
   IntelligenceTask,
 } from '@/lib/intelligence/types';
 
@@ -100,7 +101,12 @@ export async function GET(req: NextRequest) {
     const endDate = new Date(endIso);
     const historyStartDate = new Date(now - DEFAULT_FOCUS_HISTORY_DAYS * 86_400_000);
 
-    const [localEventRows, taskRows, focusRows, integrationRows] = await Promise.all([
+    // Compute today's boundaries in the user's timezone for planner query
+    const todayInTz = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+    const todayStart = new Date(todayInTz.getFullYear(), todayInTz.getMonth(), todayInTz.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 86_400_000);
+
+    const [localEventRows, taskRows, focusRows, integrationRows, plannerRows] = await Promise.all([
       db
         .select()
         .from(events)
@@ -129,6 +135,26 @@ export async function GET(req: NextRequest) {
         .select({ provider: integrations.provider, status: integrations.status, expiresAt: integrations.expiresAt })
         .from(integrations)
         .where(eq(integrations.userId, userId)),
+      db
+        .select({
+          taskId: plannerItems.taskId,
+          startTime: plannerItems.startTime,
+          endTime: plannerItems.endTime,
+          taskTitle: tasks.title,
+        })
+        .from(plannerItems)
+        .leftJoin(tasks, eq(plannerItems.taskId, tasks.id))
+        .where(
+          and(
+            eq(plannerItems.userId, userId),
+            gte(plannerItems.startTime, todayStart),
+            lt(plannerItems.startTime, todayEnd),
+          ),
+        )
+        .catch((err) => {
+          console.error('[GET /api/intelligence] planner_items query failed', err);
+          return [] as { taskId: string; startTime: Date; endTime: Date; taskTitle: string | null }[];
+        }),
     ]);
 
     const hasGoogle = integrationRows.some(
@@ -184,6 +210,13 @@ export async function GET(req: NextRequest) {
       category: 'work',
     }));
 
+    const plannedItems: IntelligencePlannedItem[] = plannerRows.map((row) => ({
+      taskId: row.taskId,
+      taskTitle: row.taskTitle ?? 'Untitled task',
+      startIso: row.startTime.toISOString(),
+      endIso: row.endTime.toISOString(),
+    }));
+
     const output = runIntelligenceEngine({
       userId,
       timezone,
@@ -193,9 +226,12 @@ export async function GET(req: NextRequest) {
       calendarEvents: [...localEvents, ...externalGoogle, ...externalMicrosoft],
       tasks: mapTasks(taskRows),
       focusSessions: mapFocusSessions(focusRows),
+      plannedItems,
     });
 
-    const narrative = includeNarrative ? await buildIntelligenceNarrative(output, { useLlm: false }) : null;
+    const narrative = includeNarrative
+      ? await buildIntelligenceNarrative(output, { useLlm: false, plannedItems })
+      : null;
 
     return NextResponse.json({
       ok: true,
