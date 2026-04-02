@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { calendars, events, tasks } from '@/db/schema';
+import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 
 type EventProvider = 'local' | 'google' | 'outlook';
 type ApiEventProvider = 'local' | 'google' | 'microsoft';
@@ -72,6 +72,9 @@ function mapRowToApiEvent(
     organizerEmail: row.organizerEmail ?? undefined,
     source: row.source,
     outlookId: provider === 'microsoft' ? (row.externalEventId ?? row.externalId ?? undefined) : undefined,
+    recurringEventId: row.recurringEventId ?? undefined,
+    originalStartTime: row.originalStartTime?.toISOString() ?? undefined,
+    isRecurrenceException: row.isRecurrenceException,
   };
 }
 
@@ -240,7 +243,24 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    return NextResponse.json({ id: row.id, event: mapRowToApiEvent(row) }, { status: 201 });
+    // If recurrence rule is provided, create the event_recurrence row
+    const recurrenceRule = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
+    let recurrenceData = null;
+    if (recurrenceRule && typeof recurrenceRule.rrule === 'string' && recurrenceRule.rrule.trim()) {
+      const [recRow] = await db
+        .insert(eventRecurrence)
+        .values({
+          eventId: row.id,
+          userId,
+          rrule: recurrenceRule.rrule.trim(),
+          exdates: Array.isArray(recurrenceRule.exdates) ? recurrenceRule.exdates : [],
+          recurrenceEnd: recurrenceRule.until ? new Date(recurrenceRule.until) : null,
+        })
+        .returning();
+      recurrenceData = { id: recRow.id, rrule: recRow.rrule, exdates: recRow.exdates };
+    }
+
+    return NextResponse.json({ id: row.id, event: mapRowToApiEvent(row), recurrence: recurrenceData }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/events]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

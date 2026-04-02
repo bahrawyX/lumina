@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CalendarEvent } from '../types';
+import type { CalendarEvent, EditScope } from '../types';
 import notify from '../utils/notify';
 import { useTaskBoardStore } from './useTaskBoardStore';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
@@ -19,6 +19,8 @@ interface HistoryState {
 
 interface CalendarEventsState {
   events: CalendarEvent[];
+  /** Virtual instances from recurring event expansion */
+  recurringInstances: CalendarEvent[];
   history: HistoryState[];
   historyIndex: number;
   dbHydrated: boolean;
@@ -28,10 +30,11 @@ interface CalendarEventsState {
   hydrateFromDbFailed: () => void;
   setUserId: (userId: string) => void;
   addEvent: (event: CalendarEvent) => void;
-  updateEvent: (event: CalendarEvent) => void;
+  updateEvent: (event: CalendarEvent, editScope?: EditScope) => void;
   toggleEventCompletion: (id: string) => void;
-  deleteEvent: (id: string) => void;
+  deleteEvent: (id: string, editScope?: EditScope) => void;
   moveEvent: (id: string, newDate: string, startTime?: string, endTime?: string) => void;
+  fetchRecurringInstances: (start: string, end: string) => Promise<void>;
 
   undo: () => void;
   redo: () => void;
@@ -77,6 +80,7 @@ function isValidEventTimes(startTime: string, endTime: string): boolean {
 export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => ({
   // DB is the source of truth — start empty, never read localStorage on init.
   events: [],
+  recurringInstances: [],
   history: [{ events: [] }],
   historyIndex: 0,
   dbHydrated: false,
@@ -129,19 +133,36 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     notify(`Event created: ${event.title}${timeRange}`);
   },
 
-  updateEvent: (event) => {
+  updateEvent: (event, editScope) => {
     if (event.startTime && event.endTime && !isValidEventTimes(event.startTime, event.endTime)) {
       notify('Invalid event times — start must be before end');
       return;
     }
     const { events, history, historyIndex, userId } = get();
+
+    // For recurring instance edits with 'this' scope, handle via API and refresh instances
+    if (editScope === 'this' && event.id.includes(':')) {
+      fetch(`/api/events/${event.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...event, editScope: 'this' }),
+      }).then(() => {
+        // Remove the virtual instance and refresh
+        set({ recurringInstances: get().recurringInstances.filter((e) => e.id !== event.id) });
+        notify(`Instance updated: ${event.title}`);
+        triggerIntelligence();
+      });
+      return;
+    }
+
     const newEvents = events.map((e) => e.id === event.id ? event : e);
     const newHistory = [...history.slice(0, historyIndex + 1), { events: newEvents }].slice(-50);
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
     // Fire-and-forget DB persistence
-    eventsPersistence.updateOne(event.id, event);
+    const body = editScope ? { ...event, editScope } : event;
+    eventsPersistence.updateOne(event.id, body);
     notify(`Event updated: ${event.title}`);
   },
 
@@ -154,7 +175,17 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     triggerIntelligence();
   },
 
-  deleteEvent: (id) => {
+  deleteEvent: (id, editScope) => {
+    // For recurring instance deletion with 'this' scope
+    if (editScope === 'this' && id.includes(':')) {
+      fetch(`/api/events/${id}?editScope=this`, { method: 'DELETE' }).then(() => {
+        set({ recurringInstances: get().recurringInstances.filter((e) => e.id !== id) });
+        triggerIntelligence();
+        notify('Instance removed');
+      });
+      return;
+    }
+
     const { events, history, historyIndex, userId } = get();
     const deleted = events.find((e) => e.id === id);
     const newEvents = events.filter((e) => e.id !== id);
@@ -162,7 +193,8 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     // Fire-and-forget DB persistence
-    eventsPersistence.deleteOne(id);
+    const scopeParam = editScope ? `?editScope=${editScope}` : '';
+    eventsPersistence.deleteOne(id, scopeParam);
     if (deleted?.linkedTaskId) {
       useTaskBoardStore.getState().unlinkEvent(id);
     }
@@ -196,6 +228,18 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     // Fire-and-forget DB persistence — only on commit (moveEvent = drag end)
     if (moved) eventsPersistence.updateOne(id, { date: newDate, startTime, endTime });
     if (moved) notify(`Event moved: ${moved.title}`, () => get().undo());
+  },
+
+  fetchRecurringInstances: async (start, end) => {
+    try {
+      const res = await fetch(`/api/events/expand?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const instances = (data.instances ?? []) as CalendarEvent[];
+      set({ recurringInstances: instances });
+    } catch {
+      // Silently fail — non-critical
+    }
   },
 
   undo: () => {

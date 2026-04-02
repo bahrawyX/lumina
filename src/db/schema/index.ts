@@ -3,6 +3,7 @@ import { accounts } from './accounts';
 import { achievements } from './achievements';
 import { calendars } from './calendars';
 import { contactSubmissions } from './contactSubmissions';
+import { eventRecurrence } from './eventRecurrence';
 import { events } from './events';
 import { focusSessions } from './focusSessions';
 import { integrations } from './integrations';
@@ -18,6 +19,7 @@ export * from './accounts';
 export * from './sessions';
 export * from './verifications';
 export * from './calendars';
+export * from './eventRecurrence';
 export * from './events';
 export * from './tasks';
 export * from './plannerItems';
@@ -32,6 +34,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 	sessions: many(sessions),
 	calendars: many(calendars),
 	events: many(events),
+	eventRecurrences: many(eventRecurrence),
 	tasks: many(tasks),
 	plannerItems: many(plannerItems),
 	focusSessions: many(focusSessions),
@@ -63,7 +66,7 @@ export const calendarsRelations = relations(calendars, ({ one, many }) => ({
 	events: many(events),
 }));
 
-export const eventsRelations = relations(events, ({ one }) => ({
+export const eventsRelations = relations(events, ({ one, many }) => ({
 	user: one(users, {
 		fields: [events.userId],
 		references: [users.id],
@@ -75,6 +78,18 @@ export const eventsRelations = relations(events, ({ one }) => ({
 	task: one(tasks, {
 		fields: [events.linkedTaskId],
 		references: [tasks.id],
+	}),
+	recurrence: many(eventRecurrence),
+}));
+
+export const eventRecurrenceRelations = relations(eventRecurrence, ({ one }) => ({
+	event: one(events, {
+		fields: [eventRecurrence.eventId],
+		references: [events.id],
+	}),
+	user: one(users, {
+		fields: [eventRecurrence.userId],
+		references: [users.id],
 	}),
 }));
 

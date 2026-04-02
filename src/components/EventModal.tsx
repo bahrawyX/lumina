@@ -5,11 +5,13 @@ import { z } from "zod";
 import { useCalendarStore } from "../store/useCalendarStore";
 import { useCalendarEventsStore } from "../store/useCalendarEventsStore";
 import { usePlannerStore } from "../store/usePlannerStore";
-import { CalendarEvent, EventCategory } from "../types";
+import { CalendarEvent, EventCategory, RecurrenceRule, EditScope } from "../types";
 import { CATEGORIES } from "../constants";
 import { uid } from "../lib/uid";
 import { timeToMinutes, minutesToTime } from "../utils/dateUtils";
 import { GoogleProviderIcon, OutlookProviderIcon, TrashIcon } from "./icons";
+import RecurrenceSelector from "./RecurrenceSelector";
+import EditRecurrenceDialog from "./EditRecurrenceDialog";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -61,13 +63,18 @@ const EventModal: React.FC = () => {
     title: "", description: "", date: "",
     startTime: "09:00", endTime: "10:00", category: "Work", location: "",
   });
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [editScopeDialog, setEditScopeDialog] = useState<{ open: boolean; action: 'edit' | 'delete' }>({ open: false, action: 'edit' });
+
+  const isRecurring = !!(activeEvent?.recurrence || activeEvent?.recurringEventId || activeEvent?.isRecurrenceException);
 
   useEffect(() => {
     if (!isModalOpen) return;
     if (activeEvent) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData(activeEvent);
+      setRecurrence(activeEvent.recurrence ?? null);
     } else {
       const startTime = initialTimeForNewEvent || "09:00";
       const endTime = minutesToTime(Math.min(1435, timeToMinutes(startTime) + 60));
@@ -76,6 +83,7 @@ const EventModal: React.FC = () => {
         date: initialDateForNewEvent || new Date().toISOString().split("T")[0],
         startTime, endTime, category: "Work", location: "",
       });
+      setRecurrence(null);
     }
     setErrors({});
   }, [activeEvent, initialDateForNewEvent, initialTimeForNewEvent, isModalOpen]);
@@ -89,13 +97,20 @@ const EventModal: React.FC = () => {
   }, [formData.startTime, formData.endTime]);
 
 
-  const handleSave = () => {
+  const handleSave = (editScope?: EditScope) => {
     const result = eventSchema.safeParse(formData);
     if (!result.success) {
       const fe: Record<string, string> = {};
       result.error.issues.forEach((i) => { if (i.path[0] != null) fe[i.path[0].toString()] = i.message; });
       setErrors(fe); return;
     }
+
+    // If editing a recurring event and no scope chosen yet, show the dialog
+    if (localEvent && isRecurring && !editScope) {
+      setEditScopeDialog({ open: true, action: 'edit' });
+      return;
+    }
+
     const finalEvent: CalendarEvent = {
       id: localEvent?.id || uid('ev_'),
       title: result.data.title,
@@ -107,8 +122,19 @@ const EventModal: React.FC = () => {
       location: formData.location || "",
       color: CATEGORIES.find((c) => c.name === result.data.category)?.color || "#6D59E0",
       timezone: localEvent?.timezone || timezone,
+      recurrence: recurrence ?? undefined,
     };
-    if (localEvent) updateEvent(finalEvent); else addEvent(finalEvent);
+    if (localEvent) updateEvent(finalEvent, editScope); else addEvent(finalEvent);
+    closeModal();
+  };
+
+  const handleDelete = (editScope?: EditScope) => {
+    if (!localEvent) return;
+    if (isRecurring && !editScope) {
+      setEditScopeDialog({ open: true, action: 'delete' });
+      return;
+    }
+    deleteEvent(localEvent.id, editScope);
     closeModal();
   };
 
@@ -279,7 +305,31 @@ const EventModal: React.FC = () => {
             </Select>
           </div>
 
+          {/* Recurrence */}
+          {!isExternalEvent && (
+            <RecurrenceSelector
+              value={recurrence}
+              onChange={setRecurrence}
+              dtstart={formData.date}
+              disabled={isExternalEvent}
+            />
+          )}
+
         </div>
+
+        {/* Edit scope dialog for recurring events */}
+        <EditRecurrenceDialog
+          open={editScopeDialog.open}
+          onClose={() => setEditScopeDialog({ ...editScopeDialog, open: false })}
+          onConfirm={(scope) => {
+            if (editScopeDialog.action === 'delete') {
+              handleDelete(scope);
+            } else {
+              handleSave(scope);
+            }
+          }}
+          action={editScopeDialog.action}
+        />
 
         {/* Footer */}
         <DialogFooter className="px-6 py-4 border-t flex-row items-center justify-between">
@@ -288,7 +338,7 @@ const EventModal: React.FC = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { deleteEvent(localEvent.id); closeModal(); }}
+                onClick={() => handleDelete()}
                 className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
               >
                 <TrashIcon className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -301,7 +351,7 @@ const EventModal: React.FC = () => {
               {isExternalEvent ? "Close" : "Cancel"}
             </Button>
             {!isExternalEvent && (
-              <Button size="sm" onClick={handleSave} className="bg-primary hover:bg-primary/90 gap-1.5">
+              <Button size="sm" onClick={() => handleSave()} className="bg-primary hover:bg-primary/90 gap-1.5">
                 {localEvent ? "Save changes" : "Save"}
               </Button>
             )}

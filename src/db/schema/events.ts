@@ -67,6 +67,9 @@ export const events = pgTable(
     source: eventSourceEnum('source').notNull().default('manual'),
     externalId: varchar('external_id', { length: 255 }),
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    recurringEventId: uuid('recurring_event_id'),
+    originalStartTime: timestamp('original_start_time', { withTimezone: true }),
+    isRecurrenceException: boolean('is_recurrence_exception').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -76,6 +79,7 @@ export const events = pgTable(
     index('events_calendar_id_idx').on(table.calendarId),
     index('events_calendar_start_time_idx').on(table.calendarId, table.startTime),
     index('events_external_id_idx').on(table.externalId),
+    index('events_recurring_event_id_idx').on(table.recurringEventId),
     uniqueIndex('events_calendar_external_event_unique')
       .on(table.calendarId, table.externalEventId)
       .where(sql`${table.externalEventId} is not null`),

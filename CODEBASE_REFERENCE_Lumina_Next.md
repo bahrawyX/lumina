@@ -1069,10 +1069,11 @@ Inactive item: `text-muted-foreground`
 | # | Severity | Description |
 |---|---|---|
 | 1 | Medium | Task status vocabulary dual boundary: DB uses `in_progress`, UI uses `doing`. API normalizes both ways. New code should use `in_progress` in DB calls. |
-| 2 | High | Event contract mismatch: `category`, `color`, `completed`, `linkedTaskId`, recurrence fields exist on client type but are silently dropped at API/DB boundary. |
-| 3 | Medium | Planner table exists in DB but runtime is localStorage-only. Schema suggests persistence that doesn't exist. |
+| 2 | ~~High~~ Resolved | ~~Event contract mismatch~~ — Fixed: `category`, `color`, `completed`, `linkedTaskId` now persisted. Recurrence fields stored in `event_recurrence` table with full RRULE support. |
+| 3 | ~~Medium~~ Resolved | ~~Planner localStorage-only~~ — Fixed: Full DB persistence via API routes + Zustand optimistic updates. |
 | 4 | Low | No unique DB constraint for one primary local calendar per user (app logic handles it but DB doesn't enforce). |
-| 5 | Low | `taskTitle` not persisted on `focus_sessions` table — always returned as empty string from API. |
+| 5 | ~~Low~~ Resolved | ~~`taskTitle` not persisted~~ — Fixed: `task_title` column added, API reads/writes it, UI renders with "Deep work" fallback. |
+| 6 | Medium | Recurring event visual indicator (↻ loop icon) not yet shown on event chips in day/week/month views. Affects: `DayView.tsx`, `WeekView.tsx`, `MonthView.tsx`. |
 
 ---
 

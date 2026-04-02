@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, gt, gte, lt } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { events, focusSessions, integrations, plannerItems, tasks } from '@/db/schema';
+import { events, eventRecurrence, focusSessions, integrations, plannerItems, tasks } from '@/db/schema';
+import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import { fetchGoogleExternalEvents } from '@/lib/integrations/google/fetchExternalEvents';
 import { fetchMicrosoftExternalEvents } from '@/lib/integrations/microsoft/fetchExternalEvents';
 import { getEnabledCalendarIds } from '@/lib/integrations/enabledCalendars';
@@ -188,6 +189,37 @@ export async function GET(req: NextRequest) {
         : Promise.resolve([]),
     ]);
 
+    // Expand recurring events into virtual instances within the intelligence range
+    const recurrenceRows = await db
+      .select({ recurrence: eventRecurrence, event: events })
+      .from(eventRecurrence)
+      .innerJoin(events, eq(eventRecurrence.eventId, events.id))
+      .where(eq(eventRecurrence.userId, userId))
+      .catch(() => [] as { recurrence: typeof eventRecurrence.$inferSelect; event: typeof events.$inferSelect }[]);
+
+    const recurringInstances: IntelligenceCalendarEvent[] = [];
+    for (const { recurrence: rec, event: masterEvent } of recurrenceRows) {
+      const durationMs = masterEvent.endTime.getTime() - masterEvent.startTime.getTime();
+      const expanded = expandRecurrence(
+        { rrule: rec.rrule, dtstart: masterEvent.startTime.toISOString(), exdates: rec.exdates ?? [] },
+        startDate,
+        endDate,
+        durationMs,
+      );
+      for (const inst of expanded) {
+        recurringInstances.push({
+          id: `recurring:${masterEvent.id}:${inst.startIso}`,
+          title: masterEvent.title,
+          provider: 'local',
+          startIso: inst.startIso,
+          endIso: inst.endIso,
+          isAllDay: masterEvent.isAllDay,
+          timezone: masterEvent.timezone,
+          category: masterEvent.category,
+        });
+      }
+    }
+
     const localEvents = mapLocalEvents(localEventRows);
     const externalGoogle: IntelligenceCalendarEvent[] = googleEvents.map((event) => ({
       id: `google:${event.externalEventId}`,
@@ -223,7 +255,7 @@ export async function GET(req: NextRequest) {
       rangeStartIso: startIso,
       rangeEndIso: endIso,
       minFocusWindowMinutes,
-      calendarEvents: [...localEvents, ...externalGoogle, ...externalMicrosoft],
+      calendarEvents: [...localEvents, ...recurringInstances, ...externalGoogle, ...externalMicrosoft],
       tasks: mapTasks(taskRows),
       focusSessions: mapFocusSessions(focusRows),
       plannedItems,

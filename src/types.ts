@@ -13,14 +13,20 @@ export interface CustomCategory {
 }
 
 export interface RecurrenceRule {
-  frequency: "DAILY" | "WEEKLY" | "MONTHLY";
+  frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
   interval: number;
   daysOfWeek?: number[];
+  byMonthDay?: number[];
+  byMonth?: number[];
   endCondition:
     | { type: "NEVER" }
     | { type: "UNTIL"; untilDate: string }
     | { type: "COUNT"; count: number };
+  /** Raw RFC 5545 RRULE string, e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR" */
+  rrule?: string;
 }
+
+export type EditScope = 'this' | 'this_and_following' | 'all';
 
 export interface MeetingLink {
   url: string;
@@ -46,6 +52,9 @@ export interface CalendarEvent {
   recurrence?: RecurrenceRule | null;
   exceptions?: string[];
   parentRecurringEventId?: string | null;
+  recurringEventId?: string | null;
+  originalStartTime?: string | null;
+  isRecurrenceException?: boolean;
   meetingLink?: MeetingLink | null;
   completed?: boolean;
   source?: EventSource;
@@ -60,6 +69,8 @@ export interface CalendarEvent {
 
 export interface EventInstance extends CalendarEvent {
   instanceDate: string;
+  /** Composite ID for virtual instances: `{masterEventId}:{isoDate}` */
+  instanceId?: string;
 }
 
 export interface OverlapGroup {

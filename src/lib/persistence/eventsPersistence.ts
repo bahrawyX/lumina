@@ -178,9 +178,9 @@ export async function updateOne(id: string, patch: Partial<CalendarEvent>): Prom
 }
 
 /** Delete an event from the DB. Fire-and-forget safe. */
-export async function deleteOne(id: string): Promise<void> {
+export async function deleteOne(id: string, queryString?: string): Promise<void> {
   try {
-    await apiFetch(`/api/events/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/events/${id}${queryString ?? ''}`, { method: 'DELETE' });
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[eventsPersistence] deleteOne failed:', err);
