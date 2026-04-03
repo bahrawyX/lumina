@@ -779,11 +779,6 @@ const AppSidebar: React.FC = () => {
 
           {/* Workspace nav */}
           <SidebarGroup className="px-2">
-            {!isSidebarCollapsed ? (
-              <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-            ) : (
-              <div className="h-3" />
-            )}
             <SidebarGroupContent>
               <SidebarMenu>
                 <WorkspaceItem

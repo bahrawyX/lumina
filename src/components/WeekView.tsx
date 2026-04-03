@@ -497,14 +497,14 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
 
       {/* Header */}
       <div className={`flex sticky top-0 z-30 ${HEADER_CLS}`}>
-        <div className="w-20 border-r border-gray-200 dark:border-neutral-border/30 flex items-center justify-center">
+        <div className="w-20 border-r border-border flex items-center justify-center">
           <span className={TIME_LABEL_CLS}>GMT</span>
         </div>
         <div className="flex-1 grid grid-cols-7">
           {weekDays.map((date, idx) => {
             const isToday = isSameDay(date, today);
             return (
-              <div key={idx} className="py-4 flex flex-col items-center gap-1 border-r border-gray-200 dark:border-neutral-border/30 last:border-r-0">
+              <div key={idx} className="py-4 flex flex-col items-center gap-1 border-r border-border last:border-r-0">
                 <span className={WEEKDAY_LABEL_CLS}>
                   {DAYS[date.getDay()]}
                 </span>
@@ -604,7 +604,7 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
               return (
                 <div
                   key={dayIdx}
-                  className="relative border-r border-gray-100 dark:border-neutral-border/40 last:border-r-0 h-full"
+                  className="relative border-r border-border/60 last:border-r-0 h-full"
                   role="gridcell"
                 >
                   {/* Density heat tint */}

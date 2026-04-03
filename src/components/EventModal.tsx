@@ -22,6 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
 
+/** Intentional brand colors per Google/Microsoft identity guidelines */
+const GOOGLE_BRAND_COLOR = '#4285F4';
+const OUTLOOK_BRAND_COLOR = '#0078D4';
+
 /* ── Zod schema ──────────────────────────────────────────────────────────── */
 const eventSchema = z.object({
   title: z.string().min(1, "Event name is required").max(100),
@@ -57,7 +61,7 @@ const EventModal: React.FC = () => {
         : 'local');
   const isExternalEvent = provider === 'google' || provider === 'microsoft';
   const isGoogleEvent = provider === 'google';
-  const externalColor = activeEvent?.color || (isGoogleEvent ? '#4285F4' : '#0078D4');
+  const externalColor = activeEvent?.color || (isGoogleEvent ? GOOGLE_BRAND_COLOR : OUTLOOK_BRAND_COLOR);
 
   const [formData, setFormData] = useState<Partial<CalendarEvent>>({
     title: "", description: "", date: "",

@@ -14,8 +14,8 @@ import { LottieAnimation, EMPTY_STATE_TASKS_LAYER_MAP } from '../ui/LottieAnimat
 // ── Column status accent colors ───────────────────────────────────────────────
 
 const STATUS_ACCENT: Record<TaskStatus, string> = {
-  todo:  'bg-sky-500',
-  doing: 'bg-amber-500',
+  todo:  'bg-muted-foreground',
+  doing: 'bg-primary',
   done:  'bg-emerald-500',
 };
 

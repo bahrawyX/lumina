@@ -51,8 +51,8 @@ const MOBILE_NAV_ITEMS = [
     href: '/plan',
     label: 'Plan',
     icon: (
-      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/>
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="9" y1="4" x2="9" y2="2" /><line x1="15" y1="4" x2="15" y2="2" />
       </svg>
     ),
   },
@@ -278,22 +278,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             transition={{ duration: 0.4, ease: 'easeOut' }}
           >
             <div className="flex flex-col items-center gap-5">
-              {/* Elegant spinning ring loader */}
-              <div className="relative w-10 h-10">
-                <motion.div
-                  className="absolute inset-0 rounded-full border-2 border-primary/20"
-                />
-                <motion.div
-                  className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                />
-                <motion.div
-                  className="absolute inset-[6px] rounded-full border-[1.5px] border-transparent border-b-primary/50"
-                  animate={{ rotate: -360 }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                />
-              </div>
+              {/* Spinning ring loader */}
+              <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
               <motion.p
                 className="text-xs text-muted-foreground font-medium tracking-wide"
                 initial={{ opacity: 0 }}

@@ -144,7 +144,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                 </h2>
                 <button
                   onClick={onClose}
-                  className="p-2.5 min-h-11 min-w-11 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  className="p-2.5 min-h-11 min-w-11 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                   aria-label="Close dialog"
                 >
                   <XIcon />
@@ -165,7 +165,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       placeholder="Task name"
                       value={title}
                       onChange={e => { setTitle(e.target.value); if (titleError) setTitleError(''); }}
-                      className={`h-9 pr-10 text-sm rounded-xl ${titleError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}
+                      className={`h-9 pr-10 text-sm rounded-lg ${titleError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}
                     />
                     <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
                       <PopoverTrigger asChild>
@@ -198,7 +198,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                     value={description}
                     onChange={e => setDescription(e.target.value)}
                     rows={3}
-                    className="text-sm rounded-xl resize-none"
+                    className="text-sm rounded-lg resize-none"
                   />
                 </div>
 
@@ -215,7 +215,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                         if (timeError) setTimeError('');
                       }}
                     >
-                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-xl ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
+                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-lg ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
                         <SelectValue placeholder="Set time" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[240px]">
@@ -237,7 +237,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                         if (timeError) setTimeError('');
                       }}
                     >
-                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-xl ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
+                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-lg ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
                         <SelectValue placeholder="Set time" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[240px]">
@@ -257,7 +257,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground">Status</Label>
                     <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
-                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
+                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -271,7 +271,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground">Duration</Label>
                     <Select value={String(durationMinutes)} onValueChange={(v) => setDurationMinutes(Number(v))}>
-                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-xl">
+                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -298,7 +298,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       <PopoverTrigger asChild>
                         <button
                           type="button"
-                          className="h-9 flex-1 flex items-center gap-2 px-3 text-sm rounded-xl border border-input bg-background text-left hover:bg-accent/40 transition-colors"
+                          className="h-9 flex-1 flex items-center gap-2 px-3 text-sm rounded-lg border border-input bg-background text-left hover:bg-accent/40 transition-colors"
                         >
                           <svg className="h-4 w-4 text-muted-foreground flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
@@ -331,7 +331,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       <button
                         type="button"
                         onClick={() => setDueDate('')}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-input text-muted-foreground/60 hover:text-foreground hover:bg-accent/40 transition-colors"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-input text-muted-foreground/60 hover:text-foreground hover:bg-accent/40 transition-colors"
                         aria-label="Clear due date"
                       >
                         <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -345,13 +345,13 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
 
               {/* Footer */}
               <div className="flex gap-2 justify-end pt-1">
-                <Button variant="ghost" size="sm" onClick={onClose} className="rounded-xl">
+                <Button variant="ghost" size="sm" onClick={onClose} className="rounded-lg">
                   Cancel
                 </Button>
                 <Button
                   size="sm"
                   onClick={handleSave}
-                  className="rounded-xl px-5"
+                  className="rounded-lg px-5"
                 >
                   {isEdit ? 'Save changes' : 'Create task'}
                 </Button>

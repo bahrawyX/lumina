@@ -75,18 +75,18 @@ export interface TaskCardProps {
 const PRIORITY_META: Record<TaskPriority, { label: string; className: string; itemClassName: string }> = {
   high: {
     label: 'High',
-    className: 'border-red-400/30 bg-red-500/12 text-red-200 hover:bg-red-500/18',
-    itemClassName: 'text-red-200 focus:text-red-100 focus:bg-red-500/15',
+    className: 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15',
+    itemClassName: 'text-destructive focus:text-destructive focus:bg-destructive/15',
   },
   medium: {
     label: 'Medium',
-    className: 'border-amber-300/25 bg-amber-400/12 text-amber-200 hover:bg-amber-400/18',
-    itemClassName: 'text-amber-200 focus:text-amber-100 focus:bg-amber-500/15',
+    className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15',
+    itemClassName: 'text-amber-600 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-300 focus:bg-amber-500/15',
   },
   low: {
     label: 'Low',
-    className: 'border-cyan-300/25 bg-cyan-400/12 text-cyan-200 hover:bg-cyan-400/18',
-    itemClassName: 'text-cyan-200 focus:text-cyan-100 focus:bg-cyan-500/15',
+    className: 'border-border bg-muted/60 text-muted-foreground hover:bg-muted',
+    itemClassName: 'text-muted-foreground focus:text-foreground focus:bg-muted',
   },
 };
 
@@ -276,7 +276,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                   <DropdownMenuContent
                     align="start"
                     sideOffset={6}
-                    className="w-36 border-border bg-popover/95 backdrop-blur-md"
+                    className="w-36 border-border bg-popover/95"
                     onCloseAutoFocus={(e) => e.preventDefault()}
                   >
                     {PRIORITY_OPTIONS.map((priority) => {
