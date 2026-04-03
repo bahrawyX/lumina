@@ -342,10 +342,9 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
       className="rounded-2xl border border-border/50 bg-popover/95 shadow-2xl overflow-hidden"
       style={{ backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)' }}
     >
-      <div className="h-[2px] bg-gradient-to-r from-primary via-primary/60 to-transparent" />
       <div className="p-4">
         <div className="flex items-start gap-3 mb-3">
-          <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary text-sm">
+          <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-muted flex items-center justify-center text-foreground text-sm">
             ✦
           </div>
           <div>
@@ -367,7 +366,7 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
             onClick={onStart}
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-[12px] font-semibold hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-foreground text-background text-[12px] font-semibold hover:opacity-90 transition-opacity"
           >
             Show me around <span aria-hidden className="opacity-70">→</span>
           </motion.button>
@@ -377,7 +376,7 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
   </motion.div>
 );
 
-/* ── Floating tour trigger button ────────────────────────────────── */
+/* ── Floating tour trigger button (keep separate) ────────────────────────────────── */
 
 const FloatingTourButton = ({ onClick }: { onClick: () => void }) => (
   <motion.button

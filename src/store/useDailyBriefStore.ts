@@ -77,6 +77,7 @@ export const useDailyBriefStore = create<DailyBriefState>()(
         } catch (err) {
           set({
             isLoading: false,
+            lastFetched: new Date().toISOString(),
             error: err instanceof Error ? err.message : 'Failed to load brief',
           });
         }

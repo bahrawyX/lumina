@@ -57,7 +57,7 @@ const StatRow: React.FC<StatRowProps> = ({ lottie, label, value, valueClassName 
 // ── Skeleton ─────────────────────────────────────────────────────────────────
 
 const SkeletonCard: React.FC = () => (
-  <div className="mx-4 mt-4 mb-2 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm border-t-2 border-t-primary/60">
+  <div className="mx-4 mt-4 mb-2 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
     <div className="flex flex-col md:flex-row">
       <div className="flex-1 p-5 space-y-3">
         <div className="h-3 w-40 bg-muted rounded animate-pulse" />
@@ -129,7 +129,7 @@ export const DailyBriefCard: React.FC = () => {
 
   if (error && !brief) {
     return (
-      <div className="mx-4 mt-4 mb-2 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm p-5 border-t-2 border-t-primary/60">
+      <div className="mx-4 mt-4 mb-2 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm p-5">
         <p className="text-sm text-muted-foreground">
           Couldn&apos;t load your brief.{' '}
           <button
@@ -186,7 +186,7 @@ export const DailyBriefCard: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -8, height: 0 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="mx-4 mt-4 mb-2 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm border-t-2 border-t-primary/60"
+        className="mx-4 mt-4 mb-2 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-0">
