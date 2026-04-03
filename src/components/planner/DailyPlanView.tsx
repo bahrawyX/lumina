@@ -563,7 +563,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
         {/* Three-column body */}
         <div className={`flex-1 grid gap-3 md:gap-4 min-h-0 transition-[grid-template-columns] duration-200 ${
           poolOpen
-            ? 'grid-cols-1 md:grid-cols-[220px_1fr_200px] xl:grid-cols-[240px_1fr_220px]'
+            ? 'grid-cols-1 md:grid-cols-[260px_1fr_200px] xl:grid-cols-[290px_1fr_220px]'
             : 'grid-cols-1 md:grid-cols-[0px_1fr_200px] xl:grid-cols-[0px_1fr_220px]'
         }`}>
           {/* ── Left: Task Pool ───────────────────────────────────────────── */}
@@ -594,89 +594,96 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
             {/* Inline quick-add form */}
             {quickAddOpen && (
               <div className="flex-shrink-0 mb-2">
-                <div className="flex items-center gap-1.5 p-2 rounded-xl border border-gray-300 dark:border-primary/30 bg-white dark:bg-primary/10 shadow-sm">
-                  <Popover open={quickAddEmojiOpen} onOpenChange={setQuickAddEmojiOpen}>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label="Insert emoji"
-                        className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-[13px]"
-                      >
-                        <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" sideOffset={6} className="w-auto p-0 border-0 bg-transparent shadow-none">
-                      <CompactEmojiPicker onSelect={handleQuickAddEmoji} />
-                    </PopoverContent>
-                  </Popover>
-
-                  <input
-                    ref={quickAddInputRef}
-                    value={quickAddTitle}
-                    onChange={(e) => setQuickAddTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); commitQuickAdd(); }
-                      if (e.key === 'Escape') cancelQuickAdd();
-                    }}
-                    placeholder="Task title…"
-                    className="flex-1 min-w-0 bg-transparent text-[12px] font-medium text-foreground placeholder:text-muted-foreground/40 outline-none"
-                  />
-                  <Select value={String(quickAddDuration)} onValueChange={(value) => setQuickAddDuration(Number(value))}>
-                    <SelectTrigger
-                      aria-label="Task duration"
-                      className="flex-none h-7 w-[62px] rounded-md border-border/40 bg-muted/30 px-1.5 text-[10px] text-muted-foreground"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="w-[72px] border-border bg-popover/95 text-foreground backdrop-blur-md">
-                      <SelectItem className="text-[11px]" value="15">15m</SelectItem>
-                      <SelectItem className="text-[11px]" value="30">30m</SelectItem>
-                      <SelectItem className="text-[11px]" value="45">45m</SelectItem>
-                      <SelectItem className="text-[11px]" value="60">60m</SelectItem>
-                      <SelectItem className="text-[11px]" value="90">90m</SelectItem>
-                      <SelectItem className="text-[11px]" value="120">120m</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="flex-shrink-0 flex items-center rounded-md border border-border/40 bg-muted/30 overflow-hidden">
-                    {(['easy', 'medium', 'hard'] as const).map((d) => {
-                      const active = quickAddDifficulty === d;
-                      const colors = d === 'easy'
-                        ? active ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/60 hover:text-emerald-600'
-                        : d === 'medium'
-                        ? active ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground/60 hover:text-amber-600'
-                        : active ? 'bg-destructive/20 text-destructive' : 'text-muted-foreground/60 hover:text-destructive';
-                      return (
+                <div className="flex flex-col gap-1.5 p-2 rounded-xl border border-gray-300 dark:border-primary/30 bg-white dark:bg-primary/10 shadow-sm">
+                  {/* Row 1: emoji + title input */}
+                  <div className="flex items-center gap-1.5">
+                    <Popover open={quickAddEmojiOpen} onOpenChange={setQuickAddEmojiOpen}>
+                      <PopoverTrigger asChild>
                         <button
-                          key={d}
                           type="button"
-                          onClick={() => setQuickAddDifficulty(d)}
-                          className={`w-5 h-7 text-[10px] font-bold transition-colors ${colors}`}
-                          title={d.charAt(0).toUpperCase() + d.slice(1)}
+                          aria-label="Insert emoji"
+                          className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-[13px]"
                         >
-                          {d[0].toUpperCase()}
+                          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                         </button>
-                      );
-                    })}
+                      </PopoverTrigger>
+                      <PopoverContent align="start" sideOffset={6} className="w-auto p-0 border-0 bg-transparent shadow-none">
+                        <CompactEmojiPicker onSelect={handleQuickAddEmoji} />
+                      </PopoverContent>
+                    </Popover>
+
+                    <input
+                      ref={quickAddInputRef}
+                      value={quickAddTitle}
+                      onChange={(e) => setQuickAddTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitQuickAdd(); }
+                        if (e.key === 'Escape') cancelQuickAdd();
+                      }}
+                      placeholder="Task title…"
+                      className="flex-1 min-w-0 bg-transparent text-[12px] font-medium text-foreground placeholder:text-muted-foreground/40 outline-none"
+                    />
                   </div>
-                  <button
-                    type="button"
-                    onClick={commitQuickAdd}
-                    disabled={!quickAddTitle.trim()}
-                    className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-md bg-primary text-primary-foreground disabled:opacity-30 hover:bg-primary/90 transition-colors"
-                  >
-                    <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelQuickAdd}
-                    className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors"
-                  >
-                    <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
+                  {/* Row 2: duration + difficulty + actions */}
+                  <div className="flex items-center gap-1.5">
+                    <Select value={String(quickAddDuration)} onValueChange={(value) => setQuickAddDuration(Number(value))}>
+                      <SelectTrigger
+                        aria-label="Task duration"
+                        className="flex-none h-6 w-[56px] rounded-md border-border/40 bg-muted/30 px-1.5 text-[10px] text-muted-foreground"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="w-[72px] border-border bg-popover/95 text-foreground backdrop-blur-md">
+                        <SelectItem className="text-[11px]" value="15">15m</SelectItem>
+                        <SelectItem className="text-[11px]" value="30">30m</SelectItem>
+                        <SelectItem className="text-[11px]" value="45">45m</SelectItem>
+                        <SelectItem className="text-[11px]" value="60">60m</SelectItem>
+                        <SelectItem className="text-[11px]" value="90">90m</SelectItem>
+                        <SelectItem className="text-[11px]" value="120">120m</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex-shrink-0 flex items-center rounded-md border border-border/40 bg-muted/30 overflow-hidden">
+                      {(['easy', 'medium', 'hard'] as const).map((d) => {
+                        const active = quickAddDifficulty === d;
+                        const colors = d === 'easy'
+                          ? active ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/60 hover:text-emerald-600'
+                          : d === 'medium'
+                          ? active ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground/60 hover:text-amber-600'
+                          : active ? 'bg-destructive/20 text-destructive' : 'text-muted-foreground/60 hover:text-destructive';
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setQuickAddDifficulty(d)}
+                            className={`w-5 h-6 text-[10px] font-bold transition-colors ${colors}`}
+                            title={d.charAt(0).toUpperCase() + d.slice(1)}
+                          >
+                            {d[0].toUpperCase()}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      onClick={commitQuickAdd}
+                      disabled={!quickAddTitle.trim()}
+                      className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-md bg-primary text-primary-foreground disabled:opacity-30 hover:bg-primary/90 transition-colors"
+                    >
+                      <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelQuickAdd}
+                      className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <p className="text-[10px] text-muted-foreground/40 mt-1 px-1">Enter to add · Esc to cancel</p>
               </div>
