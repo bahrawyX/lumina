@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Task } from '../../types/task';
+import type { Task, TaskDifficulty } from '../../types/task';
 import type { PlannedTaskItem } from '../../store/useDailyPlanStore';
 import { formatTimeRange, durationMinutes, formatMinutes } from '../../utils/dailyPlanUtils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
@@ -12,6 +12,13 @@ interface PlannedTaskCardProps {
   onDragHandlePointerDown: (e: React.PointerEvent) => void;
   isDragging?: boolean;
 }
+
+const DIFF_STYLE: Record<TaskDifficulty, string> = {
+  easy: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10',
+  medium: 'text-amber-600 dark:text-amber-400 bg-amber-500/10',
+  hard: 'text-destructive bg-destructive/10',
+};
+const DIFF_LABEL: Record<TaskDifficulty, string> = { easy: 'E', medium: 'M', hard: 'H' };
 
 const GripIcon: React.FC = () => (
   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-primary/40">
@@ -89,6 +96,14 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
               <span className="text-[8px] font-medium text-primary/70 tabular-nums">{timeLabel}</span>
               <span className="text-[8px] text-muted-foreground/50">·</span>
               <span className="text-[8px] text-muted-foreground/60">{formatMinutes(durmins)}</span>
+              {task?.difficulty && (
+                <>
+                  <span className="text-[8px] text-muted-foreground/50">·</span>
+                  <span className={`text-[8px] font-semibold px-1 rounded ${DIFF_STYLE[task.difficulty]}`}>
+                    {DIFF_LABEL[task.difficulty]}
+                  </span>
+                </>
+              )}
             </div>
           </>
         )}

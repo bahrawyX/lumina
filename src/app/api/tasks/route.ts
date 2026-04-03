@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
       status: row.status as 'todo' | 'doing' | 'done',
       dbStatus: row.status,
       priority: row.priority as 'low' | 'medium' | 'high',
+      difficulty: (row.difficulty ?? 'medium') as 'easy' | 'medium' | 'hard',
       dueDate: row.dueDate ? row.dueDate.toISOString().slice(0, 10) : null,
       durationMinutes: row.estimatedMinutes,
       scheduledStart: row.scheduledStart ?? null,
@@ -79,11 +80,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId } = body as {
+  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId } = body as {
     title?: string;
     description?: string;
     status?: string;
     priority?: string;
+    difficulty?: string;
     dueDate?: string | null;
     durationMinutes?: number;
     scheduledStart?: string | null;
@@ -97,6 +99,7 @@ export async function POST(req: NextRequest) {
   }
 
   const validPriorities = ['low', 'medium', 'high'];
+  const validDifficulties = ['easy', 'medium', 'hard'];
 
   try {
     const db = getDatabase();
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest) {
         description: description ?? null,
         status: normalizeTaskStatusForDb(status),
         priority: (validPriorities.includes(priority ?? '') ? priority : 'medium') as 'low' | 'medium' | 'high',
+        difficulty: (validDifficulties.includes(difficulty ?? '') ? difficulty : 'medium') as 'easy' | 'medium' | 'hard',
         dueDate: dueDate ? new Date(dueDate) : null,
         estimatedMinutes: typeof durationMinutes === 'number' ? durationMinutes : 30,
         scheduledStart: normalizeTimeString(scheduledStart),

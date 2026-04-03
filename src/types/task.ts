@@ -1,5 +1,6 @@
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high';
+export type TaskDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface Task {
   id: string;
@@ -8,6 +9,7 @@ export interface Task {
   context?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  difficulty: TaskDifficulty;
   order: number;
   createdAt: string;
   updatedAt: string;

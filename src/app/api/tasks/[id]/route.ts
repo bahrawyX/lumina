@@ -53,6 +53,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       if (normalized) patch.status = normalized;
     }
     if (typeof body.priority === 'string' && validPriorities.includes(body.priority)) patch.priority = body.priority;
+    const validDifficulties = ['easy', 'medium', 'hard'];
+    if (typeof body.difficulty === 'string' && validDifficulties.includes(body.difficulty)) patch.difficulty = body.difficulty;
     if (typeof body.durationMinutes === 'number') patch.estimatedMinutes = body.durationMinutes;
     if (body.scheduledStart === null) patch.scheduledStart = null;
     else if (typeof body.scheduledStart === 'string') {

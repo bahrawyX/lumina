@@ -21,7 +21,7 @@ import { useCalendarStore } from '../../store/useCalendarStore';
 import { useCalendarEventsStore } from '../../store/useCalendarEventsStore';
 import { useTaskBoardStore } from '../../store/useTaskBoardStore';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskPriority, TaskStatus } from '../../types/task';
+import type { Task, TaskPriority, TaskStatus, TaskDifficulty } from '../../types/task';
 import { COLUMNS } from '../../types/task';
 import { EVENT_COLORS } from '../../constants';
 import { addMinutesToTime } from '../../utils/taskBoard';

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskStatus, TaskPriority } from '../types/task';
+import type { Task, TaskStatus, TaskPriority, TaskDifficulty } from '../types/task';
 import {
   isTaskPriority,
   isTaskStatus,
@@ -51,7 +51,7 @@ interface TaskBoardState {
   hydrateFromDb: (tasks: Task[]) => void;
   hydrateFromDbFailed: () => void;
   setUserId: (userId: string) => void;
-  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; dueDate?: string | null; durationMinutes?: number }) => Task | null;
+  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty; dueDate?: string | null; durationMinutes?: number }) => Task | null;
   updateTask: (id: string, patch: Partial<Omit<Task, 'id' | 'createdAt'>>) => void;
   rollOverTasks: (taskIds: string[], nextDate: string) => void;
   deleteTask: (id: string) => void;
@@ -86,7 +86,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   },
 
 
-  addTask: ({ title, description, status, priority = 'medium', dueDate, durationMinutes }) => {
+  addTask: ({ title, description, status, priority = 'medium', difficulty = 'medium', dueDate, durationMinutes }) => {
     const trimmed = title.trim();
     if (!trimmed) return null;
 
@@ -106,6 +106,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       context: null,
       status: nextStatus,
       priority: nextPriority,
+      difficulty: (['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium') as TaskDifficulty,
       order: maxOrder + 1,
       createdAt: now,
       updatedAt: now,
@@ -162,6 +163,13 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       const nextRemainingFocusTime = patch.remainingFocusTime !== undefined
         ? (patch.remainingFocusTime === null ? null : Math.max(0, Math.round(patch.remainingFocusTime)))
         : existing.remainingFocusTime ?? null;
+      const nextDurationMinutes = patch.durationMinutes !== undefined
+        ? (typeof patch.durationMinutes === 'number' && patch.durationMinutes > 0 ? patch.durationMinutes : existing.durationMinutes)
+        : existing.durationMinutes;
+      const validDifficulties = ['easy', 'medium', 'hard'] as const;
+      const nextDifficulty = patch.difficulty !== undefined && validDifficulties.includes(patch.difficulty as typeof validDifficulties[number])
+        ? patch.difficulty
+        : existing.difficulty ?? 'medium';
       const now = new Date().toISOString();
 
       if (nextStatus === existing.status) {
@@ -173,6 +181,8 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
                 description: nextDescription,
                 context: nextContext,
                 priority: nextPriority,
+                difficulty: nextDifficulty,
+                durationMinutes: nextDurationMinutes,
                 dueDate: nextDueDate,
                 linkedEventId: nextLinkedEventId,
                 scheduledStart: nextScheduledStart,
@@ -204,6 +214,8 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
         context: nextContext,
         status: nextStatus,
         priority: nextPriority,
+        difficulty: nextDifficulty,
+        durationMinutes: nextDurationMinutes,
         dueDate: nextDueDate,
         linkedEventId: nextLinkedEventId,
         scheduledStart: nextScheduledStart,

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { CompactEmojiPicker } from '../ui/CompactEmojiPicker';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskStatus } from '../../types/task';
+import type { Task, TaskStatus, TaskDifficulty } from '../../types/task';
 import { COLUMNS } from '../../types/task';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -16,16 +16,6 @@ import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
 import { titleSchema, getFieldError } from '../../lib/validation';
 
-// ── Time options (30-min intervals across 24 h = 48 slots) ───────────────────
-const INTERVAL_MINS = 30;
-const SLOTS_PER_DAY = (24 * 60) / INTERVAL_MINS; // 48
-
-const TIME_OPTIONS = Array.from({ length: SLOTS_PER_DAY }, (_, i) => {
-  const h = Math.floor(i * INTERVAL_MINS / 60);
-  const m = (i * INTERVAL_MINS) % 60 === 0 ? '00' : '30';
-  return `${String(h).padStart(2, '0')}:${m}`;
-});
-
 // ── Close icon ────────────────────────────────────────────────────────────────
 
 const XIcon: React.FC = () => (
@@ -34,12 +24,36 @@ const XIcon: React.FC = () => (
   </svg>
 );
 
+// ── Difficulty config ─────────────────────────────────────────────────────────
+
+const DIFFICULTY_OPTIONS: { value: TaskDifficulty; label: string; activeClass: string; inactiveClass: string }[] = [
+  {
+    value: 'easy',
+    label: 'Easy',
+    activeClass: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600 dark:text-emerald-400',
+    inactiveClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-transparent hover:bg-emerald-500/15',
+  },
+  {
+    value: 'medium',
+    label: 'Medium',
+    activeClass: 'bg-amber-500/20 border-amber-500/40 text-amber-600 dark:text-amber-400',
+    inactiveClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-transparent hover:bg-amber-500/15',
+  },
+  {
+    value: 'hard',
+    label: 'Hard',
+    activeClass: 'bg-destructive/20 border-destructive/40 text-destructive',
+    inactiveClass: 'bg-destructive/10 text-destructive border-transparent hover:bg-destructive/15',
+  },
+];
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface TaskDialogPayload {
   title: string;
   description?: string;
   status: TaskStatus;
+  difficulty: TaskDifficulty;
   durationMinutes: number;
   dueDate?: string | null;
   startTime?: string | null;
@@ -65,12 +79,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>(defaultStatus);
+  const [difficulty, setDifficulty] = useState<TaskDifficulty>('medium');
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [dueDate, setDueDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
   const [titleError, setTitleError] = useState('');
-  const [timeError, setTimeError] = useState('');
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
@@ -80,12 +92,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setTitle(task?.title ?? '');
       setDescription(task?.description ?? '');
       setStatus(task?.status ?? defaultStatus);
+      setDifficulty(task?.difficulty ?? 'medium');
       setDurationMinutes(task?.durationMinutes ?? 30);
       setDueDate(normalizeDueDateString(task?.dueDate) ?? '');
-      setStartTime(linkedEvent?.startTime ?? '');
-      setEndTime(linkedEvent?.endTime ?? '');
       setTitleError('');
-      setTimeError('');
       setDatePickerOpen(false);
       setEmojiPickerOpen(false);
     }
@@ -103,23 +113,15 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
     const titleErr = getFieldError(titleSchema, title);
     if (titleErr) { setTitleError(titleErr); return; }
 
-    if ((startTime && !endTime) || (!startTime && endTime)) {
-      setTimeError('Both start and end time are required if one is set.');
-      return;
-    }
-    if (startTime && endTime && endTime <= startTime) {
-      setTimeError('End time must be after start time.');
-      return;
-    }
-
     onSave({
       title: title.trim(),
       description: description.trim() || undefined,
       status,
+      difficulty,
       durationMinutes,
       dueDate: normalizeDueDateString(dueDate),
-      startTime: startTime || null,
-      endTime: endTime || null,
+      startTime: null,
+      endTime: null,
     });
   };
 
@@ -202,55 +204,24 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   />
                 </div>
 
-                {/* Manual schedule times */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">
-                      Start Time
-                    </Label>
-                    <Select
-                      value={startTime || undefined}
-                      onValueChange={(v) => {
-                        setStartTime(v);
-                        if (timeError) setTimeError('');
-                      }}
-                    >
-                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-lg ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
-                        <SelectValue placeholder="Set time" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[240px]">
-                        {TIME_OPTIONS.map(t => (
-                          <SelectItem key={t} value={t}>{t}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">
-                      End Time
-                    </Label>
-                    <Select
-                      value={endTime || undefined}
-                      onValueChange={(v) => {
-                        setEndTime(v);
-                        if (timeError) setTimeError('');
-                      }}
-                    >
-                      <SelectTrigger className={`h-10 md:h-9 text-sm rounded-lg ${timeError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}>
-                        <SelectValue placeholder="Set time" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[240px]">
-                        {TIME_OPTIONS.map(t => (
-                          <SelectItem key={t} value={t}>{t}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                {/* Difficulty pills */}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Difficulty</Label>
+                  <div className="flex gap-2">
+                    {DIFFICULTY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setDifficulty(opt.value)}
+                        className={`rounded-lg px-4 py-1.5 text-sm font-medium border transition-colors ${
+                          difficulty === opt.value ? opt.activeClass : opt.inactiveClass
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                {timeError && (
-                  <p className="text-[11px] text-destructive">{timeError}</p>
-                )}
 
                 {/* Status + Duration row */}
                 <div className="grid grid-cols-2 gap-3">

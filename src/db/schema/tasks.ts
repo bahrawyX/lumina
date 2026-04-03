@@ -24,6 +24,12 @@ export const taskPriorityEnum = pgEnum('task_priority', [
   'high',
 ]);
 
+export const taskDifficultyEnum = pgEnum('task_difficulty', [
+  'easy',
+  'medium',
+  'hard',
+]);
+
 export const tasks = pgTable(
   'tasks',
   {
@@ -35,6 +41,7 @@ export const tasks = pgTable(
     description: text('description'),
     status: taskStatusEnum('status').notNull().default('todo'),
     priority: taskPriorityEnum('priority').notNull().default('medium'),
+    difficulty: taskDifficultyEnum('difficulty').notNull().default('medium'),
     estimatedMinutes: integer('estimated_minutes').notNull().default(30),
     dueDate: timestamp('due_date', { withTimezone: true }),
     scheduledStart: varchar('scheduled_start', { length: 5 }),

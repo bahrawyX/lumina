@@ -401,6 +401,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [quickAddDuration, setQuickAddDuration] = useState(30);
+  const [quickAddDifficulty, setQuickAddDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [quickAddEmojiOpen, setQuickAddEmojiOpen] = useState(false);
   const quickAddInputRef = useRef<HTMLInputElement>(null);
 
@@ -424,16 +425,17 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   const commitQuickAdd = useCallback(() => {
     const trimmed = quickAddTitle.trim();
     if (!trimmed) { setQuickAddOpen(false); return; }
-    addTask({ title: trimmed, status: 'todo', priority: 'medium', durationMinutes: quickAddDuration });
+    addTask({ title: trimmed, status: 'todo', priority: 'medium', difficulty: quickAddDifficulty, durationMinutes: quickAddDuration });
     setQuickAddTitle('');
     // Keep open so user can add multiple tasks in a row
     setTimeout(() => quickAddInputRef.current?.focus(), 20);
-  }, [quickAddTitle, quickAddDuration, addTask]);
+  }, [quickAddTitle, quickAddDuration, quickAddDifficulty, addTask]);
 
   const cancelQuickAdd = useCallback(() => {
     setQuickAddOpen(false);
     setQuickAddTitle('');
     setQuickAddDuration(30);
+    setQuickAddDifficulty('medium');
     setQuickAddEmojiOpen(false);
   }, []);
 
@@ -635,6 +637,27 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                       <SelectItem className="text-[11px]" value="120">120m</SelectItem>
                     </SelectContent>
                   </Select>
+                  <div className="flex-shrink-0 flex items-center rounded-md border border-border/40 bg-muted/30 overflow-hidden">
+                    {(['easy', 'medium', 'hard'] as const).map((d) => {
+                      const active = quickAddDifficulty === d;
+                      const colors = d === 'easy'
+                        ? active ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/60 hover:text-emerald-600'
+                        : d === 'medium'
+                        ? active ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground/60 hover:text-amber-600'
+                        : active ? 'bg-destructive/20 text-destructive' : 'text-muted-foreground/60 hover:text-destructive';
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setQuickAddDifficulty(d)}
+                          className={`w-5 h-7 text-[10px] font-bold transition-colors ${colors}`}
+                          title={d.charAt(0).toUpperCase() + d.slice(1)}
+                        >
+                          {d[0].toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <button
                     type="button"
                     onClick={commitQuickAdd}

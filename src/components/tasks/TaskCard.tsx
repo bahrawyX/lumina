@@ -5,7 +5,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskPriority } from '../../types/task';
+import type { Task, TaskPriority, TaskDifficulty } from '../../types/task';
 import { useDailyPlanStore } from '../../store/useDailyPlanStore';
 import {
   getDueDatePresentation,
@@ -87,6 +87,24 @@ const PRIORITY_META: Record<TaskPriority, { label: string; className: string; it
     label: 'Low',
     className: 'border-border bg-muted/60 text-muted-foreground hover:bg-muted',
     itemClassName: 'text-muted-foreground focus:text-foreground focus:bg-muted',
+  },
+};
+
+const DIFFICULTY_META: Record<TaskDifficulty, { label: string; short: string; className: string }> = {
+  easy: {
+    label: 'Easy',
+    short: 'E',
+    className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  },
+  medium: {
+    label: 'Medium',
+    short: 'M',
+    className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  },
+  hard: {
+    label: 'Hard',
+    short: 'H',
+    className: 'border-destructive/25 bg-destructive/10 text-destructive',
   },
 };
 
@@ -297,6 +315,9 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                 </DropdownMenu>
               </div>
             )}
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${DIFFICULTY_META[task.difficulty ?? 'medium'].className}`}>
+              {DIFFICULTY_META[task.difficulty ?? 'medium'].label}
+            </span>
             {linkedEvent && (
               <span className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary dark:border-primary/25 dark:bg-primary/15 dark:text-primary-foreground/90">
                 Scheduled

@@ -181,6 +181,12 @@ function normalizePersistedTask(rawTask: PersistedTaskRecord, index: number): Ta
       : null,
     status: isTaskStatus(rawTask.status) ? rawTask.status : 'todo',
     priority: isTaskPriority(rawTask.priority) ? rawTask.priority : 'medium',
+    difficulty: (['easy', 'medium', 'hard'] as const).includes(rawTask.difficulty as 'easy' | 'medium' | 'hard')
+      ? (rawTask.difficulty as 'easy' | 'medium' | 'hard')
+      : 'medium',
+    durationMinutes: typeof rawTask.durationMinutes === 'number' && rawTask.durationMinutes > 0
+      ? rawTask.durationMinutes
+      : 30,
     order: typeof rawTask.order === 'number' && Number.isFinite(rawTask.order) ? rawTask.order : index,
     createdAt,
     updatedAt,
