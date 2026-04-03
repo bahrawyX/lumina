@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { CalendarEvent, EditScope } from '../types';
 import notify from '../utils/notify';
 import { useTaskBoardStore } from './useTaskBoardStore';
+import { useLinkStore } from './useLinkStore';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import { getStorageItem, setStorageItem } from '@/lib/storage';
 
@@ -155,6 +156,7 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
       return;
     }
 
+    const oldEvent = events.find((e) => e.id === event.id);
     const newEvents = events.map((e) => e.id === event.id ? event : e);
     const newHistory = [...history.slice(0, historyIndex + 1), { events: newEvents }].slice(-50);
     saveState(newEvents, userId);
@@ -164,15 +166,30 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     const body = editScope ? { ...event, editScope } : event;
     eventsPersistence.updateOne(event.id, body);
     notify(`Event updated: ${event.title}`);
+    // Prompt task completion when event marked complete
+    if (event.completed && !oldEvent?.completed && event.linkedTaskId) {
+      const task = useTaskBoardStore.getState().tasks.find((t) => t.id === event.linkedTaskId);
+      if (task && task.status !== 'done') {
+        useLinkStore.getState().promptTaskCompletion(task.id, task.title);
+      }
+    }
   },
 
   toggleEventCompletion: (id) => {
     const { events, history, historyIndex, userId } = get();
+    const oldEvent = events.find((e) => e.id === id);
     const newEvents = events.map((e) => e.id === id ? { ...e, completed: !e.completed } : e);
     const newHistory = [...history.slice(0, historyIndex + 1), { events: newEvents }].slice(-50);
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
+    // Prompt task completion when event toggled to complete
+    if (!oldEvent?.completed && oldEvent?.linkedTaskId) {
+      const task = useTaskBoardStore.getState().tasks.find((t) => t.id === oldEvent.linkedTaskId);
+      if (task && task.status !== 'done') {
+        useLinkStore.getState().promptTaskCompletion(task.id, task.title);
+      }
+    }
   },
 
   deleteEvent: (id, editScope) => {

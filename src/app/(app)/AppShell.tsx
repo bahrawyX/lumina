@@ -24,6 +24,8 @@ import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
+import { useLinkStore } from "@/store/useLinkStore";
+import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
 
 
 const MOBILE_NAV_ITEMS = [
@@ -124,6 +126,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
   const onboardingHydrated = useOnboardingHydrated();
   const isGuest = useGuestStore((s) => s.isGuest);
+  const pendingTaskCompletion = useLinkStore((s) => s.pendingTaskCompletion);
+  const confirmTaskCompletion = useLinkStore((s) => s.confirmTaskCompletion);
+  const dismissPrompt = useLinkStore((s) => s.dismissPrompt);
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
@@ -367,6 +372,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </div>
+
+      {/* Task completion prompt — shown when linked event is marked complete */}
+      <AnimatePresence>
+        {pendingTaskCompletion && (
+          <TaskCompletionPrompt
+            key={pendingTaskCompletion.taskId}
+            taskId={pendingTaskCompletion.taskId}
+            taskTitle={pendingTaskCompletion.taskTitle}
+            onConfirm={confirmTaskCompletion}
+            onDismiss={dismissPrompt}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }

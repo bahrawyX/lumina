@@ -32,6 +32,7 @@ import { expandRecurrences } from '../../utils/dateUtils';
 import { TIMELINE_START_HOUR, TIMELINE_END_HOUR } from '../../utils/dailyPlanUtils';
 import { format } from 'date-fns';
 import { uid } from '../../lib/uid';
+import { linkTaskEvent } from '../../lib/persistence/linkPersistence';
 import notify from '../../utils/notify';
 import { TaskColumn } from './TaskColumn';
 import { TaskCard } from './TaskCard';
@@ -203,12 +204,15 @@ export const TaskBoard: React.FC = () => {
             timezone,
             color: EVENT_COLORS.Focus,
           });
+          // Optimistic UI update
           updateTask(editingTask.id, {
             linkedEventId: eventId,
             dueDate: scheduleDate,
             scheduledStart: startTime,
             scheduledEnd: endTime,
           });
+          // Atomic DB link (fire-and-forget — store already set optimistically)
+          linkTaskEvent(editingTask.id, eventId);
         }
       }
     } else {
@@ -233,6 +237,7 @@ export const TaskBoard: React.FC = () => {
           color: EVENT_COLORS.Focus,
         });
 
+        // Optimistic UI update
         updateTask(createdTask.id, {
           linkedEventId: eventId,
           status: createdTask.status === 'todo' ? 'doing' : createdTask.status,
@@ -240,6 +245,9 @@ export const TaskBoard: React.FC = () => {
           scheduledStart: startTime,
           scheduledEnd: endTime,
         });
+
+        // Atomic DB link (fire-and-forget — store already set optimistically)
+        linkTaskEvent(createdTask.id, eventId);
 
         // Auto-add to today's daily plan
         if (scheduleDate === format(new Date(), 'yyyy-MM-dd')) {
@@ -364,6 +372,8 @@ export const TaskBoard: React.FC = () => {
         scheduledStart: result.startTime,
         scheduledEnd: result.endTime,
       });
+      // Atomic DB link
+      linkTaskEvent(task.id, eventId);
     }
 
     notify(`✓ "${task.title}" scheduled at ${result.startTime}`);
@@ -418,6 +428,8 @@ export const TaskBoard: React.FC = () => {
         scheduledStart: payload.startTime,
         scheduledEnd: endTime,
       });
+      // Atomic DB link
+      linkTaskEvent(schedulingTask.id, eventId);
     }
 
     closeScheduleDialog();

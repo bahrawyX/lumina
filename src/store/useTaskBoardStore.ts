@@ -8,6 +8,7 @@ import {
 } from '../utils/taskBoard';
 import { useDailyPlanStore } from './useDailyPlanStore';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
+import { unlinkTaskEvent } from '@/lib/persistence/linkPersistence';
 import { getStorageItem, setStorageItem } from '@/lib/storage';
 import { uid } from '@/lib/uid';
 
@@ -275,9 +276,9 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       saveTasks(next, state.userId);
       return { tasks: next };
     });
-    // Persist the unlink to DB for each affected task
+    // Atomic DB unlink for each affected task
     affectedIds.forEach((taskId) => {
-      tasksPersistence.updateOne(taskId, { linkedEventId: null });
+      unlinkTaskEvent(taskId, eventId);
     });
   },
 

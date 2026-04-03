@@ -135,6 +135,7 @@ src/
 │   │   ├── intelligence/
 │   │   │   ├── route.ts              ← GET: AI schedule analysis (includes recurring instances)
 │   │   │   └── parse-event/route.ts  ← POST: Gemini NL→structured event parser (server-side only)
+│   │   ├── link/route.ts             ← POST/DELETE: atomic bidirectional task↔event link/unlink
 │   │   ├── users/preferences/route.ts
 │   │   └── maintenance/cleanup-external-events/route.ts
 │   ├── globals.css
@@ -663,6 +664,15 @@ Body: `{ text: string (3-500 chars), timezone: string, referenceDate: "YYYY-MM-D
 Response: `{ parsed: ParsedEventData, raw: string }` or `{ error: string, raw?: string }`.
 `ParsedEventData`: `{ title, date, startTime, endTime, isAllDay, location, description, recurrence, confidence (0-1), ambiguities[] }`.
 
+#### `POST /api/link`
+Atomically links a task and event bidirectionally in a single DB transaction.
+Body: `{ taskId: uuid, eventId: uuid }`. Validates ownership, checks for existing links (409 if already linked elsewhere).
+Response: `{ ok: true, taskId, eventId }`
+
+#### `DELETE /api/link`
+Atomically unlinks a task and event. Body: `{ taskId: uuid, eventId: uuid }`.
+Response: `{ ok: true }`
+
 ---
 
 ### Tasks
@@ -1091,6 +1101,7 @@ Inactive item: `text-muted-foreground`
 | 4 | Low | No unique DB constraint for one primary local calendar per user (app logic handles it but DB doesn't enforce). |
 | 5 | ~~Low~~ Resolved | ~~`taskTitle` not persisted~~ — Fixed: `task_title` column added, API reads/writes it, UI renders with "Deep work" fallback. |
 | 6 | Medium | Recurring event visual indicator (↻ loop icon) not yet shown on event chips in day/week/month views. Affects: `DayView.tsx`, `WeekView.tsx`, `MonthView.tsx`. |
+| 7 | Low | `POST /api/events` and `POST /api/tasks` create each side independently before `POST /api/link` is called. If event creation succeeds but link call fails, the event exists without a link. Consider wrapping all three in a single API endpoint for truly atomic create+link. |
 
 ---
 
