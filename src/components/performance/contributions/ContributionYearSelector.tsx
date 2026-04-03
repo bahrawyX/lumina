@@ -23,7 +23,7 @@ const ContributionYearSelector: React.FC<ContributionYearSelectorProps> = ({
           <TabsTrigger
             key={year}
             value={String(year)}
-            className="h-7 px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+            className="h-7 px-3 text-xs data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-none"
             aria-label={`Show contributions for ${year}`}
           >
             {year}
