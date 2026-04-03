@@ -3,6 +3,7 @@ import { accounts } from './accounts';
 import { achievements } from './achievements';
 import { calendars } from './calendars';
 import { contactSubmissions } from './contactSubmissions';
+import { dailyBriefCache } from './dailyBriefCache';
 import { eventRecurrence } from './eventRecurrence';
 import { events } from './events';
 import { focusSessions } from './focusSessions';
@@ -28,6 +29,7 @@ export * from './integrations';
 export * from './achievements';
 export * from './moodLogs';
 export * from './contactSubmissions';
+export * from './dailyBriefCache';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),
@@ -42,6 +44,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 	achievements: many(achievements),
 	moodLogs: many(moodLogs),
 	contactSubmissions: many(contactSubmissions),
+	dailyBriefCache: many(dailyBriefCache),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -154,6 +157,13 @@ export const moodLogsRelations = relations(moodLogs, ({ one }) => ({
 export const contactSubmissionsRelations = relations(contactSubmissions, ({ one }) => ({
 	user: one(users, {
 		fields: [contactSubmissions.userId],
+		references: [users.id],
+	}),
+}));
+
+export const dailyBriefCacheRelations = relations(dailyBriefCache, ({ one }) => ({
+	user: one(users, {
+		fields: [dailyBriefCache.userId],
 		references: [users.id],
 	}),
 }));

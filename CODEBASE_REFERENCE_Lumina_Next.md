@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-02 (v4 — RFC 5545 recurring events, NL event input via Gemini, created_via_nl tracking)
+> Last updated: 2026-04-03 (v5 — atomic task↔event link, TaskCompletionPrompt, Smart Daily Brief with Lottie icons)
 
 ---
 
@@ -132,6 +132,7 @@ src/
 │   │   ├── external-events/
 │   │   │   ├── all/route.ts
 │   │   │   └── [provider]/route.ts
+│   │   ├── daily-brief/route.ts       ← GET: Smart Daily Brief (parallel data fetch + Gemini narrative + cache)
 │   │   ├── intelligence/
 │   │   │   ├── route.ts              ← GET: AI schedule analysis (includes recurring instances)
 │   │   │   └── parse-event/route.ts  ← POST: Gemini NL→structured event parser (server-side only)
@@ -164,6 +165,7 @@ src/
 │   │   ├── MoodAnalysisCard.tsx   ← 3-day mood trend card, shown above Pomodoro timer
 │   │   └── StopwatchView.tsx     ← HH:MM:SS.cs, requestAnimationFrame, up to 20 laps
 │   ├── intelligence/
+│   │   ├── DailyBriefCard.tsx         ← Smart daily brief: narrative + stats with Lottie icons
 │   │   └── ParsedEventConfirmCard.tsx ← NL parse confirmation with confidence border + ambiguity warnings
 │   ├── icons/                     ← All SVG icon components + barrel index.ts
 │   ├── pages/
@@ -673,6 +675,11 @@ Response: `{ ok: true, taskId, eventId }`
 Atomically unlinks a task and event. Body: `{ taskId: uuid, eventId: uuid }`.
 Response: `{ ok: true }`
 
+#### `GET /api/daily-brief`
+Query params: `timezone` (required), `refresh=true` (optional, forces Gemini regeneration).
+Returns `DailyBriefData`: eventCount, nextEvent, meetingHours, bestFocusWindow (via `detectFocusWindows`), topPriorityTask, overdueCount, totalOpenTasks, plannedTaskCount, currentStreak, isStreakAtRisk, narrative (Gemini, cached per user per day in `daily_brief_cache`), narrativeGeneratedAt.
+All 7 data fetches run in `Promise.all`. Gemini max once per user per day (DB UNIQUE constraint enforced).
+
 ---
 
 ### Tasks
@@ -1149,6 +1156,15 @@ Inactive item: `text-muted-foreground`
 - `RecurrenceSelector.tsx`: presets + custom builder
 - `EditRecurrenceDialog.tsx`: scope picker for edit/delete operations
 - EventModal integration for create/edit/delete with recurrence
+
+### 20.9 Smart Daily Brief — COMPLETE
+- `GET /api/daily-brief`: parallel fetch of events, tasks, planner items, focus sessions, user streak, cached narrative
+- Reuses `detectFocusWindows` from `focusWindows.ts` for best focus window (no duplicated logic)
+- Gemini 2.0 Flash generates 2-sentence personalised narrative, cached in `daily_brief_cache` table (UNIQUE user_id + date)
+- `useDailyBriefStore` with Zustand persist, midnight refresh timer, tab visibility handler
+- `DailyBriefCard.tsx` with Lottie animated icons (no emojis), desktop 2-panel + mobile stacked layout
+- Dismissible per day, auto-refetch on day change, guest fallback (no Gemini call)
+- `LottieIcon.tsx` wrapper with hover-replay via lottieRef
 
 ### 20.8 Task ↔ Event Two-Way Link — COMPLETE
 - `linked_event_id` UUID column added to tasks table with FK → events(id) ON DELETE SET NULL

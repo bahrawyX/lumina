@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { DailyBriefCard } from '@/components/intelligence/DailyBriefCard';
 import {
   ChevronLeftIcon, ChevronRightIcon, UndoIcon, RedoIcon,
   SearchIcon, SparkIcon as ZapIcon, MonthIcon as LayoutGridIcon,
@@ -179,6 +180,8 @@ const CalendarPage: React.FC = () => {
           </div>
         </div>
       </header>
+
+      <DailyBriefCard />
 
       <div className="flex-1 min-h-0 relative">
         <AnimatePresence mode="wait" custom={navDirection}>
