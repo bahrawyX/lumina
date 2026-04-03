@@ -91,13 +91,13 @@ export const POMODORO_COMPLETE_LAYER_MAP: LayerColorMap = {
 }
 
 export const EMPTY_STATE_TASKS_LAYER_MAP: LayerColorMap = {
-  clipboard_body: 'card',
+  clipboard_body: 'border',
   clipboard_clip: 'mutedForeground',
-  line_1: 'border',
-  line_2: 'border',
-  line_3: 'border',
+  line_1: 'mutedForeground',
+  line_2: 'mutedForeground',
+  line_3: 'mutedForeground',
   dot_blink: 'primary',
-  shadow: 'foreground',
+  shadow: 'mutedForeground',
 }
 
 export const STREAK_FIRE_LAYER_MAP: LayerColorMap = {

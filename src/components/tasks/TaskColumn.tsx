@@ -9,6 +9,7 @@ import type { Task, TaskPriority, TaskStatus } from '../../types/task';
 import { getDoingFocusHint } from '../../utils/taskBoard';
 import { TaskCard } from './TaskCard';
 import { useVirtualWindow } from '../../hooks/useVirtualWindow';
+import { LottieAnimation, EMPTY_STATE_TASKS_LAYER_MAP } from '../ui/LottieAnimation';
 
 // ── Column status accent colors ───────────────────────────────────────────────
 
@@ -146,26 +147,14 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
               <p className="text-[11px] text-muted-foreground/50 select-none">Drop here</p>
             ) : (
               <>
-                <svg
-                  width={56}
-                  height={56}
-                  viewBox="0 0 56 56"
-                  fill="none"
-                  className="animate-[float_3s_ease-in-out_infinite] opacity-30"
-                >
-                  {/* Shadow ellipse */}
-                  <ellipse cx="28" cy="52" rx="14" ry="2" className="fill-muted-foreground/20" />
-                  {/* Clipboard body */}
-                  <rect x="12" y="10" width="32" height="38" rx="5" className="fill-muted/80 stroke-border" strokeWidth="1" />
-                  {/* Clip tab */}
-                  <rect x="19" y="6" width="18" height="8" rx="4" className="fill-background stroke-border" strokeWidth="1" />
-                  {/* Clip hole */}
-                  <circle cx="28" cy="10" r="2" className="fill-muted-foreground/40" />
-                  {/* Lines */}
-                  <rect x="18" y="22" width="20" height="2" rx="1" className="fill-muted-foreground/30" />
-                  <rect x="18" y="28" width="15" height="2" rx="1" className="fill-muted-foreground/30" />
-                  <rect x="18" y="34" width="10" height="2" rx="1" className="fill-muted-foreground/30" />
-                </svg>
+                <LottieAnimation
+                  path="/animations/empty-state-tasks.json"
+                  layerColorMap={EMPTY_STATE_TASKS_LAYER_MAP}
+                  width={80}
+                  height={80}
+                  loop={true}
+                  autoplay={true}
+                />
                 <p className="text-[11px] text-muted-foreground/40 select-none transition-colors">
                   {id === 'todo' ? 'No tasks yet' :
                    id === 'doing' ? 'Nothing in progress' :
