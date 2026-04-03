@@ -95,18 +95,23 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
             type="button"
             onClick={onAutoPlan}
             disabled={isPlanning || unplannedCount === 0}
-            className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 md:py-1.5 rounded-xl text-xs md:text-[11px] font-semibold bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 md:py-1.5 rounded-xl text-xs md:text-[11px] font-medium border border-border/60 bg-card text-foreground shadow-sm hover:bg-muted/60 active:scale-[0.97] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             title={unplannedCount === 0 ? 'No unscheduled tasks' : 'Auto-schedule unscheduled tasks'}
           >
             {isPlanning ? (
               <>
-                <svg className="animate-spin" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <svg className="animate-spin" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
-                Planning…
+                Scheduling…
               </>
             ) : (
-              'Plan My Day'
+              <>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="9" y1="2" x2="9" y2="6" /><line x1="15" y1="2" x2="15" y2="6" />
+                </svg>
+                Schedule All
+              </>
             )}
           </button>
         )}
