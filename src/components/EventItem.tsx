@@ -3,7 +3,7 @@
 import React, { memo } from 'react';
 import { CalendarEvent } from '../types';
 import { EVENT_COLORS } from '../constants';
-import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
+import { GoogleProviderIcon, OutlookProviderIcon, RepeatIcon } from './icons';
 
 interface EventItemProps {
   event: CalendarEvent;
@@ -28,6 +28,7 @@ const EventItem = memo<EventItemProps>(({ event, onClick }) => {
         ? 'google'
         : 'local');
   const isExternal = provider === 'microsoft' || provider === 'google';
+  const isRecurring = !!(event.recurrence || event.recurringEventId || event.isRecurrenceException);
 
   const color = isExternal
     ? (event.color || (provider === 'google' ? '#4285F4' : '#0078D4'))
@@ -64,6 +65,12 @@ const EventItem = memo<EventItemProps>(({ event, onClick }) => {
           color: isExternal ? color : undefined,
         }}
       >
+        {isRecurring && (
+          <RepeatIcon
+            size={10}
+            className={`flex-shrink-0 ${event.isRecurrenceException ? 'opacity-100' : 'opacity-50'}`}
+          />
+        )}
         {isExternal && (provider === 'google'
           ? <GoogleProviderIcon size={10} className="flex-shrink-0" />
           : <OutlookProviderIcon size={10} className="flex-shrink-0 opacity-80" />)}

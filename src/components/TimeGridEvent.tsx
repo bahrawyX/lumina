@@ -9,6 +9,7 @@ import {
   ExternalLinkIcon as ExternalLink,
   GoogleProviderIcon,
   OutlookProviderIcon,
+  RepeatIcon,
 } from './icons';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
@@ -66,10 +67,19 @@ const EventContent = React.memo<{
     ? event.title.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') + '..'
     : event.title;
 
+  const isRecurring = !!(event.recurrence || event.recurringEventId || event.isRecurrenceException);
+  const showRecurringIcon = isRecurring && !isVeryShort;
+
   return (
     <>
       <div className="flex items-start justify-between gap-1 overflow-hidden">
         <div className="flex items-center gap-1.5 overflow-hidden">
+          {showRecurringIcon && (
+            <RepeatIcon
+              size={isShort ? 10 : 12}
+              className={`flex-shrink-0 ${event.isRecurrenceException ? 'opacity-100' : 'opacity-50'}`}
+            />
+          )}
           {isExternal && !isVeryShort && (
             provider === 'google'
               ? <GoogleProviderIcon size={isShort ? 10 : 12} className="flex-shrink-0" />
@@ -148,6 +158,9 @@ const EventContent = React.memo<{
   prev.event.source === next.event.source &&
   prev.event.provider === next.event.provider &&
   prev.event.category === next.event.category &&
+  prev.event.recurrence === next.event.recurrence &&
+  prev.event.recurringEventId === next.event.recurringEventId &&
+  prev.event.isRecurrenceException === next.event.isRecurrenceException &&
   prev.isShort === next.isShort &&
   prev.isNarrow === next.isNarrow &&
   prev.forceInitialsMode === next.forceInitialsMode &&

@@ -32,7 +32,7 @@ import { expandRecurrences } from '../../utils/dateUtils';
 import { TIMELINE_START_HOUR, TIMELINE_END_HOUR } from '../../utils/dailyPlanUtils';
 import { format } from 'date-fns';
 import { uid } from '../../lib/uid';
-import { linkTaskEvent } from '../../lib/persistence/linkPersistence';
+import { createLinkedEvent } from '../../lib/persistence/linkPersistence';
 import notify from '../../utils/notify';
 import { TaskColumn } from './TaskColumn';
 import { TaskCard } from './TaskCard';
@@ -65,7 +65,7 @@ function findContainerForId(id: string, tasks: Task[]): TaskStatus | null {
 
 export const TaskBoard: React.FC = () => {
   const events        = useCalendarEventsStore(s => s.events);
-  const addEvent      = useCalendarEventsStore(s => s.addEvent);
+  const addEventOptimistic = useCalendarEventsStore(s => s.addEventOptimistic);
   const updateEvent   = useCalendarEventsStore(s => s.updateEvent);
   const timezone      = useCalendarStore(s => s.timezone);
 
@@ -191,7 +191,7 @@ export const TaskBoard: React.FC = () => {
           });
         } else {
           const eventId = uid('ev_');
-          addEvent({
+          addEventOptimistic({
             id: eventId,
             title: payload.title,
             description: payload.description ?? '',
@@ -204,15 +204,24 @@ export const TaskBoard: React.FC = () => {
             timezone,
             color: EVENT_COLORS.Focus,
           });
-          // Optimistic UI update
           updateTask(editingTask.id, {
             linkedEventId: eventId,
             dueDate: scheduleDate,
             scheduledStart: startTime,
             scheduledEnd: endTime,
           });
-          // Atomic DB link (fire-and-forget — store already set optimistically)
-          linkTaskEvent(editingTask.id, eventId);
+          // Atomic: create event + link in one DB transaction
+          createLinkedEvent({
+            title: payload.title,
+            date: scheduleDate,
+            startTime,
+            endTime,
+            description: payload.description,
+            category: 'Focus',
+            color: EVENT_COLORS.Focus,
+            timezone,
+            taskId: editingTask.id,
+          });
         }
       }
     } else {
@@ -223,7 +232,7 @@ export const TaskBoard: React.FC = () => {
         const endTime = payload.endTime as string;
         const eventId = uid('ev_');
 
-        addEvent({
+        addEventOptimistic({
           id: eventId,
           title: payload.title,
           description: payload.description ?? '',
@@ -237,7 +246,6 @@ export const TaskBoard: React.FC = () => {
           color: EVENT_COLORS.Focus,
         });
 
-        // Optimistic UI update
         updateTask(createdTask.id, {
           linkedEventId: eventId,
           status: createdTask.status === 'todo' ? 'doing' : createdTask.status,
@@ -246,8 +254,18 @@ export const TaskBoard: React.FC = () => {
           scheduledEnd: endTime,
         });
 
-        // Atomic DB link (fire-and-forget — store already set optimistically)
-        linkTaskEvent(createdTask.id, eventId);
+        // Atomic: create event + link in one DB transaction
+        createLinkedEvent({
+          title: payload.title,
+          date: scheduleDate,
+          startTime,
+          endTime,
+          description: payload.description,
+          category: 'Focus',
+          color: EVENT_COLORS.Focus,
+          timezone,
+          taskId: createdTask.id,
+        });
 
         // Auto-add to today's daily plan
         if (scheduleDate === format(new Date(), 'yyyy-MM-dd')) {
@@ -256,7 +274,7 @@ export const TaskBoard: React.FC = () => {
       }
     }
     closeDialog();
-  }, [editingTask, linkedEvents, updateEvent, addEvent, timezone, updateTask, addTask, closeDialog, addPlanItem]);
+  }, [editingTask, linkedEvents, updateEvent, addEventOptimistic, timezone, updateTask, addTask, closeDialog, addPlanItem]);
 
   const handleDelete = useCallback((id: string) => {
     deleteTask(id);
@@ -352,7 +370,7 @@ export const TaskBoard: React.FC = () => {
       });
     } else {
       const eventId = uid('ev_');
-      addEvent({
+      addEventOptimistic({
         id: eventId,
         title: task.title,
         description: task.description ?? '',
@@ -372,12 +390,22 @@ export const TaskBoard: React.FC = () => {
         scheduledStart: result.startTime,
         scheduledEnd: result.endTime,
       });
-      // Atomic DB link
-      linkTaskEvent(task.id, eventId);
+      // Atomic: create event + link in one DB transaction
+      createLinkedEvent({
+        title: task.title,
+        date: today,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        description: task.description ?? undefined,
+        category: 'Focus',
+        color: EVENT_COLORS.Focus,
+        timezone,
+        taskId: task.id,
+      });
     }
 
     notify(`✓ "${task.title}" scheduled at ${result.startTime}`);
-  }, [events, addPlanItem, getPlanItemsForDate, linkedEvents, updateEvent, updateTask, addEvent, timezone]);
+  }, [events, addPlanItem, getPlanItemsForDate, linkedEvents, updateEvent, updateTask, addEventOptimistic, timezone]);
 
   const handleSchedule = useCallback((payload: TaskSchedulePayload) => {
     if (!schedulingTask) return;
@@ -408,7 +436,7 @@ export const TaskBoard: React.FC = () => {
       });
     } else {
       const eventId = uid('ev_');
-      addEvent({
+      addEventOptimistic({
         id: eventId,
         title: schedulingTask.title,
         description: schedulingTask.description ?? '',
@@ -428,12 +456,22 @@ export const TaskBoard: React.FC = () => {
         scheduledStart: payload.startTime,
         scheduledEnd: endTime,
       });
-      // Atomic DB link
-      linkTaskEvent(schedulingTask.id, eventId);
+      // Atomic: create event + link in one DB transaction
+      createLinkedEvent({
+        title: schedulingTask.title,
+        date: payload.date,
+        startTime: payload.startTime,
+        endTime,
+        description: schedulingTask.description ?? undefined,
+        category: 'Focus',
+        color: EVENT_COLORS.Focus,
+        timezone,
+        taskId: schedulingTask.id,
+      });
     }
 
     closeScheduleDialog();
-  }, [schedulingTask, linkedEvents, updateEvent, updateTask, addEvent, timezone, closeScheduleDialog]);
+  }, [schedulingTask, linkedEvents, updateEvent, updateTask, addEventOptimistic, timezone, closeScheduleDialog]);
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
 

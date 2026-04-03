@@ -18,3 +18,4 @@ export * from './EditIcon';
 export * from './ActivityIcon';
 export * from './ProviderIcons';
 export * from './LightbulbIcon';
+export * from './RepeatIcon';

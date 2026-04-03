@@ -31,6 +31,8 @@ interface CalendarEventsState {
   hydrateFromDbFailed: () => void;
   setUserId: (userId: string) => void;
   addEvent: (event: CalendarEvent) => void;
+  /** Add event to local state only (no DB persistence). Use when persistence is handled externally. */
+  addEventOptimistic: (event: CalendarEvent) => void;
   updateEvent: (event: CalendarEvent, editScope?: EditScope) => void;
   toggleEventCompletion: (id: string) => void;
   deleteEvent: (id: string, editScope?: EditScope) => void;
@@ -132,6 +134,20 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     eventsPersistence.createOne(event);
     const timeRange = event.startTime && event.endTime ? ` (${event.startTime}–${event.endTime})` : '';
     notify(`Event created: ${event.title}${timeRange}`);
+  },
+
+  addEventOptimistic: (event) => {
+    if (event.startTime && event.endTime && !isValidEventTimes(event.startTime, event.endTime)) {
+      notify('Invalid event times — start must be before end');
+      return;
+    }
+    const { events, history, historyIndex, userId } = get();
+    const newEvents = [...events, event];
+    const newHistory = [...history.slice(0, historyIndex + 1), { events: newEvents }].slice(-50);
+    saveState(newEvents, userId);
+    set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
+    triggerIntelligence();
+    // No DB persistence — caller handles it (e.g. via createLinkedEvent)
   },
 
   updateEvent: (event, editScope) => {

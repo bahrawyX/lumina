@@ -1,0 +1,202 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { auth } from '@/lib/auth';
+import { getDatabase } from '@/lib/db';
+import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
+
+/**
+ * POST /api/events/create-linked
+ *
+ * Atomically create an event AND link it to a task in a single DB transaction.
+ * Eliminates the orphan-event risk of the two-call pattern (POST /api/events + POST /api/link).
+ */
+
+const createLinkedSchema = z.object({
+  title: z.string().min(1, 'title is required'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'startTime must be HH:mm').optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'endTime must be HH:mm').optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  isAllDay: z.boolean().optional(),
+  category: z.string().optional(),
+  color: z.string().optional(),
+  timezone: z.string().optional(),
+  recurrence: z
+    .object({
+      rrule: z.string(),
+      exdates: z.array(z.string()).optional(),
+      until: z.string().optional(),
+    })
+    .optional(),
+  taskId: z.string().uuid('taskId must be a valid UUID'),
+});
+
+function parseDateAndTime(date: string, time: string | undefined, fallback: string): Date | null {
+  const normalizedTime = time ?? fallback;
+  const parsed = new Date(`${date}T${normalizedTime}:00.000Z`);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export async function POST(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const userId = session.user.id;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const parsed = createLinkedSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues.map((i) => i.message).join('; ') },
+      { status: 400 },
+    );
+  }
+
+  const {
+    title,
+    date,
+    startTime,
+    endTime,
+    description,
+    location,
+    isAllDay,
+    category,
+    color,
+    timezone,
+    recurrence,
+    taskId,
+  } = parsed.data;
+
+  const startTs = parseDateAndTime(date, startTime, '00:00');
+  const endTs = parseDateAndTime(date, endTime, '23:59');
+
+  if (!startTs || !endTs) {
+    return NextResponse.json({ error: 'Invalid date/time values' }, { status: 400 });
+  }
+  if (endTs <= startTs) {
+    return NextResponse.json({ error: 'endTime must be after startTime' }, { status: 400 });
+  }
+
+  try {
+    const db = getDatabase();
+
+    // ── Pre-checks (outside transaction for fast-fail) ──────────────────────
+
+    // Verify task exists and belongs to user
+    const [task] = await db
+      .select({ id: tasks.id, linkedEventId: tasks.linkedEventId })
+      .from(tasks)
+      .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)))
+      .limit(1);
+
+    if (!task) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+
+    if (task.linkedEventId) {
+      return NextResponse.json(
+        { error: 'Task is already linked to an event. Unlink first.' },
+        { status: 409 },
+      );
+    }
+
+    // Find or create user's default local calendar
+    let calendarId: string;
+    const existing = await db
+      .select({ id: calendars.id })
+      .from(calendars)
+      .where(
+        and(
+          eq(calendars.userId, userId),
+          eq(calendars.provider, 'local'),
+          eq(calendars.isPrimary, true),
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      calendarId = existing[0].id;
+    } else {
+      const [newCal] = await db
+        .insert(calendars)
+        .values({ userId, provider: 'local', name: 'My Calendar', isPrimary: true })
+        .returning({ id: calendars.id });
+      calendarId = newCal.id;
+    }
+
+    // ── Single atomic transaction ───────────────────────────────────────────
+
+    const result = await db.transaction(async (tx) => {
+      // 1. Insert event
+      const [eventRow] = await tx
+        .insert(events)
+        .values({
+          userId,
+          calendarId,
+          title,
+          description: description ?? null,
+          location: location ?? null,
+          startTime: startTs,
+          endTime: endTs,
+          isAllDay: isAllDay ?? false,
+          timezone: timezone ?? 'UTC',
+          category: category ?? null,
+          color: color ?? null,
+          completed: false,
+          linkedTaskId: taskId,
+          provider: 'local',
+          syncStatus: 'local_only',
+          source: 'manual',
+        })
+        .returning({ id: events.id });
+
+      const eventId = eventRow.id;
+
+      // 2. Insert recurrence if provided
+      let recurrenceId: string | null = null;
+      if (recurrence?.rrule) {
+        const [recRow] = await tx
+          .insert(eventRecurrence)
+          .values({
+            eventId,
+            userId,
+            rrule: recurrence.rrule.trim(),
+            exdates: recurrence.exdates ?? [],
+            recurrenceEnd: recurrence.until ? new Date(recurrence.until) : null,
+          })
+          .returning({ id: eventRecurrence.id });
+        recurrenceId = recRow.id;
+      }
+
+      // 3. Link task → event
+      await tx
+        .update(tasks)
+        .set({ linkedEventId: eventId, updatedAt: new Date() })
+        .where(eq(tasks.id, taskId));
+
+      return { eventId, recurrenceId };
+    });
+
+    return NextResponse.json(
+      {
+        eventId: result.eventId,
+        recurrenceId: result.recurrenceId,
+        taskId,
+        linkedAt: new Date().toISOString(),
+      },
+      { status: 201 },
+    );
+  } catch (err) {
+    console.error('[POST /api/events/create-linked]', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
