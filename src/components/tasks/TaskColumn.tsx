@@ -9,7 +9,6 @@ import type { Task, TaskPriority, TaskStatus } from '../../types/task';
 import { getDoingFocusHint } from '../../utils/taskBoard';
 import { TaskCard } from './TaskCard';
 import { useVirtualWindow } from '../../hooks/useVirtualWindow';
-import { LottieAnimation, EMPTY_STATE_TASKS_LAYER_MAP } from '../ui/LottieAnimation';
 
 // ── Column status accent colors ───────────────────────────────────────────────
 
@@ -147,14 +146,22 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
               <p className="text-[11px] text-muted-foreground/50 select-none">Drop here</p>
             ) : (
               <>
-                <LottieAnimation
-                  path="/animations/empty-state-tasks.json"
-                  layerColorMap={EMPTY_STATE_TASKS_LAYER_MAP}
-                  width={80}
-                  height={80}
-                  loop={true}
-                  autoplay={true}
-                />
+                <svg
+                  width={48}
+                  height={48}
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  className="text-muted-foreground/25 animate-[float_3s_ease-in-out_infinite]"
+                >
+                  {/* Clipboard body */}
+                  <rect x="10" y="8" width="28" height="34" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                  {/* Clip tab */}
+                  <rect x="17" y="4" width="14" height="8" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                  {/* Lines */}
+                  <line x1="16" y1="20" x2="32" y2="20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="16" y1="26" x2="28" y2="26" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="16" y1="32" x2="24" y2="32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
                 <p className="text-[11px] text-muted-foreground/40 select-none transition-colors">
                   {id === 'todo' ? 'No tasks yet' :
                    id === 'doing' ? 'Nothing in progress' :
