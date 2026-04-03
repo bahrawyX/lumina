@@ -548,7 +548,7 @@ export const TaskBoard: React.FC = () => {
             Task Board
           </h1>
           <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5 hidden sm:block">
-            {tasks.length === 0 ? 'Create a task to get started' : `${tasks.length} task${tasks.length !== 1 ? 's' : ''} across ${COLUMNS.length} columns`}
+            {tasks.length === 0 ? 'No tasks yet' : `${tasks.length} task${tasks.length !== 1 ? 's' : ''}`}
           </p>
         </div>
 

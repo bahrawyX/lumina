@@ -162,7 +162,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                     <Input
                       id="task-title"
                       autoFocus
-                      placeholder="What needs to be done?"
+                      placeholder="Task name"
                       value={title}
                       onChange={e => { setTitle(e.target.value); if (titleError) setTitleError(''); }}
                       className={`h-9 pr-10 text-sm rounded-xl ${titleError ? 'border-destructive ring-1 ring-destructive/30' : ''}`}
@@ -194,7 +194,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                   </Label>
                   <Textarea
                     id="task-desc"
-                    placeholder="Add more context... (optional)"
+                    placeholder="Notes, links, details…"
                     value={description}
                     onChange={e => setDescription(e.target.value)}
                     rows={3}

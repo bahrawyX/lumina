@@ -14,8 +14,11 @@ interface IntelligencePanelProps {
 
 const skeletonRows = Array.from({ length: 4 }, (_, i) => i);
 
+const EMPTY_CONFLICTS: never[] = [];
+const EMPTY_PLAN: never[] = [];
+
 function ConflictAlerts() {
-  const conflicts = useIntelligenceStore((s) => s.data?.conflicts ?? []);
+  const conflicts = useIntelligenceStore((s) => s.data?.conflicts ?? EMPTY_CONFLICTS);
   if (conflicts.length === 0) return null;
 
   return (
@@ -68,7 +71,7 @@ export const IntelligencePanel: React.FC<IntelligencePanelProps> = ({ open, onCl
   }, [open, fetchIntelligence]);
 
   const plannedTaskIds = React.useMemo(() => getPlannedTaskIds(), [data]);
-  const todayPlanItems = useDailyPlanStore((s) => s.plansByDate[todayKey()] ?? []);
+  const todayPlanItems = useDailyPlanStore((s) => s.plansByDate[todayKey()] ?? EMPTY_PLAN);
   const allTasks = useTaskBoardStore((s) => s.tasks);
   const openTaskCount = allTasks.filter((t) => t.status !== 'done').length;
   const allOpenTasksPlanned = openTaskCount > 0 && todayPlanItems.length >= openTaskCount;

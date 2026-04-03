@@ -742,10 +742,10 @@ const AppSidebar: React.FC = () => {
                       }`}
                   >
                     <TimerIcon size={14} strokeWidth={1.5} />
-                    {!isSidebarCollapsed && <span>Ignite Flow</span>}
+                    {!isSidebarCollapsed && <span>Start Focus</span>}
                   </button>
                 </TooltipTrigger>
-                {isSidebarCollapsed && <TooltipContent side="right">Ignite Flow</TooltipContent>}
+                {isSidebarCollapsed && <TooltipContent side="right">Start Focus</TooltipContent>}
               </Tooltip>
             )}
           </div>
@@ -970,7 +970,7 @@ const AppSidebar: React.FC = () => {
                       alt={profile.name}
                       className="rounded-[8px]"
                     />
-                    <AvatarFallback className="rounded-[8px] text-[10px] font-bold" style={{ backgroundColor: '#6D59E0', color: '#ffffff' }}>
+                    <AvatarFallback className="rounded-[8px] text-[10px] font-bold" style={{ backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}>
                       {profile.name.charAt(0)}
                     </AvatarFallback>
                   </Avatar>
@@ -982,7 +982,7 @@ const AppSidebar: React.FC = () => {
                       {profile.name}
                     </p>
                     <p className="font-sans text-[10px] text-muted-foreground truncate leading-tight">
-                      {profile.role || 'Active now'}
+                      {profile.role || ''}
                     </p>
                   </div>
                 )}
@@ -1144,7 +1144,7 @@ const AppSidebar: React.FC = () => {
                             <div className="min-w-0 flex items-center gap-2.5">
                               <span
                                 className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10"
-                                style={{ backgroundColor: calendar.color || '#6D59E0' }}
+                                style={{ backgroundColor: calendar.color || 'hsl(var(--primary))' }}
                               />
                               <span className="truncate text-sm text-foreground">{calendar.name}</span>
                             </div>

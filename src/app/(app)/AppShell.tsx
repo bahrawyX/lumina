@@ -300,7 +300,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.3 }}
               >
-                Loading Lumina
+
               </motion.p>
             </div>
           </motion.div>
@@ -308,7 +308,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       <div
-        className="flex h-screen w-full bg-warm-50 dark:bg-neutral-dark overflow-hidden text-gray-800 dark:text-gray-100 antialiased selection:bg-primary selection:text-white"
+        className="flex h-screen w-full bg-warm-50 dark:bg-neutral-dark overflow-hidden text-gray-800 dark:text-gray-100 antialiased selection:bg-primary selection:text-primary-foreground"
         style={{ animation: 'appShellFadeIn 0.4s cubic-bezier(0.4,0,0.2,1) both' }}
       >
         <div className="hidden md:flex md:h-full">

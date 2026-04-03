@@ -358,7 +358,7 @@ const DayView: React.FC<DayViewProps> = ({ events }) => {
   return (
     <CalendarSurface className="relative">
       {isSheetOpen && (
-        <div className="pointer-events-none absolute inset-0 z-30 bg-black/10" />
+        <div className="pointer-events-none absolute inset-0 z-30 bg-foreground/5" />
       )}
 
       <DayCalendarTimeline
@@ -439,7 +439,7 @@ const DayView: React.FC<DayViewProps> = ({ events }) => {
             {dayEvents.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1 }}>
                 <p className="text-muted-foreground/50 text-sm font-medium select-none">
-                  Click a time slot to add your first event
+                  No events today
                 </p>
               </div>
             )}
@@ -453,9 +453,8 @@ const DayView: React.FC<DayViewProps> = ({ events }) => {
       {showJumpToNow && isSameDay(currentDate, now) && (
         <button
           onClick={scrollToNow}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 bg-card/90 backdrop-blur-xl text-foreground text-[11px] font-black uppercase tracking-widest rounded-full shadow-elevated z-50 hover:bg-card transition-all flex items-center gap-2 border border-border animate-in fade-in slide-in-from-bottom-4 duration-200"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 bg-card/90 backdrop-blur-xl text-foreground text-[11px] font-semibold rounded-full shadow-elevated z-50 hover:bg-card transition-all flex items-center gap-2 border border-border animate-in fade-in slide-in-from-bottom-4 duration-200"
         >
-          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
           Jump to Now
         </button>
       )}

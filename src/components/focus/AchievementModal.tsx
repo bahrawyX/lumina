@@ -56,7 +56,7 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
             onClick={() => onOpenChange(false)}
             className="mt-2 w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
           >
-            Awesome!
+            Got it
           </button>
         </div>
       </DialogContent>

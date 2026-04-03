@@ -568,9 +568,8 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
             {timeIndicatorTop > 0 && weekDays.some(d => isSameDay(d, now)) && (
               <div className="absolute left-0 right-0 z-40 pointer-events-none flex items-center" style={{ top: `${timeIndicatorTop}px` }}>
                 <div className="h-[2px] flex-1 bg-red-500 opacity-60 relative">
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                    NOW • {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 px-3 py-1 bg-destructive text-destructive-foreground text-[10px] font-semibold rounded-full shadow-lg flex items-center gap-1.5">
+                    {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               </div>
@@ -612,7 +611,7 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
                   {(dayDensityMap.get(dateStr) ?? 0) > 0 && (
                     <div
                       className="absolute inset-0 pointer-events-none z-0"
-                      style={{ backgroundColor: `rgba(109,89,224,${Math.min(0.10, (dayDensityMap.get(dateStr) ?? 0) * 0.3)})` }}
+                      style={{ backgroundColor: `hsl(var(--primary) / ${Math.min(0.10, (dayDensityMap.get(dateStr) ?? 0) * 0.3)})` }}
                     />
                   )}
 
@@ -736,7 +735,7 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
           {events.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1 }}>
               <p className="text-muted-foreground/50 text-sm font-medium select-none">
-                Click a time slot to schedule your first event
+                No events this week
               </p>
             </div>
           )}
@@ -747,9 +746,8 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
       {showJumpToNow && (
         <button
           onClick={jumpToNow}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 bg-primary text-white text-xs font-bold rounded-full shadow-elevated z-50 hover:bg-primary-hover transition-all flex items-center gap-2 group animate-in fade-in slide-in-from-bottom-4 duration-200"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 bg-primary text-white text-xs font-bold rounded-lg shadow-elevated z-50 hover:bg-primary-hover transition-all flex items-center gap-2 group animate-in fade-in slide-in-from-bottom-4 duration-200"
         >
-          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
           Jump to Now
         </button>
       )}

@@ -20,15 +20,15 @@ const STEPS: TutorialStep[] = [
   {
     target: 'new-entry',
     icon: '✦',
-    title: 'Create Anything, Instantly',
-    desc: 'Add an event, task, or note in a single click — the fastest path from thought to action.',
+    title: 'Quick Add',
+    desc: 'Add events, tasks, or notes from here.',
     hint: 'Shortcut: N',
   },
   {
     target: 'ignite-flow',
     icon: '⚡',
-    title: 'Ignite Your Flow State',
-    desc: 'Start a focused work session. Lumina tracks every minute and builds your streak automatically.',
+    title: 'Start a Focus Session',
+    desc: 'Start a timed focus session. Your streak updates automatically.',
   },
   {
     target: 'nav-calendar',
@@ -242,10 +242,9 @@ const TooltipCard = ({ step, stepIndex, left, top, arrow, onNext, onSkip }: Tool
     <Arrow side={arrow} />
 
     <div
-      className="relative rounded-2xl border border-border/50 bg-popover/95 shadow-2xl overflow-hidden"
+      className="relative rounded-2xl border border-border/50 bg-popover/95 shadow-lg overflow-hidden"
       style={{ backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)' }}
     >
-      <div className="h-[2px] bg-gradient-to-r from-primary via-primary/60 to-transparent" />
 
       <div className="p-5">
         {/* Progress pills */}
@@ -339,7 +338,7 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
     transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
   >
     <div
-      className="rounded-2xl border border-border/50 bg-popover/95 shadow-2xl overflow-hidden"
+      className="rounded-2xl border border-border/50 bg-popover/95 shadow-lg overflow-hidden"
       style={{ backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)' }}
     >
       <div className="p-4">
@@ -350,7 +349,7 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
           <div>
             <p className="font-semibold text-[13px] text-foreground leading-snug">New to Lumina?</p>
             <p className="text-[11.5px] text-muted-foreground mt-0.5 leading-relaxed">
-              Take a 2-minute tour and discover everything your workspace can do.
+              A quick walkthrough of the main features.
             </p>
           </div>
         </div>
@@ -381,7 +380,7 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
 const FloatingTourButton = ({ onClick }: { onClick: () => void }) => (
   <motion.button
     onClick={onClick}
-    className="fixed bottom-24 right-5 z-[9980] w-10 h-10 rounded-full bg-primary/10 border border-primary/30 text-primary flex items-center justify-center shadow-lg hover:bg-primary/20 transition-colors pointer-events-auto"
+    className="fixed bottom-24 right-5 z-[9980] w-10 h-10 rounded-full bg-primary/10 border border-primary/30 text-primary flex items-center justify-center shadow-md hover:bg-primary/20 transition-colors pointer-events-auto"
     initial={{ opacity: 0, scale: 0.8 }}
     animate={{ opacity: 1, scale: 1 }}
     exit={{ opacity: 0, scale: 0.8 }}

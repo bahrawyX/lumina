@@ -99,7 +99,7 @@ const OverflowPopover = memo<{
             >
               <span
                 className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: ev.color ?? '#6D59E0' }}
+                style={{ backgroundColor: ev.color ?? 'hsl(var(--primary))' }}
               />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground truncate leading-tight">
@@ -128,7 +128,7 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
     return (
       <div
         className="h-full flex flex-col p-1 sm:p-1.5 rounded-xl bg-white/20 dark:bg-neutral-panel/20"
-        style={{ opacity: 0.38, pointerEvents: 'none', cursor: 'default' }}
+        style={{ opacity: 0.4, pointerEvents: 'none' }}
         role="gridcell"
         aria-disabled="true"
       >

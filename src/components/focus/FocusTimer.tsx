@@ -119,7 +119,7 @@ export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption })
           <span className={`text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${
             timerState === 'paused' ? 'text-amber-500/80' : 'text-primary/60'
           }`}>
-            {timerState === 'paused' ? 'Paused' : 'Flowing'}
+            {timerState === 'paused' ? 'Paused' : 'Running'}
           </span>
         </div>
       </div>
@@ -128,7 +128,7 @@ export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption })
         <button
           type="button"
           onClick={timerState === 'running' ? onRequestInterruption : resumeSession}
-          className="flex items-center justify-center w-12 h-12 rounded-2xl border border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+          className="flex items-center justify-center w-12 h-12 rounded-xl border border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
           aria-label={timerState === 'running' ? 'Pause' : 'Resume'}
         >
           {timerState === 'running' ? <PauseIcon /> : <PlayIcon />}
@@ -137,7 +137,7 @@ export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption })
         <button
           type="button"
           onClick={handleFinish}
-          className="flex items-center gap-2 px-7 h-12 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.97] transition-all"
+          className="flex items-center gap-2 px-7 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.97] transition-all"
         >
           <CheckIcon />
           Finish session

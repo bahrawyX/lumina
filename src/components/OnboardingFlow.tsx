@@ -205,9 +205,9 @@ const StepWelcome = memo(() => (
 
     <div className="grid grid-cols-1 gap-2">
       {[
-        { text: 'Track your focus patterns' },
-        { text: 'Suggest optimal work windows' },
-        { text: 'Power your flow sessions' },
+        { text: 'Set your schedule and preferences' },
+        { text: 'Pick a focus rhythm that fits you' },
+        { text: 'Optionally sync your calendar' },
       ].map(({ text }) => (
         <div key={text} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border/60">
           <div className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
@@ -592,7 +592,7 @@ const StepAboutYou = memo<{
           placeholder="e.g. Sarah Chen"
           value={name}
           onChange={(e) => onChange(e.target.value, role)}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50 transition-colors duration-150"
+          className="w-full px-3.5 py-2.5 rounded-lg bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50 transition-colors duration-150"
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -604,7 +604,7 @@ const StepAboutYou = memo<{
           placeholder="e.g. Product Designer"
           value={role}
           onChange={(e) => onChange(name, e.target.value)}
-          className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50 transition-colors duration-150"
+          className="w-full px-3.5 py-2.5 rounded-lg bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50 transition-colors duration-150"
         />
       </div>
     </div>
@@ -697,7 +697,7 @@ const StepSessionLength = memo<{
 }>(({ value, customFocus, customBreak, onChange, onCustomChange }) => (
   <StepShell
     title="Focus session length"
-    description="This configures the Ignite Flow engine — how long you focus before a break."
+    description="Sets how long each focus block lasts before you take a break."
   >
     <div className="grid grid-cols-1 gap-2">
       {SESSION_OPTIONS.map((opt) => (
@@ -731,7 +731,7 @@ const StepSessionLength = memo<{
                 max={240}
                 value={customFocus}
                 onChange={(e) => onCustomChange(Number(e.target.value), customBreak)}
-                className="w-full px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-muted/40 border border-gray-200 dark:border-border/60 text-sm text-foreground outline-none focus:border-primary/40 dark:focus:border-primary/30 transition-colors"
+                className="w-full px-3 py-2.5 rounded-lg bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/40 dark:focus:border-primary/30 transition-colors"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -742,7 +742,7 @@ const StepSessionLength = memo<{
                 max={60}
                 value={customBreak}
                 onChange={(e) => onCustomChange(customFocus, Number(e.target.value))}
-                className="w-full px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-muted/40 border border-gray-200 dark:border-border/60 text-sm text-foreground outline-none focus:border-primary/40 dark:focus:border-primary/30 transition-colors"
+                className="w-full px-3 py-2.5 rounded-lg bg-muted/40 border border-border/60 text-sm text-foreground outline-none focus:border-primary/40 dark:focus:border-primary/30 transition-colors"
               />
             </div>
           </div>
@@ -845,7 +845,7 @@ const StepCalendarSync = memo<{
         </button>
       </div>
 
-      <p className="text-xs text-gray-400 dark:text-muted-foreground/60 pt-1">
+      <p className="text-xs text-muted-foreground/60 pt-1">
         {statusText}
       </p>
 
@@ -885,7 +885,7 @@ const StepFocusGoals = memo<{
 }>(({ selected, onToggle }) => (
   <StepShell
     title="What would you like Lumina to help with?"
-    description="Select all that apply. Lumina tailors its intelligence engine to your priorities."
+    description="Select all that apply — this shapes which features Lumina highlights first."
   >
     {GOAL_OPTIONS.map((opt) => (
       <OptionButton
@@ -901,7 +901,7 @@ const StepFocusGoals = memo<{
       </OptionButton>
     ))}
     {selected.length === 0 && (
-      <p className="text-xs text-gray-400 dark:text-muted-foreground/50 pt-1">Select at least one to continue.</p>
+      <p className="text-xs text-muted-foreground/50 pt-1">Select at least one to continue.</p>
     )}
   </StepShell>
 ));
@@ -1705,7 +1705,7 @@ const OnboardingFlow: React.FC = () => {
             className={cn(
               'flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-150',
               canContinue()
-                ? 'bg-primary text-white hover:bg-primary/90 cursor-pointer'
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
                 : 'bg-muted text-muted-foreground/60 cursor-not-allowed opacity-60'
             )}
           >

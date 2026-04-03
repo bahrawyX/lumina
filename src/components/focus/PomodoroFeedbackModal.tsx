@@ -61,7 +61,7 @@ function PomodoroFeedbackModal({ open, onSubmit }: PomodoroFeedbackModalProps) {
               How was that session?
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Your mood helps us understand your patterns
+              Optional — helps surface trends over time
             </DialogDescription>
           </DialogHeader>
 

@@ -42,7 +42,7 @@ export const FocusDoneView: React.FC = () => {
         <h2 className="text-2xl font-semibold text-foreground">Session complete</h2>
         {latest && (
           <p className="text-sm text-muted-foreground">
-            {latest.taskTitle ?? <span className="text-muted-foreground">Deep work</span>} · {formatDuration(latest.duration)}
+            {latest.taskTitle ?? <span className="text-muted-foreground">Focus session</span>} · {formatDuration(latest.duration)}
           </p>
         )}
       </div>
@@ -148,7 +148,7 @@ export const FocusSessionView: React.FC = () => {
                   className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border border-border/30"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-medium text-foreground/80 truncate">{s.taskTitle ?? <span className="text-muted-foreground">Deep work</span>}</p>
+                    <p className="text-[12px] font-medium text-foreground/80 truncate">{s.taskTitle ?? <span className="text-muted-foreground">Focus session</span>}</p>
                     <p className="text-[10px] text-muted-foreground/50 mt-0.5">{formatDate(s.startTime)}</p>
                   </div>
                   <div className="ml-3 flex items-center gap-2 flex-shrink-0">
@@ -185,7 +185,7 @@ export const FocusSessionView: React.FC = () => {
             <button
               type="button"
               onClick={handleDoneAndExit}
-              className="min-h-11 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-500/90 transition-colors"
+              className="min-h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
             >
               Yes, it's done
             </button>

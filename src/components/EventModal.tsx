@@ -120,7 +120,7 @@ const EventModal: React.FC = () => {
       endTime: result.data.endTime,
       category: result.data.category as EventCategory,
       location: formData.location || "",
-      color: CATEGORIES.find((c) => c.name === result.data.category)?.color || "#6D59E0",
+      color: CATEGORIES.find((c) => c.name === result.data.category)?.color || 'hsl(var(--primary))',
       timezone: localEvent?.timezone || timezone,
       recurrence: recurrence ?? undefined,
     };
@@ -177,7 +177,7 @@ const EventModal: React.FC = () => {
             <Input
               id="evt-title"
               autoFocus
-              placeholder="Enter event name"
+              placeholder="e.g. Team standup"
               value={formData.title || ""}
               onChange={(e) => { setFormData({ ...formData, title: e.target.value }); setErrors((p) => ({ ...p, title: "" })); }}
               className={errors.title ? "border-destructive focus-visible:ring-destructive/40" : ""}
@@ -191,7 +191,7 @@ const EventModal: React.FC = () => {
             <Label htmlFor="evt-desc">Description</Label>
             <Textarea
               id="evt-desc"
-              placeholder="Enter event description"
+              placeholder="Notes, agenda, links..."
               rows={3}
               value={formData.description || ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -286,7 +286,7 @@ const EventModal: React.FC = () => {
                   <span className="flex items-center gap-2">
                     <span
                       className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: CATEGORIES.find((c) => c.name === formData.category)?.color || "#6D59E0" }}
+                      style={{ backgroundColor: CATEGORIES.find((c) => c.name === formData.category)?.color || 'hsl(var(--primary))' }}
                     />
                     {formData.category}
                   </span>

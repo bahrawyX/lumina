@@ -153,7 +153,7 @@ const StreakStatsRow: React.FC = () => {
           <DialogHeader>
             <DialogTitle className="text-foreground">Streak Recovery</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Streak restore is a premium feature. Coming soon.
+              Streak recovery is not available yet.
             </DialogDescription>
           </DialogHeader>
           <button
@@ -333,7 +333,7 @@ const PerformancePage: React.FC = () => {
           {noData ? (
             <div className="rounded-2xl border border-border bg-card px-6 py-12 flex flex-col items-center justify-center gap-3">
               <p className="text-lg font-medium text-muted-foreground/60">No activity this week yet</p>
-              <p className="text-sm text-muted-foreground/40">Start scheduling events and completing tasks to see your weekly review details.</p>
+              <p className="text-sm text-muted-foreground/40">Complete some tasks or log focus time this week to see data here.</p>
             </div>
           ) : (
             <div className="space-y-8">

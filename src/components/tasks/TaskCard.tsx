@@ -75,17 +75,17 @@ export interface TaskCardProps {
 const PRIORITY_META: Record<TaskPriority, { label: string; className: string; itemClassName: string }> = {
   high: {
     label: 'High',
-    className: 'border-red-400/30 bg-red-500/12 text-red-200 backdrop-blur-md hover:bg-red-500/18',
+    className: 'border-red-400/30 bg-red-500/12 text-red-200 hover:bg-red-500/18',
     itemClassName: 'text-red-200 focus:text-red-100 focus:bg-red-500/15',
   },
   medium: {
     label: 'Medium',
-    className: 'border-amber-300/25 bg-amber-400/12 text-amber-200 backdrop-blur-md hover:bg-amber-400/18',
+    className: 'border-amber-300/25 bg-amber-400/12 text-amber-200 hover:bg-amber-400/18',
     itemClassName: 'text-amber-200 focus:text-amber-100 focus:bg-amber-500/15',
   },
   low: {
     label: 'Low',
-    className: 'border-cyan-300/25 bg-cyan-400/12 text-cyan-200 backdrop-blur-md hover:bg-cyan-400/18',
+    className: 'border-cyan-300/25 bg-cyan-400/12 text-cyan-200 hover:bg-cyan-400/18',
     itemClassName: 'text-cyan-200 focus:text-cyan-100 focus:bg-cyan-500/15',
   },
 };
@@ -156,8 +156,8 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
           select-none cursor-grab active:cursor-grabbing
           transition-all duration-[120ms] ease-out
           ${isDragOverlay
-            ? 'shadow-2xl ring-1 ring-primary/20 border-border'
-            : 'shadow-sm hover:shadow-md hover:-translate-y-[1px] border-border hover:border-border'
+            ? 'shadow-lg ring-1 ring-primary/20 border-border'
+            : 'shadow-sm hover:shadow-md border-border'
           }
         `}
         {...listeners}

@@ -105,7 +105,7 @@ const CalendarPage: React.FC = () => {
           <div className="relative hidden sm:flex items-center">
             <SearchIcon size={14} className="absolute left-3 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Search events..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 h-9 w-36 focus:w-52 transition-all duration-200 text-xs"
