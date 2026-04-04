@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { CATEGORIES } from '../constants';
@@ -178,6 +178,21 @@ const AppSidebar: React.FC = () => {
   const [editingContextName, setEditingContextName] = useState<string | null>(null);
   const [contextPendingDelete, setContextPendingDelete] = useState<string | null>(null);
   const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
+
+  // Suppress tooltips during collapse transition to prevent flash
+  const [tooltipsReady, setTooltipsReady] = useState(isSidebarCollapsed);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
+    if (isSidebarCollapsed) {
+      // Delay enabling tooltips until collapse animation finishes
+      collapseTimerRef.current = setTimeout(() => setTooltipsReady(true), 350);
+    } else {
+      setTooltipsReady(false);
+    }
+    return () => { if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current); };
+  }, [isSidebarCollapsed]);
+
   const isCalendarPage = pathname === '/';
   const isIntelligencePage = pathname === '/intelligence';
   const isTasksPage = pathname === '/tasks';
@@ -701,7 +716,7 @@ const AppSidebar: React.FC = () => {
                   {!isSidebarCollapsed && <span>New Entry</span>}
                 </button>
               </TooltipTrigger>
-              {isSidebarCollapsed && <TooltipContent side="right">New Entry</TooltipContent>}
+              {tooltipsReady && <TooltipContent side="right">New Entry</TooltipContent>}
             </Tooltip>
 
             {/* Ignite Flow / running session */}
@@ -745,7 +760,7 @@ const AppSidebar: React.FC = () => {
                     {!isSidebarCollapsed && <span>Start Focus</span>}
                   </button>
                 </TooltipTrigger>
-                {isSidebarCollapsed && <TooltipContent side="right">Start Focus</TooltipContent>}
+                {tooltipsReady && <TooltipContent side="right">Start Focus</TooltipContent>}
               </Tooltip>
             )}
           </div>
@@ -786,6 +801,7 @@ const AppSidebar: React.FC = () => {
                   label="Calendar"
                   isActive={isCalendarPage}
                   collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
                   href="/"
                   onClick={() => router.push('/')}
                   dataTutorial="nav-calendar"
@@ -795,6 +811,7 @@ const AppSidebar: React.FC = () => {
                   label="Pomodoro"
                   isActive={pathname === '/pomodoro'}
                   collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
                   href="/pomodoro"
                   onClick={() => router.push('/pomodoro')}
                 />
@@ -803,6 +820,7 @@ const AppSidebar: React.FC = () => {
                   label="Insights"
                   isActive={isIntelligencePage}
                   collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
                   href="/intelligence"
                   onClick={() => router.push('/intelligence')}
                   dataTutorial="nav-intelligence"
@@ -812,6 +830,7 @@ const AppSidebar: React.FC = () => {
                   label="Tasks"
                   isActive={isTasksPage}
                   collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
                   href="/tasks"
                   onClick={() => router.push('/tasks')}
                   dataTutorial="nav-tasks"
@@ -821,6 +840,7 @@ const AppSidebar: React.FC = () => {
                   label="Plan Day"
                   isActive={isPlanPage}
                   collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
                   href="/plan"
                   onClick={() => router.push('/plan')}
                   dataTutorial="nav-plan"
@@ -830,6 +850,7 @@ const AppSidebar: React.FC = () => {
                   label="Performance"
                   isActive={pathname === '/performance'}
                   collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
                   href="/performance"
                   onClick={() => router.push('/performance')}
                   dataTutorial="nav-performance"
@@ -877,7 +898,7 @@ const AppSidebar: React.FC = () => {
                             )}
                           </SidebarMenuButton>
                         </TooltipTrigger>
-                        {isSidebarCollapsed && (
+                        {tooltipsReady && (
                           <TooltipContent side="right">{cat.name}</TooltipContent>
                         )}
                       </Tooltip>
@@ -1218,13 +1239,14 @@ interface WorkspaceItemProps {
   label: string;
   isActive: boolean;
   collapsed: boolean;
+  showTooltip: boolean;
   href: string;
   onClick: () => void;
   dataTutorial?: string;
 }
 
 const WorkspaceItem = React.memo<WorkspaceItemProps>(
-  ({ icon: Icon, label, isActive, collapsed, href, onClick, dataTutorial }) => (
+  ({ icon: Icon, label, isActive, collapsed, showTooltip, href, onClick, dataTutorial }) => (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1254,7 +1276,7 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             )}
           </SidebarMenuButton>
         </TooltipTrigger>
-        {collapsed && <TooltipContent side="right">{label}</TooltipContent>}
+        {showTooltip && <TooltipContent side="right">{label}</TooltipContent>}
       </Tooltip>
     </SidebarMenuItem>
   )
