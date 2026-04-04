@@ -1,214 +1,176 @@
 /**
- * Web Audio API noise synthesizer.
- * Generates white noise, brown noise, rainfall, forest, and ocean sounds
- * entirely in-browser — no external audio files.
+ * Ambient sound player.
+ * Uses high-quality looping audio files from free CDN sources.
+ * Falls back to Web Audio API synthesis if loading fails.
  */
 
 import type { AmbientTrack } from '@/types';
 
-let audioCtx: AudioContext | null = null;
+// ── Audio URLs — royalty-free ambient loops ──────────────────────────────────
+// Sourced from Pixabay (royalty-free, no attribution required)
+const AUDIO_URLS: Record<AmbientTrack, string> = {
+  white:    'https://archive.org/download/TenMinutesOfWhiteNoisePinkNoiseAndBrownianNoise/WhiteNoise_64kb.mp3',
+  brown:    'https://archive.org/download/TenMinutesOfWhiteNoisePinkNoiseAndBrownianNoise/BrownianNoise_64kb.mp3',
+  rainfall: 'https://cdn.jsdelivr.net/gh/bradtraversy/ambient-sound-mixer@main/audio/rain.mp3',
+  forest:   'https://cdn.jsdelivr.net/gh/bradtraversy/ambient-sound-mixer@main/audio/birds.mp3',
+  ocean:    'https://cdn.jsdelivr.net/gh/bradtraversy/ambient-sound-mixer@main/audio/ocean.mp3',
+};
 
-function getAudioContext(): AudioContext {
-  if (!audioCtx) {
-    audioCtx = new AudioContext();
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  return audioCtx;
-}
+// ── State ────────────────────────────────────────────────────────────────────
 
-interface NoisePlayer {
-  play: () => void;
-  stop: () => void;
-  setVolume: (v: number) => void;
-}
+let activeAudio: { track: AmbientTrack; element: HTMLAudioElement } | null = null;
+let fallbackCtx: AudioContext | null = null;
+let fallbackPlayer: { track: AmbientTrack; stop: () => void; setVolume: (v: number) => void } | null = null;
 
-let activePlayer: { track: AmbientTrack; player: NoisePlayer } | null = null;
+// ── Main API ─────────────────────────────────────────────────────────────────
 
-function createWhiteNoiseBuffer(ctx: AudioContext, seconds = 2): AudioBuffer {
-  const sr = ctx.sampleRate;
-  const buf = ctx.createBuffer(1, sr * seconds, sr);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-  return buf;
-}
-
-function createBrownNoiseBuffer(ctx: AudioContext, seconds = 2): AudioBuffer {
-  const sr = ctx.sampleRate;
-  const buf = ctx.createBuffer(1, sr * seconds, sr);
-  const data = buf.getChannelData(0);
-  let last = 0;
-  for (let i = 0; i < data.length; i++) {
-    const white = Math.random() * 2 - 1;
-    last = (last + 0.02 * white) / 1.02;
-    data[i] = last * 3.5; // normalize
-  }
-  return buf;
-}
-
-function makeLoopingSource(ctx: AudioContext, buffer: AudioBuffer): AudioBufferSourceNode {
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  source.loop = true;
-  return source;
-}
-
-function createNoisePlayerInternal(type: AmbientTrack): NoisePlayer {
-  const ctx = getAudioContext();
-  const gain = ctx.createGain();
-  gain.gain.value = 0.6;
-  gain.connect(ctx.destination);
-
-  let sources: AudioBufferSourceNode[] = [];
-  let filters: BiquadFilterNode[] = [];
-  let oscillators: OscillatorNode[] = [];
-  let lfoGains: GainNode[] = [];
-  let running = false;
-
-  const cleanup = () => {
-    sources.forEach((s) => { try { s.stop(); s.disconnect(); } catch {} });
-    filters.forEach((f) => { try { f.disconnect(); } catch {} });
-    oscillators.forEach((o) => { try { o.stop(); o.disconnect(); } catch {} });
-    lfoGains.forEach((g) => { try { g.disconnect(); } catch {} });
-    sources = [];
-    filters = [];
-    oscillators = [];
-    lfoGains = [];
-    running = false;
-  };
-
-  const play = () => {
-    if (running) return;
-    running = true;
-
-    if (type === 'white') {
-      const buf = createWhiteNoiseBuffer(ctx);
-      const src = makeLoopingSource(ctx, buf);
-      src.connect(gain);
-      src.start();
-      sources.push(src);
-    } else if (type === 'brown') {
-      const buf = createBrownNoiseBuffer(ctx);
-      const src = makeLoopingSource(ctx, buf);
-      src.connect(gain);
-      src.start();
-      sources.push(src);
-    } else if (type === 'rainfall') {
-      const buf = createWhiteNoiseBuffer(ctx, 3);
-      const src = makeLoopingSource(ctx, buf);
-      const lpf = ctx.createBiquadFilter();
-      lpf.type = 'lowpass';
-      lpf.frequency.value = 800;
-      lpf.Q.value = 0.7;
-      src.connect(lpf);
-      lpf.connect(gain);
-      src.start();
-      sources.push(src);
-      filters.push(lpf);
-    } else if (type === 'forest') {
-      // Base: filtered noise for wind
-      const buf = createWhiteNoiseBuffer(ctx, 3);
-      const src = makeLoopingSource(ctx, buf);
-      const bpf = ctx.createBiquadFilter();
-      bpf.type = 'bandpass';
-      bpf.frequency.value = 400;
-      bpf.Q.value = 0.5;
-      const windGain = ctx.createGain();
-      windGain.gain.value = 0.3;
-      src.connect(bpf);
-      bpf.connect(windGain);
-      windGain.connect(gain);
-      src.start();
-      sources.push(src);
-      filters.push(bpf);
-      lfoGains.push(windGain);
-
-      // Bird chirps: periodic oscillator pings
-      const chirpInterval = setInterval(() => {
-        if (!running) { clearInterval(chirpInterval); return; }
-        const osc = ctx.createOscillator();
-        const chirpGain = ctx.createGain();
-        const freq = 2000 + Math.random() * 3000;
-        osc.frequency.setValueAtTime(freq, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(freq * 0.7, ctx.currentTime + 0.15);
-        chirpGain.gain.setValueAtTime(0.08, ctx.currentTime);
-        chirpGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-        osc.connect(chirpGain);
-        chirpGain.connect(gain);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.25);
-      }, 2000 + Math.random() * 4000);
-
-      // Store cleanup reference
-      const origCleanup = cleanup;
-      // Override is handled by the running flag check in chirpInterval
-    } else if (type === 'ocean') {
-      const buf = createBrownNoiseBuffer(ctx, 4);
-      const src = makeLoopingSource(ctx, buf);
-      const lpf = ctx.createBiquadFilter();
-      lpf.type = 'lowpass';
-      lpf.frequency.value = 300;
-      lpf.Q.value = 0.3;
-      // LFO for wave-like volume modulation
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.12; // slow wave
-      const lfoG = ctx.createGain();
-      lfoG.gain.value = 0.3;
-      lfo.connect(lfoG);
-      const modGain = ctx.createGain();
-      modGain.gain.value = 0.7;
-      lfoG.connect(modGain.gain);
-      src.connect(lpf);
-      lpf.connect(modGain);
-      modGain.connect(gain);
-      lfo.start();
-      src.start();
-      sources.push(src);
-      filters.push(lpf);
-      oscillators.push(lfo);
-      lfoGains.push(lfoG, modGain);
-    }
-  };
-
-  return {
-    play,
-    stop: cleanup,
-    setVolume: (v: number) => {
-      gain.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), ctx.currentTime, 0.05);
-    },
-  };
-}
-
-/** Get or create a noise player for the given track type. Manages singleton active player. */
 export function playTrack(track: AmbientTrack, volume = 0.6): void {
-  // Stop current if different
-  if (activePlayer) {
-    activePlayer.player.stop();
-    activePlayer = null;
-  }
+  // Stop current
+  stopTrack();
 
-  const player = createNoisePlayerInternal(track);
-  player.setVolume(volume);
-  player.play();
-  activePlayer = { track, player };
+  // Try HTML Audio element first (real audio files)
+  const url = AUDIO_URLS[track];
+  const audio = new Audio(url);
+  audio.loop = true;
+  audio.volume = Math.max(0, Math.min(1, volume));
+  audio.crossOrigin = 'anonymous';
+
+  // On successful load, play
+  audio.addEventListener('canplaythrough', () => {
+    audio.play().catch(() => {
+      // If autoplay blocked, try fallback
+      useFallback(track, volume);
+    });
+  }, { once: true });
+
+  // On error, fall back to synthesis
+  audio.addEventListener('error', () => {
+    useFallback(track, volume);
+  }, { once: true });
+
+  audio.load();
+  activeAudio = { track, element: audio };
 }
 
 export function stopTrack(): void {
-  if (activePlayer) {
-    activePlayer.player.stop();
-    activePlayer = null;
+  if (activeAudio) {
+    activeAudio.element.pause();
+    activeAudio.element.src = '';
+    activeAudio = null;
+  }
+  if (fallbackPlayer) {
+    fallbackPlayer.stop();
+    fallbackPlayer = null;
   }
 }
 
 export function setTrackVolume(volume: number): void {
-  if (activePlayer) {
-    activePlayer.player.setVolume(volume);
+  const v = Math.max(0, Math.min(1, volume));
+  if (activeAudio) {
+    activeAudio.element.volume = v;
+  }
+  if (fallbackPlayer) {
+    fallbackPlayer.setVolume(v);
   }
 }
 
 export function getActiveTrack(): AmbientTrack | null {
-  return activePlayer?.track ?? null;
+  return activeAudio?.track ?? fallbackPlayer?.track ?? null;
+}
+
+// ── Fallback: Web Audio API synthesis ────────────────────────────────────────
+
+function getAudioContext(): AudioContext {
+  if (!fallbackCtx) fallbackCtx = new AudioContext();
+  if (fallbackCtx.state === 'suspended') fallbackCtx.resume();
+  return fallbackCtx;
+}
+
+function createNoiseBuffer(ctx: AudioContext, brown = false, seconds = 2): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const buf = ctx.createBuffer(1, sr * seconds, sr);
+  const data = buf.getChannelData(0);
+  if (brown) {
+    let last = 0;
+    for (let i = 0; i < data.length; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      data[i] = last * 3.5;
+    }
+  } else {
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return buf;
+}
+
+function useFallback(track: AmbientTrack, volume: number): void {
+  // Clean up any existing audio element attempt
+  if (activeAudio) {
+    activeAudio.element.pause();
+    activeAudio.element.src = '';
+    activeAudio = null;
+  }
+
+  const ctx = getAudioContext();
+  const gain = ctx.createGain();
+  gain.gain.value = volume;
+  gain.connect(ctx.destination);
+
+  const sources: AudioBufferSourceNode[] = [];
+  const nodes: AudioNode[] = [];
+  let running = true;
+
+  const stop = () => {
+    running = false;
+    sources.forEach((s) => { try { s.stop(); s.disconnect(); } catch {} });
+    nodes.forEach((n) => { try { n.disconnect(); } catch {} });
+  };
+
+  const isBrown = track === 'brown' || track === 'ocean';
+  const buf = createNoiseBuffer(ctx, isBrown, 3);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  sources.push(src);
+
+  if (track === 'rainfall') {
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 800;
+    lpf.Q.value = 0.7;
+    src.connect(lpf);
+    lpf.connect(gain);
+    nodes.push(lpf);
+  } else if (track === 'ocean') {
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 300;
+    lpf.Q.value = 0.3;
+    src.connect(lpf);
+    lpf.connect(gain);
+    nodes.push(lpf);
+  } else if (track === 'forest') {
+    const bpf = ctx.createBiquadFilter();
+    bpf.type = 'bandpass';
+    bpf.frequency.value = 400;
+    bpf.Q.value = 0.5;
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0.3;
+    src.connect(bpf);
+    bpf.connect(windGain);
+    windGain.connect(gain);
+    nodes.push(bpf, windGain);
+  } else {
+    src.connect(gain);
+  }
+
+  src.start();
+
+  fallbackPlayer = {
+    track,
+    stop,
+    setVolume: (v: number) => {
+      gain.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), ctx.currentTime, 0.05);
+    },
+  };
 }

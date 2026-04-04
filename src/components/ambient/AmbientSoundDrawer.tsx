@@ -6,6 +6,7 @@ import { useAmbientStore } from '@/store/useAmbientStore';
 import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import type { AmbientTrack } from '@/types';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
+import { Slider } from '@/components/ui/slider';
 
 const TRACKS: { id: AmbientTrack; label: string }[] = [
   { id: 'white', label: 'White Noise' },
@@ -29,8 +30,8 @@ export default function AmbientSoundDrawer() {
     }
   };
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
+  const handleVolumeChange = (values: number[]) => {
+    const v = values[0];
     setVolume(v);
     setTrackVolume(v);
   };
@@ -87,22 +88,21 @@ export default function AmbientSoundDrawer() {
                 </button>
               </div>
 
-              {/* Volume slider */}
+              {/* Volume slider — shadcn */}
               <div className="flex items-center gap-3">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0">
                   <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                   <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
                   <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
                 </svg>
-                <input
-                  type="range"
+                <Slider
+                  value={[volume]}
                   min={0}
                   max={1}
                   step={0.05}
-                  value={volume}
-                  onChange={handleVolumeChange}
+                  onValueChange={handleVolumeChange}
                   aria-label="Volume"
-                  className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-[hsl(var(--primary))] bg-muted"
+                  className="flex-1"
                 />
               </div>
 

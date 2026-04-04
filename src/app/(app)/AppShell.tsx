@@ -278,11 +278,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             transition={{ duration: 0.4, ease: 'easeOut' }}
           >
             <div className="flex flex-col items-center gap-5">
-              {/* Triple-ring loader */}
-              <div className="relative w-12 h-12">
-                <div className="absolute inset-0 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
-                <div className="absolute inset-[5px] rounded-full border-2 border-primary/15 border-b-primary/60 animate-spin" style={{ animationDuration: '1.2s', animationDirection: 'reverse' }} />
-                <div className="absolute inset-[10px] rounded-full border-2 border-primary/10 border-t-primary/40 animate-spin" style={{ animationDuration: '1.8s' }} />
+              {/* Elegant spinning ring loader */}
+              <div className="relative w-10 h-10">
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-primary/20"
+                />
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                />
+                <motion.div
+                  className="absolute inset-[6px] rounded-full border-[1.5px] border-transparent border-b-primary/50"
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                />
               </div>
               <motion.p
                 className="text-xs text-muted-foreground font-medium tracking-wide"
