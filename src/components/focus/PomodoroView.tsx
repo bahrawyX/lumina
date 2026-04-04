@@ -193,7 +193,7 @@ const SessionConfig: React.FC<SessionConfigProps> = ({
 
   return (
     <div>
-      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Session</span>
+      <span className="text-xs font-semibold text-muted-foreground">Session</span>
       <div className="mt-3 space-y-3">
         {/* Work duration */}
         <div>
@@ -259,7 +259,7 @@ const AmbientSection: React.FC = () => {
 
   return (
     <div>
-      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Ambient</span>
+      <span className="text-xs font-semibold text-muted-foreground">Ambient</span>
       <div className="grid grid-cols-5 gap-2 mt-3">
         {AMBIENT_TRACKS.map((t) => {
           const active = activeTrack === t.id && isPlaying;
@@ -343,7 +343,7 @@ const TaskSelector: React.FC<{
     const d = DIFFICULTY_BADGE[focusTask.difficulty];
     return (
       <div>
-        <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Focusing On</span>
+        <span className="text-xs font-semibold text-muted-foreground">Focusing on</span>
         <div className="relative mt-3 bg-muted rounded-lg px-3 py-2.5 pr-8">
           <p className="text-sm text-foreground font-medium truncate">{focusTask.title}</p>
           <div className="flex items-center gap-1.5 mt-1">
@@ -506,9 +506,20 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const isBreak = phase !== 'work';
 
   const phaseLabel = useMemo(() => {
-    if (phase === 'work') return `Work Session ${sessionCount + 1} of ${sessionsPerCycle}`;
-    if (phase === 'short_break') return 'Short Break';
-    return 'Long Break';
+    if (phase === 'work') return `Work session ${sessionCount + 1} of ${sessionsPerCycle}`;
+    if (phase === 'short_break') return 'Short break';
+    return 'Long break';
+  }, [phase, sessionCount, sessionsPerCycle]);
+
+  const sessionStatusText = useMemo(() => {
+    if (phase === 'work') {
+      const remaining = sessionsPerCycle - (sessionCount + 1);
+      return `Session ${sessionCount + 1} of ${sessionsPerCycle}  ·  ${remaining} session${remaining !== 1 ? 's' : ''} until long break`;
+    }
+    if (phase === 'short_break') {
+      return `Short break  ·  Session ${sessionCount} of ${sessionsPerCycle} complete`;
+    }
+    return 'Long break  ·  Full cycle complete';
   }, [phase, sessionCount, sessionsPerCycle]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -567,7 +578,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             key={phase + sessionCount}
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-xs uppercase tracking-widest text-muted-foreground font-medium"
+            className="text-sm font-medium text-muted-foreground"
           >
             {phaseLabel}
           </motion.p>
@@ -576,7 +587,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           <div className="relative flex items-center justify-center">
             <ProgressRing progress={progress} size={ringSize} strokeWidth={RING_STROKE} isBreak={isBreak} />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-mono text-6xl font-bold text-foreground tabular-nums leading-none">
+              <span className="font-sans tracking-tight text-6xl font-bold text-foreground tabular-nums leading-none">
                 {formatTime(remaining)}
               </span>
             </div>
@@ -603,13 +614,10 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             </AnimatePresence>
           </div>
 
-          {/* Session dots */}
-          <div className="flex flex-col items-center gap-1.5">
-            <SessionDots completed={sessionCount} total={sessionsPerCycle} />
-            <span className="text-[11px] text-muted-foreground">
-              {sessionCount} of {sessionsPerCycle} sessions
-            </span>
-          </div>
+          {/* Session status */}
+          <p className="text-sm text-muted-foreground text-center">
+            {sessionStatusText}
+          </p>
 
           {/* Control buttons */}
           <div className="flex items-center gap-3">
