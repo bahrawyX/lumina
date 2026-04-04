@@ -120,7 +120,7 @@ const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth
   const dashOffset = circumference * (1 - Math.min(1, Math.max(0, progress)));
   const cx = size / 2;
 
-  const activeColor = isBreak ? 'hsl(var(--muted-foreground))' : 'hsl(var(--primary))';
+  const activeColor = isBreak ? 'hsl(var(--primary) / 0.4)' : 'hsl(var(--primary))';
 
   return (
     <svg
@@ -372,7 +372,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full pointer-events-none"
         style={{
           background: isBreak
-            ? 'radial-gradient(circle, hsl(var(--muted-foreground) / 0.05), transparent 70%)'
+            ? 'radial-gradient(circle, hsl(var(--primary) / 0.03), transparent 70%)'
             : 'radial-gradient(circle, hsl(var(--primary) / 0.05), transparent 70%)',
           filter: 'blur(60px)',
         }}
