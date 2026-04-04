@@ -116,9 +116,11 @@ export default function PomodoroPage() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="max-w-lg mx-auto w-full px-4 py-4 space-y-4">
+      <div className="w-full px-4 py-4 space-y-4">
         {moodLogsLoaded && moodLogs.length >= 3 && (
-          <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
+          <div className="max-w-lg mx-auto">
+            <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
+          </div>
         )}
         <PomodoroView
           onSessionComplete={handleSessionComplete}

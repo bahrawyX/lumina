@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { useAmbientStore } from '@/store/useAmbientStore';
-import { useTaskBoardStore, selectTasksByStatus } from '@/store/useTaskBoardStore';
+import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
@@ -324,9 +324,13 @@ const TaskSelector: React.FC<{
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const todoTasks = useTaskBoardStore(selectTasksByStatus('todo'));
-  const doingTasks = useTaskBoardStore(selectTasksByStatus('doing'));
-  const availableTasks = useMemo(() => [...doingTasks, ...todoTasks], [doingTasks, todoTasks]);
+  const storeTasks = useTaskBoardStore((s) => s.tasks);
+  const availableTasks = useMemo(
+    () => storeTasks
+      .filter((t) => t.status === 'doing' || t.status === 'todo')
+      .sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1) || a.order - b.order),
+    [storeTasks],
+  );
 
   const filtered = useMemo(() => {
     if (!query.trim()) return availableTasks.slice(0, 5);

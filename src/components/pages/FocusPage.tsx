@@ -152,9 +152,11 @@ const FocusPage: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="pomodoro" forceMount className="flex-1 min-h-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
-          <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+          <div className="w-full px-4 py-4 space-y-4">
             {moodLogsLoaded && moodLogs.length >= 3 && (
-              <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
+              <div className="max-w-lg mx-auto">
+                <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
+              </div>
             )}
             <PomodoroView
               onSessionComplete={handleSessionComplete}
