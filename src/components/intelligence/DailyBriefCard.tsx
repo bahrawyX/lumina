@@ -85,15 +85,25 @@ export const DailyBriefCard: React.FC = () => {
   const isDismissedToday = useDailyBriefStore((s) => s.isDismissedToday);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const retryCountRef = React.useRef(0);
+
+  // ── Hydration guard — avoid SSR/client mismatch for time-dependent UI ───
+  useEffect(() => { setMounted(true); }, []);
 
   // ── Fetch on mount / day change ──────────────────────────────────────────
   useEffect(() => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const needsFetch = !lastFetched || !lastFetched.startsWith(today);
-    if (needsFetch && !isLoading) {
+    // Also auto-retry once if we have a cached error and no brief
+    const shouldRetry = !brief && error && !isLoading && retryCountRef.current < 2;
+    if ((needsFetch || shouldRetry) && !isLoading) {
+      retryCountRef.current += 1;
       fetchBrief(timezone);
     }
-  }, [timezone, fetchBrief, lastFetched, isLoading]);
+    // Reset retry count on successful fetch
+    if (brief) retryCountRef.current = 0;
+  }, [timezone, fetchBrief, lastFetched, isLoading, brief, error]);
 
   // ── Tab visibility handler ───────────────────────────────────────────────
   useEffect(() => {
@@ -117,6 +127,8 @@ export const DailyBriefCard: React.FC = () => {
   }, [refreshBrief, timezone]);
 
   // ── Render guards ────────────────────────────────────────────────────────
+  if (!mounted) return null;
+
   const dismissed = isDismissedToday();
 
   if (dismissed) return null;

@@ -77,7 +77,7 @@ export const useDailyBriefStore = create<DailyBriefState>()(
         } catch (err) {
           set({
             isLoading: false,
-            lastFetched: new Date().toISOString(),
+            lastFetched: null, // Don't cache failed fetches — allow retry on next mount
             error: err instanceof Error ? err.message : 'Failed to load brief',
           });
         }
