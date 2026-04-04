@@ -4,7 +4,11 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
+import { useAmbientStore } from '@/store/useAmbientStore';
+import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
+import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
+import type { AmbientTrack } from '@/types';
 import {
   Select,
   SelectContent,
@@ -23,8 +27,17 @@ interface PomodoroViewProps {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const SESSIONS_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
-const RING_SIZE = 220;
-const RING_STROKE = 6;
+const RING_SIZE_DESKTOP = 200;
+const RING_SIZE_MOBILE = 160;
+const RING_STROKE = 5;
+
+const AMBIENT_TRACKS: { id: AmbientTrack; label: string }[] = [
+  { id: 'white', label: 'White' },
+  { id: 'rainfall', label: 'Rain' },
+  { id: 'brown', label: 'Brown' },
+  { id: 'forest', label: 'Forest' },
+  { id: 'ocean', label: 'Ocean' },
+];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,53 +92,16 @@ const SkipIcon: React.FC = () => (
   </svg>
 );
 
-const TimerIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
-  <motion.svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    animate={{ scale: [1, 1.04, 1] }}
-    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-  >
-    <circle cx="12" cy="13" r="8" stroke="hsl(var(--primary))" strokeWidth={1.5} fill="none" />
-    <circle cx="12" cy="13" r="6.5" stroke="hsl(var(--primary))" strokeWidth={0.5} opacity={0.2} fill="none" />
-    <line x1="12" y1="13" x2="12" y2="9" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeLinecap="round" />
-    <line x1="12" y1="13" x2="15" y2="13" stroke="hsl(var(--primary))" strokeWidth={1.2} strokeLinecap="round" opacity={0.7} />
-    <line x1="10" y1="3" x2="14" y2="3" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeLinecap="round" />
-    <line x1="12" y1="3" x2="12" y2="5" stroke="hsl(var(--primary))" strokeWidth={1.2} strokeLinecap="round" />
-  </motion.svg>
-);
-
-const CoffeeIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <rect x="4" y="10" width="12" height="10" rx="2" fill="hsl(var(--muted-foreground))" opacity={0.25} />
-    <rect x="5" y="11" width="10" height="8" rx="1.5" fill="hsl(var(--muted-foreground))" opacity={0.15} />
-    <path d="M16 12h2a2 2 0 0 1 0 4h-2" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} opacity={0.3} />
-    <motion.path
-      d="M8 8c0-2 1-3 0-4"
-      stroke="hsl(var(--muted-foreground))"
-      strokeWidth={1.2}
-      strokeLinecap="round"
-      opacity={0.4}
-      animate={{ y: [0, -1.5, 0], opacity: [0.4, 0.2, 0.4] }}
-      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-    />
-    <motion.path
-      d="M11 8c0-2 1-3 0-4"
-      stroke="hsl(var(--muted-foreground))"
-      strokeWidth={1.2}
-      strokeLinecap="round"
-      opacity={0.3}
-      animate={{ y: [0, -1.5, 0], opacity: [0.3, 0.15, 0.3] }}
-      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
-    />
-  </svg>
-);
-
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+const VolumeIcon: React.FC = () => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
   </svg>
 );
 
@@ -135,13 +111,16 @@ interface ProgressRingProps {
   progress: number;
   size: number;
   strokeWidth: number;
+  isBreak: boolean;
 }
 
-const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth }) => {
+const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth, isBreak }) => {
   const r = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * r;
   const dashOffset = circumference * (1 - Math.min(1, Math.max(0, progress)));
   const cx = size / 2;
+
+  const activeColor = isBreak ? 'hsl(var(--muted-foreground))' : 'hsl(var(--primary))';
 
   return (
     <svg
@@ -154,9 +133,9 @@ const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth
       <circle cx={cx} cy={cx} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} opacity={0.5} />
       <circle
         cx={cx} cy={cx} r={r} fill="none"
-        stroke="hsl(var(--primary))" strokeWidth={strokeWidth} strokeLinecap="round"
+        stroke={activeColor} strokeWidth={strokeWidth} strokeLinecap="round"
         strokeDasharray={circumference} strokeDashoffset={dashOffset}
-        style={{ transition: 'stroke-dashoffset 1s linear' }}
+        style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.3s ease' }}
       />
     </svg>
   );
@@ -169,7 +148,7 @@ const SessionDots: React.FC<{ completed: number; total: number }> = ({ completed
     {Array.from({ length: total }, (_, i) => (
       <motion.div
         key={i}
-        className={`w-2.5 h-2.5 rounded-full transition-colors ${i < completed ? 'bg-primary' : 'bg-muted'}`}
+        className={`w-2 h-2 rounded-full transition-colors ${i < completed ? 'bg-primary' : 'bg-muted'}`}
         initial={false}
         animate={i < completed ? { scale: [1, 1.3, 1] } : {}}
         transition={{ duration: 0.3 }}
@@ -177,6 +156,73 @@ const SessionDots: React.FC<{ completed: number; total: number }> = ({ completed
     ))}
   </div>
 );
+
+// ── Ambient Sound Row ────────────────────────────────────────────────────────
+
+const AmbientSoundRow: React.FC = () => {
+  const { activeTrack, isPlaying, volume, setTrack, setVolume, stop } = useAmbientStore();
+
+  const handleTrackClick = (track: AmbientTrack) => {
+    if (activeTrack === track && isPlaying) {
+      stopTrack();
+      stop();
+    } else {
+      playTrack(track, volume);
+      setTrack(track);
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value);
+    setVolume(v);
+    setTrackVolume(v);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ambient</span>
+        {isPlaying && (
+          <div className="flex items-center gap-2">
+            <VolumeIcon />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={volume}
+              onChange={handleVolumeChange}
+              className="w-16 h-1 accent-primary cursor-pointer"
+              aria-label="Volume"
+            />
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        {AMBIENT_TRACKS.map((t) => {
+          const active = activeTrack === t.id && isPlaying;
+          const AmbIcon = AMBIENT_ICONS[t.id];
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => handleTrackClick(t.id)}
+              className={`flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl transition-all duration-150 cursor-pointer ${
+                active
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+              }`}
+              aria-label={t.label}
+            >
+              {AmbIcon ? <AmbIcon size={20} /> : null}
+              <span className="text-[10px] font-medium">{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
@@ -211,6 +257,15 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completionHandledRef = useRef(false);
 
+  // Responsive ring size
+  const [ringSize, setRingSize] = useState(RING_SIZE_DESKTOP);
+  useEffect(() => {
+    const check = () => setRingSize(window.innerWidth < 640 ? RING_SIZE_MOBILE : RING_SIZE_DESKTOP);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   // Sync work minutes from settings store on mount
   useEffect(() => {
     const current = usePomodoroStore.getState().workMins;
@@ -229,7 +284,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           playChime();
         }
       };
-      // Initial sync
       setDisplayElapsed(getElapsedSecs());
       intervalRef.current = setInterval(tick, 1000);
     } else {
@@ -252,7 +306,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     if (showCelebration && !completionHandledRef.current) {
       completionHandledRef.current = true;
 
-      // Fire session complete callback
       if (workSessionStartedAt) {
         const endTime = new Date().toISOString();
         onSessionComplete({
@@ -262,7 +315,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         });
       }
 
-      // Show Lottie for 2.5s then open feedback
       setTimeout(() => {
         dismissCelebration();
         onRequestFeedback(null);
@@ -275,6 +327,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const phaseDuration = getPhaseDurationSecs();
   const remaining = Math.max(0, phaseDuration - displayElapsed);
   const progress = phaseDuration > 0 ? Math.min(1, displayElapsed / phaseDuration) : 0;
+  const isBreak = phase !== 'work';
 
   const phaseLabel = useMemo(() => {
     if (phase === 'work') return `Work Session ${sessionCount + 1} of ${sessionsPerCycle}`;
@@ -313,171 +366,201 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col items-center justify-center gap-6 py-8 px-4">
-      {/* Phase label */}
-      <motion.p
-        key={phase + sessionCount}
-        initial={{ opacity: 0, y: -8 }}
+    <div className="relative flex items-start justify-center py-8 px-4 min-h-[calc(100vh-120px)]">
+      {/* Breathing glow behind card */}
+      <motion.div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full pointer-events-none"
+        style={{
+          background: isBreak
+            ? 'radial-gradient(circle, hsl(var(--muted-foreground) / 0.05), transparent 70%)'
+            : 'radial-gradient(circle, hsl(var(--primary) / 0.05), transparent 70%)',
+          filter: 'blur(60px)',
+        }}
+        animate={
+          isRunning && !isPaused
+            ? { opacity: [0.05, 0.12, 0.05] }
+            : { opacity: 0.05 }
+        }
+        transition={
+          isRunning && !isPaused
+            ? { duration: 4, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 0.3 }
+        }
+      />
+
+      {/* Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-sm uppercase tracking-widest text-muted-foreground font-medium"
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+        className="relative w-full max-w-md rounded-2xl border border-border/60 bg-card shadow-sm p-6 sm:p-8"
       >
-        {phaseLabel}
-      </motion.p>
-
-      {/* Circular progress ring */}
-      <div className="relative flex items-center justify-center">
-        <ProgressRing progress={progress} size={RING_SIZE} strokeWidth={RING_STROKE} />
-
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <motion.span key={remaining} className="font-mono text-5xl font-bold text-foreground tabular-nums leading-none">
-            {formatTime(remaining)}
-          </motion.span>
-          <motion.span
-            key={phase}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-2"
-            role="img"
-            aria-label={phase === 'work' ? 'Timer' : 'Coffee'}
+        <div className="flex flex-col items-center gap-5">
+          {/* Phase label */}
+          <motion.p
+            key={phase + sessionCount}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-xs uppercase tracking-widest text-muted-foreground font-medium"
           >
-            {phase === 'work' ? <TimerIcon size={28} /> : <CoffeeIcon size={28} />}
-          </motion.span>
-        </div>
+            {phaseLabel}
+          </motion.p>
 
-        {/* Completion Lottie */}
-        <AnimatePresence>
-          {showCelebration && (
-            <motion.div
-              className="absolute inset-0 flex items-center justify-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <LottieAnimation
-                path="/animations/pomodoro-complete.json"
-                layerColorMap={POMODORO_COMPLETE_LAYER_MAP}
-                width={RING_SIZE}
-                height={RING_SIZE}
-                loop={false}
-                autoplay={true}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          {/* Ring + timer */}
+          <div className="relative flex items-center justify-center">
+            <ProgressRing progress={progress} size={ringSize} strokeWidth={RING_STROKE} isBreak={isBreak} />
 
-      {/* Control buttons */}
-      <div className="flex items-center gap-3">
-        {!isRunning || isPaused ? (
-          <motion.button
-            type="button"
-            onClick={handleStart}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-6 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
-          >
-            <PlayIcon />
-            {!isRunning ? 'Start' : 'Resume'}
-          </motion.button>
-        ) : (
-          <motion.button
-            type="button"
-            onClick={handlePause}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-6 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
-          >
-            <PauseIcon />
-            Pause
-          </motion.button>
-        )}
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="font-mono text-6xl font-bold text-foreground tabular-nums leading-none">
+                {formatTime(remaining)}
+              </span>
+            </div>
 
-        <motion.button
-          type="button"
-          onClick={handleSkip}
-          whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 px-4 h-11 rounded-xl border border-border bg-card text-muted-foreground text-sm font-medium hover:bg-muted hover:text-foreground transition-colors"
-        >
-          <SkipIcon />
-          Skip
-        </motion.button>
+            {/* Completion Lottie */}
+            <AnimatePresence>
+              {showCelebration && (
+                <motion.div
+                  className="absolute inset-0 flex items-center justify-center"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <LottieAnimation
+                    path="/animations/pomodoro-complete.json"
+                    layerColorMap={POMODORO_COMPLETE_LAYER_MAP}
+                    width={ringSize}
+                    height={ringSize}
+                    loop={false}
+                    autoplay={true}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-        <AnimatePresence>
-          {(isRunning || displayElapsed > 0) && (
+          {/* Session dots */}
+          <div className="flex flex-col items-center gap-1.5">
+            <SessionDots completed={sessionCount} total={sessionsPerCycle} />
+            <span className="text-[11px] text-muted-foreground">
+              {sessionCount} of {sessionsPerCycle} sessions
+            </span>
+          </div>
+
+          {/* Control buttons */}
+          <div className="flex items-center gap-3">
+            {!isRunning || isPaused ? (
+              <motion.button
+                type="button"
+                onClick={handleStart}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-6 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                <PlayIcon />
+                {!isRunning ? 'Start' : 'Resume'}
+              </motion.button>
+            ) : (
+              <motion.button
+                type="button"
+                onClick={handlePause}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-6 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                <PauseIcon />
+                Pause
+              </motion.button>
+            )}
+
             <motion.button
               type="button"
-              onClick={handleReset}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={handleSkip}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center justify-center w-11 h-11 rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label="Reset timer"
+              className="flex items-center gap-2 px-4 h-11 rounded-xl border border-border bg-card text-muted-foreground text-sm font-medium hover:bg-muted hover:text-foreground transition-colors"
             >
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="1 4 1 10 7 10" />
-                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-              </svg>
+              <SkipIcon />
+              Skip
             </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
 
-      {/* Session dots */}
-      <div className="flex flex-col items-center gap-1.5">
-        <SessionDots completed={sessionCount} total={sessionsPerCycle} />
-        <span className="text-xs text-muted-foreground">
-          {sessionCount} of {sessionsPerCycle} sessions
-        </span>
-      </div>
+            <AnimatePresence>
+              {(isRunning || displayElapsed > 0) && (
+                <motion.button
+                  type="button"
+                  onClick={handleReset}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center justify-center w-11 h-11 rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  aria-label="Reset timer"
+                >
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                  </svg>
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
 
-      {/* Settings */}
-      <div className="w-full max-w-xs">
-        <button
-          type="button"
-          onClick={() => setShowSettings((v) => !v)}
-          className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-card border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <span className="font-medium">Timer Settings</span>
-          <motion.div animate={{ rotate: showSettings ? 180 : 0 }} transition={{ duration: 0.2 }}>
-            <ChevronDownIcon />
-          </motion.div>
-        </button>
+          {/* Divider */}
+          <div className="w-full h-px bg-border/60" />
 
-        <AnimatePresence>
-          {showSettings && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
+          {/* Ambient sound row */}
+          <AmbientSoundRow />
+
+          {/* Divider */}
+          <div className="w-full h-px bg-border/60" />
+
+          {/* Timer Settings (collapsible) */}
+          <div className="w-full">
+            <button
+              type="button"
+              onClick={() => setShowSettings((v) => !v)}
+              className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <div className="flex flex-col gap-4 pt-3 px-1">
-                <DurationControl label="Work" value={workMins} onChange={handleWorkMinsChange} min={1} max={240} disabled={isRunning && phase === 'work'} />
-                <DurationControl label="Short Break" value={shortBreakMins} onChange={(v) => usePomodoroStore.getState().setShortBreakMins(v)} min={1} max={30} disabled={isRunning && phase === 'short_break'} />
-                <DurationControl label="Long Break" value={longBreakMins} onChange={(v) => usePomodoroStore.getState().setLongBreakMins(v)} min={1} max={60} disabled={isRunning && phase === 'long_break'} />
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-foreground font-medium">Sessions per Cycle</span>
-                  <Select
-                    value={String(sessionsPerCycle)}
-                    onValueChange={(v) => usePomodoroStore.getState().setSessionsPerCycle(Number(v))}
-                    disabled={isRunning}
-                  >
-                    <SelectTrigger className="w-20 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SESSIONS_OPTIONS.map((n) => (
-                        <SelectItem key={n} value={String(n)} className="tabular-nums">{n}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              <span className="font-medium">Timer Settings</span>
+              <motion.div animate={{ rotate: showSettings ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                <ChevronDownIcon />
+              </motion.div>
+            </button>
+
+            <AnimatePresence>
+              {showSettings && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex flex-col gap-4 pt-3 px-1">
+                    <DurationControl label="Work" value={workMins} onChange={handleWorkMinsChange} min={1} max={240} disabled={isRunning && phase === 'work'} />
+                    <DurationControl label="Short Break" value={shortBreakMins} onChange={(v) => usePomodoroStore.getState().setShortBreakMins(v)} min={1} max={30} disabled={isRunning && phase === 'short_break'} />
+                    <DurationControl label="Long Break" value={longBreakMins} onChange={(v) => usePomodoroStore.getState().setLongBreakMins(v)} min={1} max={60} disabled={isRunning && phase === 'long_break'} />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-foreground font-medium">Sessions per Cycle</span>
+                      <Select
+                        value={String(sessionsPerCycle)}
+                        onValueChange={(v) => usePomodoroStore.getState().setSessionsPerCycle(Number(v))}
+                        disabled={isRunning}
+                      >
+                        <SelectTrigger className="w-20 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SESSIONS_OPTIONS.map((n) => (
+                            <SelectItem key={n} value={String(n)} className="tabular-nums">{n}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 };
