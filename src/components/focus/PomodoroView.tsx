@@ -5,17 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { useAmbientStore } from '@/store/useAmbientStore';
+import { useTaskBoardStore, selectTasksByStatus } from '@/store/useTaskBoardStore';
 import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
+import { Slider } from '@/components/ui/slider';
 import type { AmbientTrack } from '@/types';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import type { Task } from '@/types/task';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,10 +22,13 @@ interface PomodoroViewProps {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SESSIONS_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
 const RING_SIZE_DESKTOP = 200;
 const RING_SIZE_MOBILE = 160;
 const RING_STROKE = 5;
+
+const WORK_PRESETS = [15, 20, 25, 30, 45, 50];
+const BREAK_PRESETS = [5, 10, 15, 20];
+const SESSION_PRESETS = [2, 3, 4, 5, 6];
 
 const AMBIENT_TRACKS: { id: AmbientTrack; label: string }[] = [
   { id: 'white', label: 'White' },
@@ -38,6 +37,18 @@ const AMBIENT_TRACKS: { id: AmbientTrack; label: string }[] = [
   { id: 'forest', label: 'Forest' },
   { id: 'ocean', label: 'Ocean' },
 ];
+
+const PRIORITY_BADGE: Record<string, { label: string; className: string }> = {
+  high:   { label: 'H', className: 'border-destructive/25 bg-destructive/10 text-destructive' },
+  medium: { label: 'M', className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  low:    { label: 'L', className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+};
+
+const DIFFICULTY_BADGE: Record<string, { label: string; className: string }> = {
+  easy:   { label: 'E', className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+  medium: { label: 'M', className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  hard:   { label: 'H', className: 'border-destructive/25 bg-destructive/10 text-destructive' },
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,19 +103,6 @@ const SkipIcon: React.FC = () => (
   </svg>
 );
 
-const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <polyline points="6 9 12 15 18 9" />
-  </svg>
-);
-
-const VolumeIcon: React.FC = () => (
-  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-  </svg>
-);
-
 // ── Progress Ring ────────────────────────────────────────────────────────────
 
 interface ProgressRingProps {
@@ -119,17 +117,10 @@ const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth
   const circumference = 2 * Math.PI * r;
   const dashOffset = circumference * (1 - Math.min(1, Math.max(0, progress)));
   const cx = size / 2;
-
   const activeColor = isBreak ? 'hsl(var(--primary) / 0.4)' : 'hsl(var(--primary))';
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      style={{ transform: 'rotate(-90deg)' }}
-      aria-hidden
-    >
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }} aria-hidden>
       <circle cx={cx} cy={cx} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} opacity={0.5} />
       <circle
         cx={cx} cy={cx} r={r} fill="none"
@@ -157,48 +148,119 @@ const SessionDots: React.FC<{ completed: number; total: number }> = ({ completed
   </div>
 );
 
-// ── Ambient Sound Row ────────────────────────────────────────────────────────
+// ── Pill Button ──────────────────────────────────────────────────────────────
 
-const AmbientSoundRow: React.FC = () => {
-  const { activeTrack, isPlaying, volume, setTrack, setVolume, stop } = useAmbientStore();
+interface PillProps {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+const Pill: React.FC<PillProps> = ({ label, active, disabled, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+      active
+        ? 'bg-primary text-primary-foreground'
+        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+    } ${disabled ? 'opacity-40 pointer-events-none' : ''}`}
+  >
+    {label}
+  </button>
+);
+
+// ── Right Panel: Session Config ──────────────────────────────────────────────
+
+interface SessionConfigProps {
+  workMins: number;
+  shortBreakMins: number;
+  sessionsPerCycle: number;
+  isRunning: boolean;
+  phase: string;
+  onWorkChange: (m: number) => void;
+  onBreakChange: (m: number) => void;
+  onSessionsChange: (n: number) => void;
+}
+
+const SessionConfig: React.FC<SessionConfigProps> = ({
+  workMins, shortBreakMins, sessionsPerCycle, isRunning, phase,
+  onWorkChange, onBreakChange, onSessionsChange,
+}) => {
+  const longBreak = sessionsPerCycle * 5;
+
+  return (
+    <div>
+      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Session</span>
+      <div className="mt-3 space-y-3">
+        {/* Work duration */}
+        <div>
+          <span className="text-sm text-muted-foreground">Work</span>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {WORK_PRESETS.map((m) => (
+              <Pill key={m} label={`${m}m`} active={workMins === m} disabled={isRunning && phase === 'work'} onClick={() => onWorkChange(m)} />
+            ))}
+          </div>
+        </div>
+        {/* Break duration */}
+        <div>
+          <span className="text-sm text-muted-foreground">Break</span>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {BREAK_PRESETS.map((m) => (
+              <Pill key={m} label={`${m}m`} active={shortBreakMins === m} disabled={isRunning && (phase === 'short_break' || phase === 'long_break')} onClick={() => onBreakChange(m)} />
+            ))}
+          </div>
+        </div>
+        {/* Sessions per cycle */}
+        <div>
+          <span className="text-sm text-muted-foreground">Sessions</span>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {SESSION_PRESETS.map((n) => (
+              <Pill key={n} label={String(n)} active={sessionsPerCycle === n} disabled={isRunning} onClick={() => onSessionsChange(n)} />
+            ))}
+          </div>
+        </div>
+        {/* Long break computed */}
+        <p className="text-xs text-muted-foreground">Long break &middot; {longBreak}m</p>
+      </div>
+    </div>
+  );
+};
+
+// ── Right Panel: Ambient Section ─────────────────────────────────────────────
+
+const AmbientSection: React.FC = () => {
+  const activeTrack = useAmbientStore((s) => s.activeTrack);
+  const isPlaying = useAmbientStore((s) => s.isPlaying);
+  const volume = useAmbientStore((s) => s.volume);
+  const setTrack = useAmbientStore((s) => s.setTrack);
+  const setVolume = useAmbientStore((s) => s.setVolume);
+  const stopAmbient = useAmbientStore((s) => s.stop);
 
   const handleTrackClick = (track: AmbientTrack) => {
     if (activeTrack === track && isPlaying) {
+      // Clicking active playing track → stop
       stopTrack();
-      stop();
+      stopAmbient();
     } else {
+      // Clicking any other track (or same track when stopped) → play it
       playTrack(track, volume);
       setTrack(track);
     }
   };
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
+  const handleVolumeChange = (values: number[]) => {
+    const v = values[0];
     setVolume(v);
     setTrackVolume(v);
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ambient</span>
-        {isPlaying && (
-          <div className="flex items-center gap-2">
-            <VolumeIcon />
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={volume}
-              onChange={handleVolumeChange}
-              className="w-16 h-1 accent-primary cursor-pointer"
-              aria-label="Volume"
-            />
-          </div>
-        )}
-      </div>
-      <div className="flex items-center justify-center gap-2">
+    <div>
+      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Ambient</span>
+      <div className="grid grid-cols-5 gap-2 mt-3">
         {AMBIENT_TRACKS.map((t) => {
           const active = activeTrack === t.id && isPlaying;
           const AmbIcon = AMBIENT_ICONS[t.id];
@@ -207,18 +269,132 @@ const AmbientSoundRow: React.FC = () => {
               key={t.id}
               type="button"
               onClick={() => handleTrackClick(t.id)}
-              className={`flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl transition-all duration-150 cursor-pointer ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl p-2 aspect-square max-w-[52px] w-full transition-all duration-150 ${
                 active
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  ? 'bg-primary/15 border border-primary/30'
+                  : 'bg-muted border border-transparent hover:bg-muted/80'
               }`}
               aria-label={t.label}
             >
-              {AmbIcon ? <AmbIcon size={20} /> : null}
-              <span className="text-[10px] font-medium">{t.label}</span>
+              {AmbIcon ? <AmbIcon size={18} /> : null}
+              <span className="text-[10px] font-medium text-muted-foreground leading-none">{t.label}</span>
             </button>
           );
         })}
+      </div>
+      {/* Volume slider — only when playing */}
+      <AnimatePresence>
+        {isPlaying && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-2.5 pt-3">
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              </svg>
+              <Slider
+                value={[volume]}
+                min={0}
+                max={1}
+                step={0.05}
+                onValueChange={handleVolumeChange}
+                aria-label="Volume"
+                className="flex-1"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ── Right Panel: Task Selector ───────────────────────────────────────────────
+
+const TaskSelector: React.FC<{
+  focusTask: Task | null;
+  onSelect: (task: Task | null) => void;
+}> = ({ focusTask, onSelect }) => {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const todoTasks = useTaskBoardStore(selectTasksByStatus('todo'));
+  const doingTasks = useTaskBoardStore(selectTasksByStatus('doing'));
+  const availableTasks = useMemo(() => [...doingTasks, ...todoTasks], [doingTasks, todoTasks]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return availableTasks.slice(0, 5);
+    const q = query.toLowerCase();
+    return availableTasks.filter((t) => t.title.toLowerCase().includes(q)).slice(0, 5);
+  }, [query, availableTasks]);
+
+  if (focusTask) {
+    const p = PRIORITY_BADGE[focusTask.priority];
+    const d = DIFFICULTY_BADGE[focusTask.difficulty];
+    return (
+      <div>
+        <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Focusing On</span>
+        <div className="relative mt-3 bg-muted rounded-lg px-3 py-2.5 pr-8">
+          <p className="text-sm text-foreground font-medium truncate">{focusTask.title}</p>
+          <div className="flex items-center gap-1.5 mt-1">
+            {p && <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border ${p.className}`}>{p.label}</span>}
+            {d && <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border ${d.className}`}>{d.label}</span>}
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className="absolute top-2.5 right-2.5 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Deselect task"
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Focusing On</span>
+      <div className="relative mt-3">
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Search tasks..."
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
+        />
+        {open && filtered.length > 0 && (
+          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+            {filtered.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onSelect(t); setQuery(''); setOpen(false); }}
+                className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors truncate"
+              >
+                {t.title}
+              </button>
+            ))}
+          </div>
+        )}
+        {open && filtered.length === 0 && query.trim() && (
+          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg p-3">
+            <p className="text-xs text-muted-foreground">No tasks found</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -236,7 +412,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const sessionCount = usePomodoroStore((s) => s.sessionCount);
   const workMins = usePomodoroStore((s) => s.workMins);
   const shortBreakMins = usePomodoroStore((s) => s.shortBreakMins);
-  const longBreakMins = usePomodoroStore((s) => s.longBreakMins);
   const sessionsPerCycle = usePomodoroStore((s) => s.sessionsPerCycle);
   const showCelebration = usePomodoroStore((s) => s.showCelebration);
   const workSessionStartedAt = usePomodoroStore((s) => s.workSessionStartedAt);
@@ -251,9 +426,9 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const getPhaseDurationSecs = usePomodoroStore((s) => s.getPhaseDurationSecs);
   const dismissCelebration = usePomodoroStore((s) => s.dismissCelebration);
 
-  // ── Display state (re-rendered every second) ───────────────────────────────
+  // ── Local UI state ─────────────────────────────────────────────────────────
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
+  const [focusTask, setFocusTask] = useState<Task | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completionHandledRef = useRef(false);
 
@@ -274,7 +449,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     }
   }, [focusSessionLength]);
 
-  // ── Ticker — runs every second while active ────────────────────────────────
+  // ── Ticker ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (isRunning && !isPaused) {
       const tick = () => {
@@ -301,20 +476,17 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     };
   }, [isRunning, isPaused, getElapsedSecs, storeTick]);
 
-  // ── Handle celebration (fire callback + feedback modal) ────────────────────
+  // ── Celebration handler ────────────────────────────────────────────────────
   useEffect(() => {
     if (showCelebration && !completionHandledRef.current) {
       completionHandledRef.current = true;
-
       if (workSessionStartedAt) {
-        const endTime = new Date().toISOString();
         onSessionComplete({
           startTime: workSessionStartedAt,
-          endTime,
+          endTime: new Date().toISOString(),
           duration: workMins * 60,
         });
       }
-
       setTimeout(() => {
         dismissCelebration();
         onRequestFeedback(null);
@@ -337,37 +509,34 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleStart = useCallback(() => {
-    if (!isRunning) {
-      storeStart();
-    } else if (isPaused) {
-      storeResume();
-    }
+    if (!isRunning) storeStart();
+    else if (isPaused) storeResume();
   }, [isRunning, isPaused, storeStart, storeResume]);
 
-  const handlePause = useCallback(() => {
-    storePause();
-  }, [storePause]);
-
-  const handleSkip = useCallback(() => {
-    storeSkip();
-  }, [storeSkip]);
-
-  const handleReset = useCallback(() => {
-    storeReset();
-    setDisplayElapsed(0);
-  }, [storeReset]);
+  const handlePause = useCallback(() => storePause(), [storePause]);
+  const handleSkip = useCallback(() => storeSkip(), [storeSkip]);
+  const handleReset = useCallback(() => { storeReset(); setDisplayElapsed(0); }, [storeReset]);
 
   // ── Settings handlers ──────────────────────────────────────────────────────
-  const handleWorkMinsChange = useCallback((value: number) => {
-    const clamped = Math.max(1, Math.min(240, value));
-    usePomodoroStore.getState().setWorkMins(clamped);
-    useSettingsStore.getState().setFocusSessionLength(clamped);
+  const handleWorkChange = useCallback((m: number) => {
+    usePomodoroStore.getState().setWorkMins(m);
+    useSettingsStore.getState().setFocusSessionLength(m);
+  }, []);
+
+  const handleBreakChange = useCallback((m: number) => {
+    usePomodoroStore.getState().setShortBreakMins(m);
+  }, []);
+
+  const handleSessionsChange = useCallback((n: number) => {
+    usePomodoroStore.getState().setSessionsPerCycle(n);
+    // Auto-compute long break as sessions × 5
+    usePomodoroStore.getState().setLongBreakMins(n * 5);
   }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="relative flex items-start justify-center py-8 px-4 min-h-[calc(100vh-120px)]">
-      {/* Breathing glow behind card */}
+      {/* Breathing glow */}
       <motion.div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full pointer-events-none"
         style={{
@@ -376,26 +545,19 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             : 'radial-gradient(circle, hsl(var(--primary) / 0.05), transparent 70%)',
           filter: 'blur(60px)',
         }}
-        animate={
-          isRunning && !isPaused
-            ? { opacity: [0.05, 0.12, 0.05] }
-            : { opacity: 0.05 }
-        }
-        transition={
-          isRunning && !isPaused
-            ? { duration: 4, repeat: Infinity, ease: 'easeInOut' }
-            : { duration: 0.3 }
-        }
+        animate={isRunning && !isPaused ? { opacity: [0.05, 0.12, 0.05] } : { opacity: 0.05 }}
+        transition={isRunning && !isPaused ? { duration: 4, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
       />
 
-      {/* Card */}
+      {/* Two-column card */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative w-full max-w-md rounded-2xl border border-border/60 bg-card shadow-sm p-6 sm:p-8"
+        className="relative w-full max-w-[900px] rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-[1fr_280px] min-h-[520px]"
       >
-        <div className="flex flex-col items-center gap-5">
+        {/* ── LEFT: Timer Column ────────────────────────────────────── */}
+        <div className="flex flex-col items-center justify-center gap-5 p-6 sm:p-8 md:border-r md:border-border/40">
           {/* Phase label */}
           <motion.p
             key={phase + sessionCount}
@@ -409,14 +571,12 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           {/* Ring + timer */}
           <div className="relative flex items-center justify-center">
             <ProgressRing progress={progress} size={ringSize} strokeWidth={RING_STROKE} isBreak={isBreak} />
-
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="font-mono text-6xl font-bold text-foreground tabular-nums leading-none">
                 {formatTime(remaining)}
               </span>
             </div>
-
-            {/* Completion Lottie */}
+            {/* Celebration overlay */}
             <AnimatePresence>
               {showCelebration && (
                 <motion.div
@@ -502,133 +662,45 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             </AnimatePresence>
           </div>
 
-          {/* Divider */}
-          <div className="w-full h-px bg-border/60" />
+          {/* Stop session — only when running */}
+          <AnimatePresence>
+            {isRunning && (
+              <motion.button
+                type="button"
+                onClick={handleReset}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Stop session
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
 
-          {/* Ambient sound row */}
-          <AmbientSoundRow />
+        {/* ── RIGHT: Settings Panel ─────────────────────────────────── */}
+        <div className="bg-muted/30 p-5 md:p-6 flex flex-col gap-6 border-t md:border-t-0 border-border/40 md:rounded-r-2xl rounded-b-2xl md:rounded-bl-none overflow-y-auto">
+          <SessionConfig
+            workMins={workMins}
+            shortBreakMins={shortBreakMins}
+            sessionsPerCycle={sessionsPerCycle}
+            isRunning={isRunning}
+            phase={phase}
+            onWorkChange={handleWorkChange}
+            onBreakChange={handleBreakChange}
+            onSessionsChange={handleSessionsChange}
+          />
 
-          {/* Divider */}
-          <div className="w-full h-px bg-border/60" />
+          <div className="h-px bg-border/40" />
 
-          {/* Timer Settings (collapsible) */}
-          <div className="w-full">
-            <button
-              type="button"
-              onClick={() => setShowSettings((v) => !v)}
-              className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <span className="font-medium">Timer Settings</span>
-              <motion.div animate={{ rotate: showSettings ? 180 : 0 }} transition={{ duration: 0.2 }}>
-                <ChevronDownIcon />
-              </motion.div>
-            </button>
+          <AmbientSection />
 
-            <AnimatePresence>
-              {showSettings && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <div className="flex flex-col gap-4 pt-3 px-1">
-                    <DurationControl label="Work" value={workMins} onChange={handleWorkMinsChange} min={1} max={240} disabled={isRunning && phase === 'work'} />
-                    <DurationControl label="Short Break" value={shortBreakMins} onChange={(v) => usePomodoroStore.getState().setShortBreakMins(v)} min={1} max={30} disabled={isRunning && phase === 'short_break'} />
-                    <DurationControl label="Long Break" value={longBreakMins} onChange={(v) => usePomodoroStore.getState().setLongBreakMins(v)} min={1} max={60} disabled={isRunning && phase === 'long_break'} />
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-foreground font-medium">Sessions per Cycle</span>
-                      <Select
-                        value={String(sessionsPerCycle)}
-                        onValueChange={(v) => usePomodoroStore.getState().setSessionsPerCycle(Number(v))}
-                        disabled={isRunning}
-                      >
-                        <SelectTrigger className="w-20 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SESSIONS_OPTIONS.map((n) => (
-                            <SelectItem key={n} value={String(n)} className="tabular-nums">{n}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          <div className="h-px bg-border/40" />
+
+          <TaskSelector focusTask={focusTask} onSelect={setFocusTask} />
         </div>
       </motion.div>
-    </div>
-  );
-};
-
-// ── Duration Picker ──────────────────────────────────────────────────────────
-
-const DURATION_HOURS = Array.from({ length: 5 }, (_, i) => String(i));
-const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
-
-interface DurationControlProps {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  min: number;
-  max: number;
-  disabled?: boolean;
-}
-
-const DurationControl: React.FC<DurationControlProps> = ({ label, value, onChange, min, max, disabled = false }) => {
-  const hours = Math.floor(value / 60);
-  const mins = value % 60;
-
-  const handleHourChange = (h: string) => {
-    const total = Number(h) * 60 + mins;
-    onChange(Math.max(min, Math.min(max, total)));
-  };
-
-  const handleMinChange = (m: string) => {
-    const total = hours * 60 + Number(m);
-    onChange(Math.max(min, Math.min(max, total)));
-  };
-
-  const displayStr = hours > 0 ? `${hours}h ${String(mins).padStart(2, '0')}m` : `${mins}m`;
-
-  return (
-    <div className={`flex flex-col gap-1.5 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-foreground font-medium">{label}</span>
-        <div className="flex items-center gap-1.5 h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-muted-foreground">
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="opacity-50 shrink-0">
-            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-          </svg>
-          <span className="text-foreground font-mono text-xs tabular-nums">{displayStr}</span>
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <Select value={String(hours)} onValueChange={handleHourChange} disabled={disabled}>
-          <SelectTrigger className="flex-1 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="max-h-48">
-            {DURATION_HOURS.map((h) => (
-              <SelectItem key={h} value={h} className="tabular-nums">{h}h</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="flex items-center text-muted-foreground font-medium text-sm select-none">:</span>
-        <Select value={String(mins).padStart(2, '0')} onValueChange={handleMinChange} disabled={disabled}>
-          <SelectTrigger className="flex-1 h-8 text-sm tabular-nums focus:ring-0 focus-visible:ring-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="max-h-48">
-            {DURATION_MINUTES.map((m) => (
-              <SelectItem key={m} value={m} className="tabular-nums">{m}m</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
     </div>
   );
 };
