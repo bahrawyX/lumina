@@ -6,17 +6,20 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { useAmbientStore } from '@/store/useAmbientStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
+import { useFocusStore } from '@/store/useFocusStore';
 // Audio lifecycle is managed by useAmbientStore — no direct audio imports needed
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
+import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
 import { Slider } from '@/components/ui/slider';
 import type { AmbientTrack } from '@/types';
 import type { Task } from '@/types/task';
+import type { PomodoroSessionData } from '@/components/pages/FocusPage';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface PomodoroViewProps {
-  onSessionComplete: (data: { startTime: string; endTime: string; duration: number }) => void;
+  onSessionComplete: (data: PomodoroSessionData) => void;
   onRequestFeedback: (focusSessionId: string | null) => void;
 }
 
@@ -38,15 +41,15 @@ const AMBIENT_TRACKS: { id: AmbientTrack; label: string }[] = [
 ];
 
 const PRIORITY_BADGE: Record<string, { label: string; className: string }> = {
-  high:   { label: 'H', className: 'border-destructive/25 bg-destructive/10 text-destructive' },
-  medium: { label: 'M', className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
-  low:    { label: 'L', className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+  high:   { label: 'High', className: 'border-destructive/25 bg-destructive/10 text-destructive' },
+  medium: { label: 'Med', className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  low:    { label: 'Low', className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
 };
 
 const DIFFICULTY_BADGE: Record<string, { label: string; className: string }> = {
-  easy:   { label: 'E', className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
-  medium: { label: 'M', className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
-  hard:   { label: 'H', className: 'border-destructive/25 bg-destructive/10 text-destructive' },
+  easy:   { label: 'Easy', className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+  medium: { label: 'Med', className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  hard:   { label: 'Hard', className: 'border-destructive/25 bg-destructive/10 text-destructive' },
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,6 +59,14 @@ function formatTime(totalSeconds: number): string {
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
+function formatMinSec(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m === 0) return `${rem}s`;
+  return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
 }
 
 function playChime(): void {
@@ -130,22 +141,6 @@ const ProgressRing: React.FC<ProgressRingProps> = ({ progress, size, strokeWidth
     </svg>
   );
 };
-
-// ── Session Dots ─────────────────────────────────────────────────────────────
-
-const SessionDots: React.FC<{ completed: number; total: number }> = ({ completed, total }) => (
-  <div className="flex items-center gap-2">
-    {Array.from({ length: total }, (_, i) => (
-      <motion.div
-        key={i}
-        className={`w-2 h-2 rounded-full transition-colors ${i < completed ? 'bg-primary' : 'bg-muted'}`}
-        initial={false}
-        animate={i < completed ? { scale: [1, 1.3, 1] } : {}}
-        transition={{ duration: 0.3 }}
-      />
-    ))}
-  </div>
-);
 
 // ── Pill Button ──────────────────────────────────────────────────────────────
 
@@ -311,8 +306,10 @@ const AmbientSection: React.FC = () => {
 
 const TaskSelector: React.FC<{
   focusTask: Task | null;
+  isTimerRunning: boolean;
   onSelect: (task: Task | null) => void;
-}> = ({ focusTask, onSelect }) => {
+  onResumeFromRemaining: (secs: number) => void;
+}> = ({ focusTask, isTimerRunning, onSelect, onResumeFromRemaining }) => {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -331,33 +328,66 @@ const TaskSelector: React.FC<{
     return availableTasks.filter((t) => t.title.toLowerCase().includes(q)).slice(0, 5);
   }, [query, availableTasks]);
 
+  // ── Active task card (task selected) ──────────────────────────────────────
   if (focusTask) {
     const p = PRIORITY_BADGE[focusTask.priority];
     const d = DIFFICULTY_BADGE[focusTask.difficulty];
+    const estMins = focusTask.durationMinutes;
+    const hasRemaining = focusTask.remainingFocusTime != null && focusTask.remainingFocusTime > 0;
+
     return (
       <div>
         <span className="text-xs font-semibold text-muted-foreground">Focusing on</span>
-        <div className="relative mt-3 bg-muted rounded-lg px-3 py-2.5 pr-8">
-          <p className="text-sm text-foreground font-medium truncate">{focusTask.title}</p>
-          <div className="flex items-center gap-1.5 mt-1">
+        <div className={`relative mt-3 rounded-xl px-3 py-2.5 pr-8 ${
+          isTimerRunning
+            ? 'bg-primary/10 border border-primary/30'
+            : 'bg-muted border border-transparent'
+        }`}>
+          {/* Title row */}
+          <div className="flex items-center gap-2">
+            {isTimerRunning && (
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
+            )}
+            <p className="text-sm text-foreground font-medium truncate">{focusTask.title}</p>
+          </div>
+          {/* Meta row */}
+          <div className="flex items-center gap-1.5 mt-1.5">
             {p && <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border ${p.className}`}>{p.label}</span>}
             {d && <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border ${d.className}`}>{d.label}</span>}
+            {estMins != null && estMins > 0 && (
+              <span className="text-[10px] text-muted-foreground">Est. {estMins}m</span>
+            )}
           </div>
+          {/* Deselect — only when timer NOT running */}
+          {!isTimerRunning && (
+            <button
+              type="button"
+              onClick={() => onSelect(null)}
+              className="absolute top-2.5 right-2.5 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Deselect task"
+            >
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Resume from remaining time — only when NOT running */}
+        {!isTimerRunning && hasRemaining && (
           <button
             type="button"
-            onClick={() => onSelect(null)}
-            className="absolute top-2.5 right-2.5 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Deselect task"
+            onClick={() => onResumeFromRemaining(focusTask.remainingFocusTime!)}
+            className="mt-2 text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
           >
-            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            Resume from {formatMinSec(focusTask.remainingFocusTime!)} remaining?
           </button>
-        </div>
+        )}
       </div>
     );
   }
 
+  // ── Search combobox (no task selected) ────────────────────────────────────
   return (
     <div>
       <span className="text-xs font-semibold text-muted-foreground">Focusing on</span>
@@ -423,11 +453,27 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const getPhaseDurationSecs = usePomodoroStore((s) => s.getPhaseDurationSecs);
   const dismissCelebration = usePomodoroStore((s) => s.dismissCelebration);
 
+  const updateTask = useTaskBoardStore((s) => s.updateTask);
+
   // ── Local UI state ─────────────────────────────────────────────────────────
   const [displayElapsed, setDisplayElapsed] = useState(0);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
+  const [showInterruptPrompt, setShowInterruptPrompt] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completionHandledRef = useRef(false);
+
+  // ── FIX 1: Sync with useFocusStore on mount ──────────────────────────────
+  // If a task was started from TaskBoard "Start focus", pre-populate the selector
+  useEffect(() => {
+    const activeSession = useFocusStore.getState().activeSession;
+    if (activeSession && activeSession.taskId) {
+      // Find the task in the task board
+      const task = useTaskBoardStore.getState().tasks.find((t) => t.id === activeSession.taskId);
+      if (task) {
+        setFocusTask(task);
+      }
+    }
+  }, []);
 
   // Responsive ring size
   const [ringSize, setRingSize] = useState(RING_SIZE_DESKTOP);
@@ -473,7 +519,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     };
   }, [isRunning, isPaused, getElapsedSecs, storeTick]);
 
-  // ── Celebration handler ────────────────────────────────────────────────────
+  // ── FIX 2: Celebration handler — now sends taskId/taskTitle ───────────────
   useEffect(() => {
     if (showCelebration && !completionHandledRef.current) {
       completionHandledRef.current = true;
@@ -482,7 +528,13 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           startTime: workSessionStartedAt,
           endTime: new Date().toISOString(),
           duration: workMins * 60,
+          taskId: focusTask?.id,
+          taskTitle: focusTask?.title,
         });
+      }
+      // Clear remainingFocusTime on linked task (full session completed)
+      if (focusTask?.id) {
+        updateTask(focusTask.id, { remainingFocusTime: null });
       }
       setTimeout(() => {
         dismissCelebration();
@@ -490,7 +542,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         completionHandledRef.current = false;
       }, 2500);
     }
-  }, [showCelebration, workSessionStartedAt, workMins, onSessionComplete, onRequestFeedback, dismissCelebration]);
+  }, [showCelebration, workSessionStartedAt, workMins, focusTask, onSessionComplete, onRequestFeedback, dismissCelebration, updateTask]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const phaseDuration = getPhaseDurationSecs();
@@ -515,6 +567,21 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     return 'Long break  ·  Full cycle complete';
   }, [phase, sessionCount, sessionsPerCycle]);
 
+  // ── Task selection handler — syncs with useFocusStore ─────────────────────
+  const handleTaskSelect = useCallback((task: Task | null) => {
+    setFocusTask(task);
+    // Sync to useFocusStore so other parts of the app know the active task
+    // We don't call startSession because Pomodoro has its own timer management
+    // But we expose the active task for session completion wiring
+  }, []);
+
+  // ── FIX 5: Resume from remaining focus time ──────────────────────────────
+  const handleResumeFromRemaining = useCallback((secs: number) => {
+    const mins = Math.ceil(secs / 60);
+    usePomodoroStore.getState().setWorkMins(mins);
+    useSettingsStore.getState().setFocusSessionLength(mins);
+  }, []);
+
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleStart = useCallback(() => {
     if (!isRunning) storeStart();
@@ -523,7 +590,72 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
   const handlePause = useCallback(() => storePause(), [storePause]);
   const handleSkip = useCallback(() => storeSkip(), [storeSkip]);
-  const handleReset = useCallback(() => { storeReset(); setDisplayElapsed(0); }, [storeReset]);
+
+  // ── FIX 4: Stop/Reset with interrupt flow ─────────────────────────────────
+  const handleStop = useCallback(() => {
+    // If a task is linked and timer is running during work phase, show interrupt prompt
+    if (focusTask && isRunning && phase === 'work' && displayElapsed >= 1) {
+      storePause(); // Pause first
+      setShowInterruptPrompt(true);
+      return;
+    }
+    // No task linked or not in work phase — just reset
+    storeReset();
+    setDisplayElapsed(0);
+  }, [focusTask, isRunning, phase, displayElapsed, storePause, storeReset]);
+
+  // Interrupt: "Yes, mark done"
+  const handleInterruptDone = useCallback(() => {
+    if (!focusTask) return;
+    // Mark task as done, clear remaining time
+    updateTask(focusTask.id, { status: 'done', remainingFocusTime: null });
+
+    // Save partial session if >= 60 seconds
+    const elapsed = Math.floor(displayElapsed);
+    if (elapsed >= 60 && workSessionStartedAt) {
+      onSessionComplete({
+        startTime: workSessionStartedAt,
+        endTime: new Date().toISOString(),
+        duration: elapsed,
+        taskId: focusTask.id,
+        taskTitle: focusTask.title,
+      });
+    }
+
+    setShowInterruptPrompt(false);
+    storeReset();
+    setDisplayElapsed(0);
+    setFocusTask(null);
+  }, [focusTask, displayElapsed, workSessionStartedAt, updateTask, onSessionComplete, storeReset]);
+
+  // Interrupt: "Not yet"
+  const handleInterruptPause = useCallback(() => {
+    if (!focusTask) return;
+    const elapsed = Math.floor(displayElapsed);
+    const workDurationSecs = workMins * 60;
+    const remainingSecs = Math.max(0, workDurationSecs - elapsed);
+
+    // Save remainingFocusTime on the task
+    updateTask(focusTask.id, {
+      status: 'doing',
+      remainingFocusTime: remainingSecs,
+    });
+
+    // Save partial session to DB if >= 60 seconds
+    if (elapsed >= 60 && workSessionStartedAt) {
+      onSessionComplete({
+        startTime: workSessionStartedAt,
+        endTime: new Date().toISOString(),
+        duration: elapsed,
+        taskId: focusTask.id,
+        taskTitle: focusTask.title,
+      });
+    }
+
+    setShowInterruptPrompt(false);
+    storeReset();
+    setDisplayElapsed(0);
+  }, [focusTask, displayElapsed, workMins, workSessionStartedAt, updateTask, onSessionComplete, storeReset]);
 
   // ── Settings handlers ──────────────────────────────────────────────────────
   const handleWorkChange = useCallback((m: number) => {
@@ -537,7 +669,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
   const handleSessionsChange = useCallback((n: number) => {
     usePomodoroStore.getState().setSessionsPerCycle(n);
-    // Auto-compute long break as sessions × 5
     usePomodoroStore.getState().setLongBreakMins(n * 5);
   }, []);
 
@@ -650,13 +781,13 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
               {(isRunning || displayElapsed > 0) && (
                 <motion.button
                   type="button"
-                  onClick={handleReset}
+                  onClick={handleStop}
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   whileTap={{ scale: 0.95 }}
                   className="flex items-center justify-center w-11 h-11 rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  aria-label="Reset timer"
+                  aria-label="Stop timer"
                 >
                   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="1 4 1 10 7 10" />
@@ -672,7 +803,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             {isRunning && (
               <motion.button
                 type="button"
-                onClick={handleReset}
+                onClick={handleStop}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -703,9 +834,52 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
 
           <div className="h-px bg-border/40" />
 
-          <TaskSelector focusTask={focusTask} onSelect={setFocusTask} />
+          <TaskSelector
+            focusTask={focusTask}
+            isTimerRunning={isRunning}
+            onSelect={handleTaskSelect}
+            onResumeFromRemaining={handleResumeFromRemaining}
+          />
         </div>
       </motion.div>
+
+      {/* ── FIX 4: Interrupt prompt bottom sheet ─────────────────────── */}
+      <MobileBottomSheet
+        open={showInterruptPrompt}
+        onClose={() => {
+          setShowInterruptPrompt(false);
+          storeResume(); // Resume timer if user dismisses
+        }}
+        title="Session paused"
+        className="md:max-w-md"
+      >
+        <div className="space-y-5">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">
+              Did you finish {focusTask?.title ? `"${focusTask.title}"` : 'this task'}?
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              If not, we&apos;ll save your remaining time so you can resume later.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            <button
+              type="button"
+              onClick={handleInterruptDone}
+              className="min-h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+            >
+              Yes, mark done
+            </button>
+            <button
+              type="button"
+              onClick={handleInterruptPause}
+              className="min-h-11 rounded-xl border border-border/60 bg-muted/30 text-foreground text-sm font-semibold hover:bg-muted/50 transition-colors"
+            >
+              Not yet
+            </button>
+          </div>
+        </div>
+      </MobileBottomSheet>
     </div>
   );
 };

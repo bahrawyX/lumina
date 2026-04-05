@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-03 (v5 — atomic task↔event link, TaskCompletionPrompt, Smart Daily Brief with Lottie icons)
+> Last updated: 2026-04-05 (v6 — Pomodoro↔task wiring, interrupt flow, ambient audio refactor, two-column Pomodoro layout)
 
 ---
 
@@ -491,11 +491,12 @@ All stores in `src/store/`. Stores with `persist` write to `localStorage`.
 - Filtering: `filter`, `sort`, `searchQuery`
 
 ### `useFocusStore`
-- `isRunning`, `isPaused`, `sessionDuration` (seconds), `elapsed`
-- `activeTask: Task | null`
-- `sessionHistory: FocusSession[]`
-- `startSession`, `pauseSession`, `resumeSession`, `stopSession`
-- `dbHydrated`, `hydrateFromDB`
+- `activeSession: ActiveSession | null` — ephemeral timer state (persisted to localStorage for page-reload resume)
+- `timerState: 'idle' | 'running' | 'paused'`
+- `sessionHistory: FocusSession[]` — DB-hydrated on mount
+- Actions: `startSession(taskId, taskTitle, durationSecs)`, `pauseSession`, `resumeSession`, `finishSession`, `cancelSession`, `getElapsedSecs`
+- `dbHydrated`, `hydrateFromDb`, `hydrateFromDbFailed`
+- Note: FocusSessionView uses this store's timer. PomodoroView uses `usePomodoroStore` for its own timer but reads `useFocusStore.activeSession` on mount to pre-populate the task selector, and writes session results (with taskId/taskTitle) to `sessionHistory`.
 
 ### `useDailyPlanStore`
 - `scheduledItems: PlannedItem[]`, `unscheduledTasks: Task[]`
@@ -581,16 +582,17 @@ Persisted keys: `coins`, `dailyStreak`, `bestDailyStreak`, `sessionStreak`, `bes
 ```ts
 interface AmbientState {
   isPlaying: boolean;
-  activeTrack: AmbientTrack | null; // 'white' | 'brown' | 'rainfall' | 'forest' | 'ocean'
+  activeTrack: AmbientTrack | null; // 'brown' | 'rainfall' | 'forest' | 'ocean'
   volume: number;  // 0–1
   drawerOpen: boolean;
-  setTrack: (track: AmbientTrack | null) => void;
-  setVolume: (v: number) => void;
-  stop: () => void;
+  setTrack: (track: AmbientTrack | null) => void;  // calls noiseGenerator internally
+  setVolume: (v: number) => void;                   // calls noiseGenerator internally
+  stop: () => void;                                  // calls noiseGenerator internally
   openDrawer: () => void;
   closeDrawer: () => void;
 }
 ```
+**Architecture:** Store owns the full audio lifecycle — it imports `playTrack`, `stopTrack`, `setTrackVolume` from `noiseGenerator.ts`. Components NEVER import noiseGenerator directly. `noiseGenerator` uses a session-ID guard to prevent ghost audio from orphaned async callbacks.
 
 ### `useToastStore`
 - `toasts: Toast[]`
@@ -736,9 +738,10 @@ Note: `duration` is in seconds; DB stores `durationMinutes`. `taskTitle` is empt
 
 #### `POST /api/focus-sessions` (extended with streak/coin/achievement logic)
 Required: `startTime` (ISO), `endTime` (ISO), `duration` (seconds)
-Optional: `taskId` (uuid), `timezone` (string, default 'UTC')
+Optional: `taskId` (uuid), `taskTitle` (string — prefers client-sent, falls back to DB lookup via taskId), `timezone` (string, default 'UTC')
 Validates: `end > start`, converts seconds → rounded minutes (min 1)
 After insert: computes streak update, coins earned, achievement unlocks — all in one DB pass.
+**Pomodoro integration:** PomodoroView sends `taskId` + `taskTitle` from the task selector. FocusPage handler also calls `useLinkStore.promptTaskCompletion()` to show "Mark task as done?" after session completes with a linked task.
 Response:
 ```json
 {
@@ -1040,14 +1043,26 @@ UI interaction
 
 ## 15. FOCUS SESSION FLOW
 
-### Interruption / resume
-When a running focus session is interrupted:
-- Prompt: "Did you finish this task?"
-  - **Yes** → task status = done, `remainingFocusTime = null`
-  - **Not yet** → saves remaining seconds to `remainingFocusTime` on task
-- Next time the task is started from TaskBoard, `remainingFocusTime` is used to resume
+### Two timer systems
+1. **Focus Timer** (`FocusSessionView.tsx` + `FocusTimer.tsx` + `useFocusStore`) — dedicated countdown from TaskBoard "Start focus"
+2. **Pomodoro** (`PomodoroView.tsx` + `usePomodoroStore`) — work/break cycles with task selector
 
-Primary files: `FocusSessionView.tsx`, `FocusTimer.tsx`, `TaskBoard.tsx`
+Both write to the same `POST /api/focus-sessions` endpoint with `taskId`/`taskTitle` when a session completes.
+
+### Interruption / resume (both timers)
+When a running session is interrupted (user clicks Stop with a task linked):
+- `MobileBottomSheet` prompt: "Did you finish [task title]?"
+  - **Yes, mark done** → `updateTask(taskId, { status: 'done', remainingFocusTime: null })`, saves partial session (if ≥ 60s) to DB
+  - **Not yet** → saves `remainingFocusTime = workDuration - elapsed` on task, saves partial session (if ≥ 60s) to DB
+- Next time the task is selected in Pomodoro's "Focusing on" or started from TaskBoard, `remainingFocusTime` powers a "Resume from X remaining?" prompt
+
+### Pomodoro → Task wiring
+- PomodoroView reads `useFocusStore.activeSession` on mount to pre-populate task selector (if user started from TaskBoard)
+- On natural session completion: sends `taskId`/`taskTitle` to `onSessionComplete`, clears `remainingFocusTime`, and `FocusPage` triggers `useLinkStore.promptTaskCompletion()` → `TaskCompletionPrompt` appears in AppShell
+- Session history entries include taskTitle so `/focus/done` and session history cards display it
+- Task selector card shows pulsing green dot when timer running, hides deselect button mid-session
+
+Primary files: `PomodoroView.tsx`, `FocusPage.tsx`, `FocusSessionView.tsx`, `FocusTimer.tsx`, `TaskBoard.tsx`
 
 ### Session persistence
 - Active timer state: localStorage only (by design — ephemeral)
@@ -1121,11 +1136,15 @@ Inactive item: `text-muted-foreground`
 - `PomodoroFeedbackModal`: forced mood selection (5 emojis), optional note, posts to `POST /api/mood-logs`
 - `MoodAnalysisCard`: 3-day mood trend analysis, shown above Pomodoro timer, dismissible, with reflection input for declining trends
 
-### 20.2 White noise / ambient sound drawer — COMPLETE
-- Web Audio API noise synthesis (no external files): white, brown, rainfall, forest, ocean
+### 20.2 Ambient sound drawer — COMPLETE
+- Primary: CDN-hosted audio files (archive.org for brown, jsdelivr for rain/forest/ocean). Fallback: Web Audio API synthesis
+- Tracks: brown, rainfall, forest, ocean (white noise removed)
+- `useAmbientStore` owns full audio lifecycle — components never import `noiseGenerator.ts` directly
+- `noiseGenerator.ts` uses session-ID guard to prevent ghost audio from orphaned async callbacks
 - `AmbientSoundDrawer`: bottom sheet with grid of sound cards, volume slider
-- `FloatingAmbientPlayer`: animated waveform circle at bottom-right (offset when tutorial button visible), click to stop
+- `FloatingAmbientPlayer`: animated waveform circle at bottom-right, click to stop
 - Sidebar has "Ambient Sounds" button to open drawer
+- PomodoroView has inline ambient section in right panel (synced with drawer)
 
 ### 20.3 Streaks + achievements + coins — COMPLETE
 - DB-backed: `users` table extended with coins, dailyStreak, bestDailyStreak, sessionStreak, bestSessionStreak, lastFocusDate, lastSessionAt
@@ -1172,6 +1191,18 @@ Inactive item: `text-muted-foreground`
 - `unlinkEvent` store method now persists the unlink to DB via `tasksPersistence.updateOne`
 - Bidirectional cascade: deleting event nulls task's `linkedEventId` (DB FK), deleting task nulls event's `linkedTaskId` (DB FK)
 - Index on `tasks.linked_event_id` for reverse lookups
+
+### 20.10 Pomodoro↔Task integration — COMPLETE
+- Task selector in PomodoroView wired to real focus session system
+- On mount: reads `useFocusStore.activeSession` to pre-populate task (if started from TaskBoard)
+- On session complete: sends `taskId`/`taskTitle` via `onSessionComplete` → `POST /api/focus-sessions`
+- FocusPage calls `useLinkStore.promptTaskCompletion()` → `TaskCompletionPrompt` appears in AppShell
+- Session history entries include task title (visible in `/focus/done` and session cards)
+- Interrupt flow: `MobileBottomSheet` with "Yes, mark done" / "Not yet" — saves `remainingFocusTime` or marks task done
+- Resume flow: if task has `remainingFocusTime`, shows "Resume from X remaining?" link
+- Task card shows pulsing green dot when timer running, hides × button mid-session
+- Two-column Pomodoro layout: timer left, 280px settings panel right (session config, ambient, task selector)
+- Files: `PomodoroView.tsx`, `FocusPage.tsx`, `pomodoro/page.tsx`
 
 ### 20.7 Natural Language Event Input — COMPLETE
 - `POST /api/intelligence/parse-event`: server-side Gemini 2.0 Flash NL→structured event parser

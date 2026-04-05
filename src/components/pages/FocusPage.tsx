@@ -10,10 +10,19 @@ import AchievementModal from '@/components/focus/AchievementModal';
 import MoodAnalysisCard from '@/components/focus/MoodAnalysisCard';
 import { useStreakStore } from '@/store/useStreakStore';
 import { useFocusStore } from '@/store/useFocusStore';
+import { useLinkStore } from '@/store/useLinkStore';
 import { useOnboardingStore } from '@/store/useOnboardingStore';
 import * as moodPersistence from '@/lib/persistence/moodPersistence';
 import { toast } from 'sonner';
 import type { MoodValue, MoodLog, FocusSessionResult } from '@/types';
+
+export interface PomodoroSessionData {
+  startTime: string;
+  endTime: string;
+  duration: number;
+  taskId?: string;
+  taskTitle?: string;
+}
 
 const FocusPage: React.FC = () => {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -25,6 +34,7 @@ const FocusPage: React.FC = () => {
   const achievementQueueRef = useRef<string[]>([]);
 
   const applySessionResult = useStreakStore((s) => s.applySessionResult);
+  const promptTaskCompletion = useLinkStore((s) => s.promptTaskCompletion);
   const userTimezone = useOnboardingStore((s) => s.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Load mood logs once
@@ -36,7 +46,7 @@ const FocusPage: React.FC = () => {
     });
   }, [moodLogsLoaded]);
 
-  const handleSessionComplete = useCallback(async (data: { startTime: string; endTime: string; duration: number }) => {
+  const handleSessionComplete = useCallback(async (data: PomodoroSessionData) => {
     try {
       const res = await fetch('/api/focus-sessions', {
         method: 'POST',
@@ -45,7 +55,8 @@ const FocusPage: React.FC = () => {
           startTime: data.startTime,
           endTime: data.endTime,
           duration: data.duration,
-          taskId: null,
+          taskId: data.taskId ?? null,
+          taskTitle: data.taskTitle ?? null,
           timezone: userTimezone,
         }),
       });
@@ -62,22 +73,27 @@ const FocusPage: React.FC = () => {
           setAchievementOpen(true);
         }
 
-        // Add to focus store session history
+        // Add to focus store session history (with task info)
         const session = {
           id: result.id,
-          taskId: '',
-          taskTitle: '',
+          taskId: data.taskId ?? '',
+          taskTitle: data.taskTitle ?? '',
           startTime: data.startTime,
           endTime: data.endTime,
           duration: data.duration,
           completed: true,
         };
-        useFocusStore.getState().sessionHistory.push(session);
+        useFocusStore.getState().sessionHistory.unshift(session);
+
+        // Prompt task completion if a task was linked
+        if (data.taskId && data.taskTitle) {
+          promptTaskCompletion(data.taskId, data.taskTitle);
+        }
       }
     } catch {
       // Fire-and-forget
     }
-  }, [applySessionResult, userTimezone]);
+  }, [applySessionResult, promptTaskCompletion, userTimezone]);
 
   const handleAchievementDismiss = useCallback((open: boolean) => {
     if (!open) {
