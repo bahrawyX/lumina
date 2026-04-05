@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
+import QuickSwitcher from "@/components/docs/QuickSwitcher";
 
 
 const MOBILE_NAV_ITEMS = [
@@ -149,6 +150,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   } = useCalendarStore();
   const { undo, redo } = useCalendarEventsStore();
 
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+
   useOutlookSync();
 
   useEffect(() => {
@@ -180,6 +183,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return;
       const key = e.key.toLowerCase();
       if (e.ctrlKey || e.metaKey) {
+        if (key === "k") {
+          e.preventDefault();
+          setQuickSwitcherOpen(true);
+          return;
+        }
         if (key === "z") {
           e.preventDefault();
           if (e.shiftKey) redo();
@@ -376,6 +384,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </div>
+
+      {/* Quick Switcher (Cmd+K) */}
+      <QuickSwitcher open={quickSwitcherOpen} onOpenChange={setQuickSwitcherOpen} />
 
       {/* Task completion prompt — shown when linked event is marked complete */}
       <AnimatePresence>

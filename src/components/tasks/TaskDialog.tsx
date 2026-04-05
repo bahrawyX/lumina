@@ -15,6 +15,9 @@ import { Input } from '../ui/input';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
 import { titleSchema, getFieldError } from '../../lib/validation';
+import { useDocsStore } from '../../store/useDocsStore';
+import * as docsPersistence from '../../lib/persistence/docsPersistence';
+import { formatDistanceToNow } from 'date-fns';
 
 // ── Close icon ────────────────────────────────────────────────────────────────
 
@@ -314,6 +317,9 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                 </div>
               </div>
 
+              {/* Linked Doc */}
+              {isEdit && task && <LinkedDocSection taskId={task.id} taskTitle={task.title} />}
+
               {/* Footer */}
               <div className="flex gap-2 justify-end pt-1">
                 <Button variant="ghost" size="sm" onClick={onClose} className="rounded-lg">
@@ -332,3 +338,120 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
     </MobileBottomSheet>
   );
 };
+
+// ── Linked Doc Section ───────────────────────────────────────────────────────
+
+function LinkedDocSection({ taskId, taskTitle }: { taskId: string; taskTitle: string }) {
+  const docs = useDocsStore((s) => s.docs);
+  const updateDoc = useDocsStore((s) => s.updateDoc);
+  const createDoc = useDocsStore((s) => s.createDoc);
+  const [search, setSearch] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+
+  // Find doc linked to this task
+  const linkedDoc = docs.find((d) => d.linkedTaskId === taskId && !d.isArchived);
+
+  const filteredDocs = docs
+    .filter((d) => !d.isArchived && d.title.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 5);
+
+  const handleLink = async (docId: string) => {
+    // Update both sides optimistically
+    updateDoc(docId, { linkedTaskId: taskId });
+    // Persist task side via API
+    await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkedDocId: docId }),
+    });
+    setShowPicker(false);
+    setSearch('');
+  };
+
+  const handleUnlink = async () => {
+    if (!linkedDoc) return;
+    updateDoc(linkedDoc.id, { linkedTaskId: null });
+    await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkedDocId: null }),
+    });
+  };
+
+  const handleCreateAndLink = async () => {
+    const docId = await createDoc({ title: taskTitle, linkedTaskId: taskId });
+    if (docId) {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedDocId: docId }),
+      });
+      window.open(`/docs/${docId}`, '_blank');
+    }
+    setShowPicker(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-xs font-medium text-muted-foreground">Linked document</Label>
+
+      {linkedDoc ? (
+        <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2">
+          <span className="text-sm flex-shrink-0">{linkedDoc.icon || '📄'}</span>
+          <div className="min-w-0 flex-1">
+            <a href={`/docs/${linkedDoc.id}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-foreground hover:underline truncate block">
+              {linkedDoc.title}
+            </a>
+            <p className="text-xs text-muted-foreground">
+              Updated {formatDistanceToNow(new Date(linkedDoc.updatedAt), { addSuffix: true })}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleUnlink}
+            className="flex-shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors"
+            aria-label="Unlink document"
+          >
+            <XIcon />
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <Input
+            placeholder="Search docs..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setShowPicker(true); }}
+            onFocus={() => setShowPicker(true)}
+            className="h-9 text-sm rounded-lg"
+          />
+          {showPicker && (
+            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border border-border/60 rounded-xl shadow-lg max-h-[200px] overflow-y-auto">
+              {filteredDocs.map((doc) => (
+                <button
+                  key={doc.id}
+                  type="button"
+                  className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-muted/60 transition-colors"
+                  onClick={() => handleLink(doc.id)}
+                >
+                  <span className="text-sm flex-shrink-0">{doc.icon || '📄'}</span>
+                  <span className="text-sm text-foreground truncate flex-1">{doc.title}</span>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
+                  </span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="flex items-center gap-2 w-full px-3 py-2 text-left text-primary hover:bg-muted/60 transition-colors border-t border-border/40"
+                onClick={handleCreateAndLink}
+              >
+                <span className="text-sm">＋</span>
+                <span className="text-sm">Create doc for this task</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

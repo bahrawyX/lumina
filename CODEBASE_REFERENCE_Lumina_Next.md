@@ -1218,6 +1218,7 @@ Inactive item: `text-muted-foreground`
 | 5 | ~~Low~~ Resolved | ~~`taskTitle` not persisted~~ — Fixed: `task_title` column added, API reads/writes it, UI renders with "Deep work" fallback. |
 | 6 | Medium | Recurring event visual indicator (↻ loop icon) not yet shown on event chips in day/week/month views. Affects: `DayView.tsx`, `WeekView.tsx`, `MonthView.tsx`. |
 | 7 | Low | `POST /api/events` and `POST /api/tasks` create each side independently before `POST /api/link` is called. If event creation succeeds but link call fails, the event exists without a link. Consider wrapping all three in a single API endpoint for truly atomic create+link. |
+| 8 | Low | Inline `/task` blocks in docs editor insert a `☐` prefix paragraph but do not yet create a real task in `useTaskBoardStore` or sync checkbox state bidirectionally. Full two-way task sync is a follow-up. |
 
 ---
 
@@ -1391,6 +1392,93 @@ Files: `pwa-64.png`, `pwa-192.png`, `pwa-512.png`, `pwa-512-maskable.png`, `badg
 - `InstallPrompt.tsx`: tracks visits in localStorage, shows after 3+
 - Captures `beforeinstallprompt` event for Chrome/Edge native install
 - Dismissal persisted — won't show again
+
+---
+
+## 25. LUMINA DOCS
+
+### Architecture
+Full document/knowledge system integrated into the app. Documents link to tasks, events, and focus sessions — unlike Notion/ClickUp where documents are isolated.
+
+### Editor
+- **BlockNote** (`@blocknote/react`, `@blocknote/core`, `@blocknote/mantine`)
+- Notion-style block editor with slash commands built-in
+- Custom Lumina slash commands: `/task` (☐ prefix), `/callout` (💡), `/divider`
+- Theme matched via CSS variable overrides in `globals.css`
+- Auto-save: 1000ms debounce, "Saving..."/"Saved ✓" indicator
+
+### Database
+#### `docs` table
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | auto gen |
+| user_id | uuid FK→users | cascade delete |
+| parent_id | uuid | self-referential, nullable (max depth 5) |
+| title | varchar(512) | default 'Untitled' |
+| content | jsonb | BlockNote document JSON |
+| content_text | text | plain text for FTS |
+| icon | varchar(64) | emoji |
+| cover_image | text | nullable |
+| cover_gradient | integer | index into COVER_GRADIENTS array |
+| is_archived | boolean | default false |
+| is_pinned | boolean | default false |
+| position | integer | sibling ordering |
+| linked_task_id | uuid FK→tasks | SET NULL on delete |
+| linked_event_id | uuid FK→events | SET NULL on delete |
+| word_count | integer | default 0 |
+| created_at / updated_at | timestamptz | |
+
+Indexes: user_id, parent_id, (user_id, parent_id), linked_task_id, linked_event_id, GIN FTS on title+content_text.
+
+#### Additional columns
+- `tasks.linked_doc_id` (uuid, nullable)
+- `events.linked_doc_id` (uuid, nullable)
+
+### API Routes
+| Route | Method | Description |
+|---|---|---|
+| `/api/docs` | GET | Tree list (no content), sorted by pinned/position/updated_at |
+| `/api/docs` | POST | Create doc, validates nesting depth ≤ 5 |
+| `/api/docs/[id]` | GET | Full doc with content |
+| `/api/docs/[id]` | PATCH | Update with 409 stale-write protection |
+| `/api/docs/[id]` | DELETE | Soft delete (archive). `?hard=true` + `{confirm:true}` for permanent |
+| `/api/docs/search` | GET | PostgreSQL FTS with `ts_headline` excerpts, limit 20 |
+| `/api/docs/ai-stream` | POST | Gemini streaming proxy, 10/min rate limit |
+
+### Store: `useDocsStore` (src/store/useDocsStore.ts)
+State: `docs`, `openDocId`, `openDocContent`, `expandedIds`, `dbHydrated`, `isSaving`, `lastSavedAt`, `searchQuery`, `searchResults`, `isSearching`
+Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, `deleteDoc`, `pinDoc`, `moveDoc`, `saveContent` (1000ms debounced), `search`, `clearSearch`, `openDoc`, `closeDoc`, `toggleExpanded`
+
+### UI Components
+| File | Description |
+|---|---|
+| `src/components/docs/SidebarDocsTree.tsx` | Sidebar tree with expand/collapse, context menu, inline rename, add subpage |
+| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with Lumina theme + custom slash commands |
+| `src/components/docs/DocBreadcrumb.tsx` | Parent chain navigation |
+| `src/components/docs/DocSaveIndicator.tsx` | "Saving..."/"Saved ✓" AnimatePresence |
+| `src/components/docs/DocRightSidebar.tsx` | Doc info, linked task/event, focus time |
+| `src/components/docs/QuickSwitcher.tsx` | Cmd+K global search overlay |
+| `src/components/pages/DocsHomePage.tsx` | /docs — greeting, search, pinned grid, recent list, empty state |
+| `src/components/pages/DocPage.tsx` | /docs/[id] — cover, icon, title, editor, right sidebar |
+
+### Pages
+- `/docs` → `src/app/(app)/docs/page.tsx`
+- `/docs/[id]` → `src/app/(app)/docs/[id]/page.tsx`
+
+### Templates (src/lib/docs/templates.ts)
+6 built-in: Meeting Notes, Project Brief, Weekly Review, Goal Setting, Daily Journal, SOP/Process Guide
+
+### Integrations
+- **TaskDialog**: "Linked document" section — search/link/unlink docs, "Create doc for this task"
+- **EventModal**: "Meeting notes" section — create notes from template with event context, open/unlink
+- **Quick Switcher**: Cmd+K searches docs + tasks + events + actions
+
+### Mobile
+- Cover hidden on mobile
+- Right sidebar hidden, accessible via ··· menu button
+- Pinned cards single column
+- Mobile FAB for new doc
+- Breadcrumbs: compact with immediate parent only
 
 ---
 

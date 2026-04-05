@@ -31,6 +31,7 @@ import { useLuminaAuthClient } from './AuthProvider';
 import { useTutorialStore } from '../store/useTutorialStore';
 import { useAmbientStore } from '../store/useAmbientStore';
 import ContactDrawer from './contact/ContactDrawer';
+import SidebarDocsTree from './docs/SidebarDocsTree';
 import NotificationSettings from './settings/NotificationSettings';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
@@ -860,6 +861,9 @@ const AppSidebar: React.FC = () => {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Docs */}
+          <SidebarDocsTree collapsed={isSidebarCollapsed} showTooltip={tooltipsReady} />
 
           {/* Contexts */}
           <SidebarGroup className="px-2 mt-1" data-tutorial="contexts">

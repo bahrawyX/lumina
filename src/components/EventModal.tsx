@@ -21,6 +21,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
+import { useDocsStore } from "@/store/useDocsStore";
+import { TEMPLATES } from "@/lib/docs/templates";
 
 /** Intentional brand colors per Google/Microsoft identity guidelines */
 const GOOGLE_BRAND_COLOR = '#4285F4';
@@ -203,6 +205,9 @@ const EventModal: React.FC = () => {
             />
           </div>
 
+          {/* Meeting Notes */}
+          {activeEvent && <MeetingNotesSection eventId={activeEvent.id} eventTitle={activeEvent.title} eventDate={formData.date} eventStartTime={formData.startTime} eventEndTime={formData.endTime} />}
+
           {isExternalEvent && (
             <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -368,3 +373,109 @@ const EventModal: React.FC = () => {
 };
 
 export default EventModal;
+
+// ── Meeting Notes Section ────────────────────────────────────────────────────
+
+function MeetingNotesSection({
+  eventId,
+  eventTitle,
+  eventDate,
+  eventStartTime,
+  eventEndTime,
+}: {
+  eventId: string;
+  eventTitle: string;
+  eventDate: string;
+  eventStartTime: string;
+  eventEndTime: string;
+}) {
+  const docs = useDocsStore((s) => s.docs);
+  const createDoc = useDocsStore((s) => s.createDoc);
+  const updateDoc = useDocsStore((s) => s.updateDoc);
+  const [isCreating, setIsCreating] = React.useState(false);
+
+  // Find existing linked doc
+  const linkedDoc = docs.find((d) => d.linkedEventId === eventId && !d.isArchived);
+
+  const handleCreateNotes = async () => {
+    setIsCreating(true);
+    try {
+      const meetingTemplate = TEMPLATES.find((t) => t.id === 'meeting-notes');
+      const content = [
+        { type: 'heading', props: { level: 1 }, content: [{ type: 'text', text: eventTitle }], children: [] },
+        { type: 'paragraph', content: [{ type: 'text', text: `Date: ${eventDate}` }], children: [] },
+        { type: 'paragraph', content: [{ type: 'text', text: `Time: ${eventStartTime} – ${eventEndTime}` }], children: [] },
+        ...(meetingTemplate?.content.slice(1) ?? []),
+      ];
+
+      const docId = await createDoc({
+        title: `${eventTitle} — Notes`,
+        icon: '📋',
+        linkedEventId: eventId,
+      });
+
+      if (docId) {
+        // Save content
+        const contentText = `${eventTitle} Notes Date: ${eventDate} Time: ${eventStartTime} – ${eventEndTime}`;
+        await fetch(`/api/docs/${docId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, contentText, wordCount: contentText.split(/\s+/).length }),
+        });
+
+        // Link event to doc
+        await fetch(`/api/events/${eventId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ linkedDocId: docId }),
+        });
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    if (!linkedDoc) return;
+    updateDoc(linkedDoc.id, { linkedEventId: null });
+    await fetch(`/api/events/${eventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkedDocId: null }),
+    });
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium text-muted-foreground">Meeting notes</Label>
+      {linkedDoc ? (
+        <div className="flex items-center gap-2">
+          <a
+            href={`/docs/${linkedDoc.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary hover:underline flex items-center gap-1.5"
+          >
+            📋 Open notes →
+          </a>
+          <button
+            type="button"
+            onClick={handleUnlink}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ×
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={handleCreateNotes}
+          disabled={isCreating}
+          className="text-sm bg-muted text-muted-foreground px-3 py-1.5 rounded-lg hover:bg-muted/80 transition-colors disabled:opacity-50"
+        >
+          {isCreating ? 'Creating...' : '+ Create notes'}
+        </button>
+      )}
+    </div>
+  );
+}

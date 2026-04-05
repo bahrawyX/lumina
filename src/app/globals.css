@@ -182,3 +182,24 @@
   background-color: rgba(109,89,224,0.1);
   color: #6D59E0;
 }
+
+/* ─── BlockNote editor theme overrides ────────────────────────────────────── */
+.bn-container {
+  --bn-colors-editor-background: hsl(var(--background));
+  --bn-colors-editor-text: hsl(var(--foreground));
+  --bn-colors-menu-background: hsl(var(--popover));
+  --bn-colors-menu-text: hsl(var(--foreground));
+  --bn-colors-hovered-background: hsl(var(--muted));
+  --bn-colors-selected-background: hsl(var(--primary) / 0.1);
+  --bn-colors-border: hsl(var(--border));
+  --bn-font-family: inherit;
+}
+
+.bn-container [class*="blockContent"] {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+.lumina-editor .bn-editor {
+  padding: 0;
+}

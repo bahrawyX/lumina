@@ -30,11 +30,13 @@ import { useFocusStore } from '@/store/useFocusStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useDailyPlanStore } from '@/store/useDailyPlanStore';
 import { useStreakStore } from '@/store/useStreakStore';
+import { useDocsStore } from '@/store/useDocsStore';
 import { authClient } from '@/lib/auth-client';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
 import * as plannerPersistence from '@/lib/persistence/plannerPersistence';
+import * as docsPersistence from '@/lib/persistence/docsPersistence';
 
 // migrateMany stubs — imported to satisfy any callers referencing them
 export { migrateMany as migrateEventsMany } from '@/lib/persistence/eventsPersistence';
@@ -62,6 +64,10 @@ export default function PersistenceBootstrap() {
   const hydratePlanner = useDailyPlanStore((s) => s.hydrateFromDb);
   const hydratePlannerFailed = useDailyPlanStore((s) => s.hydrateFromDbFailed);
   const plannerHydrated = useDailyPlanStore((s) => s.dbHydrated);
+
+  const hydrateDocs = useDocsStore((s) => s.hydrateFromDb);
+  const hydrateDocsFailed = useDocsStore((s) => s.hydrateFromDbFailed);
+  const docsHydrated = useDocsStore((s) => s.dbHydrated);
 
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
@@ -136,6 +142,15 @@ export default function PersistenceBootstrap() {
             .then((items) => hydratePlanner(items))
             .catch(() => {
               hydratePlannerFailed();
+            }),
+
+      // Hydrate docs store
+      docsHydrated
+        ? Promise.resolve()
+        : docsPersistence.fetchAll()
+            .then((docs) => hydrateDocs(docs))
+            .catch(() => {
+              if (isDev) hydrateDocsFailed();
             }),
 
       // Hydrate streak store from API

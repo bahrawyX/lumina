@@ -48,6 +48,7 @@ export const tasks = pgTable(
     scheduledEnd: varchar('scheduled_end', { length: 5 }),
     remainingFocusTime: integer('remaining_focus_time'),
     linkedEventId: uuid('linked_event_id'),
+    linkedDocId: uuid('linked_doc_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

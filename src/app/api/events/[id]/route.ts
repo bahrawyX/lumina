@@ -273,6 +273,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       }
     }
 
+    // linkedDocId
+    const linkedDocId = body.linkedDocId;
+    if (linkedDocId === null) {
+      patch.linkedDocId = null;
+    } else if (typeof linkedDocId === 'string' && linkedDocId.trim()) {
+      patch.linkedDocId = linkedDocId;
+    }
+
     if (linkedTaskId === null) {
       patch.linkedTaskId = null;
     } else if (typeof linkedTaskId === 'string' && linkedTaskId.trim()) {

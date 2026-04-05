@@ -4,6 +4,7 @@ import { achievements } from './achievements';
 import { calendars } from './calendars';
 import { contactSubmissions } from './contactSubmissions';
 import { dailyBriefCache } from './dailyBriefCache';
+import { docs } from './docs';
 import { eventRecurrence } from './eventRecurrence';
 import { events } from './events';
 import { focusSessions } from './focusSessions';
@@ -32,6 +33,7 @@ export * from './moodLogs';
 export * from './contactSubmissions';
 export * from './dailyBriefCache';
 export * from './pushSubscriptions';
+export * from './docs';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),
@@ -48,6 +50,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 	contactSubmissions: many(contactSubmissions),
 	dailyBriefCache: many(dailyBriefCache),
 	pushSubscriptions: many(pushSubscriptions),
+	docs: many(docs),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -107,6 +110,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
 	events: many(events),
 	plannerItems: many(plannerItems),
 	focusSessions: many(focusSessions),
+	docs: many(docs),
 }));
 
 export const plannerItemsRelations = relations(plannerItems, ({ one }) => ({
@@ -175,5 +179,26 @@ export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one })
 	user: one(users, {
 		fields: [pushSubscriptions.userId],
 		references: [users.id],
+	}),
+}));
+
+export const docsRelations = relations(docs, ({ one, many }) => ({
+	user: one(users, {
+		fields: [docs.userId],
+		references: [users.id],
+	}),
+	parent: one(docs, {
+		fields: [docs.parentId],
+		references: [docs.id],
+		relationName: 'docParent',
+	}),
+	children: many(docs, { relationName: 'docParent' }),
+	linkedTask: one(tasks, {
+		fields: [docs.linkedTaskId],
+		references: [tasks.id],
+	}),
+	linkedEvent: one(events, {
+		fields: [docs.linkedEventId],
+		references: [events.id],
 	}),
 }));
