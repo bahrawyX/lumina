@@ -31,7 +31,6 @@ const BREAK_PRESETS = [5, 10, 15, 20];
 const SESSION_PRESETS = [2, 3, 4, 5, 6];
 
 const AMBIENT_TRACKS: { id: AmbientTrack; label: string }[] = [
-  { id: 'white', label: 'White' },
   { id: 'rainfall', label: 'Rain' },
   { id: 'brown', label: 'Brown' },
   { id: 'forest', label: 'Forest' },
@@ -254,7 +253,7 @@ const AmbientSection: React.FC = () => {
   return (
     <div>
       <span className="text-xs font-semibold text-muted-foreground">Ambient</span>
-      <div className="grid grid-cols-5 gap-2 mt-3">
+      <div className="grid grid-cols-4 gap-2 mt-3">
         {AMBIENT_TRACKS.map((t) => {
           const active = activeTrack === t.id && isPlaying;
           const AmbIcon = AMBIENT_ICONS[t.id];
@@ -361,7 +360,7 @@ const TaskSelector: React.FC<{
 
   return (
     <div>
-      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Focusing On</span>
+      <span className="text-xs font-semibold text-muted-foreground">Focusing on</span>
       <div className="relative mt-3">
         <input
           ref={inputRef}

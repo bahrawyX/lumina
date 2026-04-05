@@ -9,7 +9,6 @@ import type { AmbientTrack } from '@/types';
 // ── Audio URLs — royalty-free ambient loops ──────────────────────────────────
 // Sourced from Pixabay (royalty-free, no attribution required)
 const AUDIO_URLS: Record<AmbientTrack, string> = {
-  white:    'https://archive.org/download/TenMinutesOfWhiteNoisePinkNoiseAndBrownianNoise/WhiteNoise_64kb.mp3',
   brown:    'https://archive.org/download/TenMinutesOfWhiteNoisePinkNoiseAndBrownianNoise/BrownianNoise_64kb.mp3',
   rainfall: 'https://cdn.jsdelivr.net/gh/bradtraversy/ambient-sound-mixer@main/audio/rain.mp3',
   forest:   'https://cdn.jsdelivr.net/gh/bradtraversy/ambient-sound-mixer@main/audio/birds.mp3',

@@ -517,7 +517,6 @@ export const OceanIcon: React.FC<IconProps> = ({ size = 18, className }) => (
 // ── Ambient icon lookup ──────────────────────────────────────────────────────
 
 export const AMBIENT_ICONS: Record<string, React.FC<IconProps>> = {
-  white: CloudIcon,
   rainfall: RainIcon,
   brown: BrownNoiseIcon,
   forest: ForestIcon,

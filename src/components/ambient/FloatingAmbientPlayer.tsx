@@ -7,7 +7,6 @@ import { useTutorialStore } from '@/store/useTutorialStore';
 // Audio lifecycle is managed by useAmbientStore
 
 const TRACK_LABELS: Record<string, string> = {
-  white: 'White Noise',
   brown: 'Brown',
   rainfall: 'Rain',
   forest: 'Forest',

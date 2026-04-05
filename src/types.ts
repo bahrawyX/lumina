@@ -186,7 +186,7 @@ export interface MoodLog {
   loggedAt: string; // ISO
 }
 
-export type AmbientTrack = 'white' | 'brown' | 'rainfall' | 'forest' | 'ocean';
+export type AmbientTrack = 'brown' | 'rainfall' | 'forest' | 'ocean';
 
 export interface FocusSessionResult {
   id: string;

@@ -8,7 +8,6 @@ import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
 import { Slider } from '@/components/ui/slider';
 
 const TRACKS: { id: AmbientTrack; label: string }[] = [
-  { id: 'white', label: 'White Noise' },
   { id: 'rainfall', label: 'Rainfall' },
   { id: 'brown', label: 'Brown Noise' },
   { id: 'forest', label: 'Forest' },
