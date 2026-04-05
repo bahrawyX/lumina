@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-05 (v6 — Pomodoro↔task wiring, interrupt flow, ambient audio refactor, two-column Pomodoro layout)
+> Last updated: 2026-04-05 (v7 — PWA + push notifications, cron jobs, install prompt, offline support)
 
 ---
 
@@ -137,7 +137,16 @@ src/
 │   │   │   ├── route.ts              ← GET: AI schedule analysis (includes recurring instances)
 │   │   │   └── parse-event/route.ts  ← POST: Gemini NL→structured event parser (server-side only)
 │   │   ├── link/route.ts             ← POST/DELETE: atomic bidirectional task↔event link/unlink
-│   │   ├── users/preferences/route.ts
+│   │   ├── users/
+│   │   │   ├── preferences/route.ts
+│   │   │   └── notification-preferences/route.ts ← GET/PATCH notification prefs + timezone sync
+│   │   ├── push/
+│   │   │   ├── subscribe/route.ts     ← POST (upsert) / DELETE (remove by endpoint)
+│   │   │   └── send/route.ts          ← POST: self-only push (authenticated user sends to themselves)
+│   │   ├── cron/
+│   │   │   ├── daily-brief/route.ts   ← Vercel cron: 8 AM local-time daily brief
+│   │   │   ├── event-reminders/route.ts ← Vercel cron: 10-min event reminder
+│   │   │   └── streak-reminder/route.ts ← Vercel cron: 8 PM local-time streak risk
 │   │   └── maintenance/cleanup-external-events/route.ts
 │   ├── globals.css
 │   ├── layout.tsx                  ← Root layout: AuthProvider, ThemeProvider, metadata
@@ -155,6 +164,11 @@ src/
 │   │   └── FloatingAmbientPlayer.tsx ← Animated waveform circle, click to stop
 │   ├── contact/
 │   │   └── ContactDrawer.tsx      ← Right-side drawer with validation, rate-limited POST
+│   ├── settings/
+│   │   └── NotificationSettings.tsx ← Sheet: permission banner, 5 toggle rows, device info
+│   ├── pwa/
+│   │   ├── InstallPrompt.tsx      ← Floating card after 3+ visits, beforeinstallprompt / iOS guide
+│   │   └── OfflineIndicator.tsx   ← Amber slide-down bar (AnimatePresence) on offline
 │   ├── focus/
 │   │   ├── FocusSessionView.tsx   ← Main focus container (interrupt/resume logic)
 │   │   ├── FocusTimer.tsx         ← Timer display and controls
@@ -227,6 +241,9 @@ src/
 │   ├── persistence/                ← Thin API wrappers: events/tasks/focus/planner
 │   ├── validation.ts               ← Zod schemas: nameSchema, emailSchema, passwordCreateSchema, passwordSchema, titleSchema, getFieldError()
 │   ├── utils.ts                    ← cn() and common utils
+│   ├── cronAuth.ts                 ← verifyCronSecret() — Bearer token check for Vercel cron
+│   ├── push/
+│   │   └── sendPushNotification.ts ← VAPID setup + sendPushToUser() (server-only)
 │   ├── intelligence/               ← AI engine: engine, types, recommendations, scoring, llmSummary
 │   ├── integrations/
 │   │   ├── google/                 ← OAuth, token refresh, calendar/event CRUD, sync
@@ -234,7 +251,8 @@ src/
 │   └── calendar/                   ← Normalize, local CRUD, providers
 ├── db/
 │   └── schema/                     ← users, accounts, sessions, verifications, events,
-│                                     tasks, calendars, integrations, focusSessions, plannerItems
+│                                     tasks, calendars, integrations, focusSessions, plannerItems,
+│                                     pushSubscriptions
 ├── types/
 │   ├── types.ts                    ← CalendarEvent, Task, FocusSession, ViewType, EventCategory, IntelligenceProfile
 │   ├── task.ts
@@ -466,6 +484,27 @@ Unique: `(user_id, provider)` — one integration row per provider per user.
 | best_session_streak | integer | default 0 |
 | last_focus_date | date | YYYY-MM-DD, nullable |
 | last_session_at | timestamptz | nullable |
+| timezone | text | default 'UTC', IANA timezone string (synced from client on notification init) |
+| notification_preferences | jsonb | default `{dailyBrief:true, eventReminders:true, streakReminder:true, taskReminders:true, focusComplete:false}` |
+
+#### `push_subscriptions`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | auto gen |
+| user_id | uuid FK→users | cascade delete |
+| endpoint | text | push endpoint URL |
+| p256dh | text | ECDH public key |
+| auth | text | auth secret |
+| user_agent | text | nullable |
+| last_used_at | timestamptz | nullable |
+| created_at | timestamptz | |
+
+Unique: `(user_id, endpoint)`. Index on `user_id`.
+
+#### `events` — additions for reminders
+| Column | Type | Notes |
+|---|---|---|
+| reminder_sent_at | timestamptz | nullable, set by event-reminders cron |
 
 ---
 
@@ -594,6 +633,19 @@ interface AmbientState {
 ```
 **Architecture:** Store owns the full audio lifecycle — it imports `playTrack`, `stopTrack`, `setTrackVolume` from `noiseGenerator.ts`. Components NEVER import noiseGenerator directly. `noiseGenerator` uses a session-ID guard to prevent ghost audio from orphaned async callbacks.
 
+### `useNotificationStore` (persisted as `lumina-notifications`)
+```ts
+interface NotificationState {
+  permission: NotificationPermission;  // 'default' | 'granted' | 'denied'
+  subscription: PushSubscriptionJSON | null;
+  preferences: NotificationPreferences; // dailyBrief, eventReminders, streakReminder, taskReminders, focusComplete
+  isSupported: boolean;
+  initialized: boolean;
+}
+```
+Actions: `init()` (checks permission + fetches server prefs + syncs timezone), `requestPermission()`, `subscribe()`, `unsubscribe()`, `updatePreferences(partial)`
+Persisted keys: `preferences` only — permission/subscription re-checked on init.
+
 ### `useToastStore`
 - `toasts: Toast[]`
 - `addToast`, `removeToast`
@@ -613,6 +665,7 @@ interface AmbientState {
 | `useGuestGate.ts` | Gate feature access for guest users (see §9) |
 | `useOutlookSync.ts` | Calls `POST /api/sync/outlook` on mount, maps events |
 | `useContributionYear.ts` | Year selection for performance heatmap |
+| `useIsPWA.ts` | `boolean` — detects standalone display-mode (installed PWA) |
 
 Note: `useFocusStore` has NOT been extended with `moodLogs` — mood logs are managed as local state in FocusPage and fetched via `moodPersistence.fetchMoodLogs()`. The `useStreakStore` is hydrated from `GET /api/users/preferences` which now returns streak fields.
 
@@ -784,6 +837,47 @@ Response: `{ "ok": true }`
 
 #### `POST /api/streaks/recover`
 Placeholder — returns `{ "ok": false, "reason": "payment_required" }` with HTTP 402.
+
+---
+
+### Push Notifications
+
+#### `POST /api/push/subscribe`
+Body: `{ subscription: PushSubscriptionJSON }` — upserts push subscription for authenticated user.
+Response: `{ ok: true }`
+
+#### `DELETE /api/push/subscribe`
+Body: `{ endpoint: string }` — removes subscription by endpoint.
+Response: `{ ok: true }`
+
+#### `POST /api/push/send`
+Self-only: sends push notification to the authenticated user's own devices.
+Body: `{ title, body, tag, url, notificationType }`.
+Used by focus-complete notification (fires when `document.hidden === true` after session save).
+Response: `{ ok: true }`
+
+#### `GET/PATCH /api/users/notification-preferences`
+GET: returns `{ preferences: NotificationPreferences }`.
+PATCH: merge-updates notification prefs + optional `timezone` (IANA string) sync.
+Body: `{ dailyBrief?: boolean, ..., timezone?: string }`.
+
+---
+
+### Cron Jobs (Vercel Cron, protected by CRON_SECRET)
+
+All cron routes require `Authorization: Bearer <CRON_SECRET>` header. Returns 401 without it.
+Configured in `vercel.json`, all run every 5 minutes.
+
+#### `GET /api/cron/daily-brief`
+Sends morning brief push at ~8:00 AM **user local time** (uses `users.timezone` column).
+Also sends task-due notification if `taskReminders` enabled and tasks due today.
+
+#### `GET /api/cron/event-reminders`
+Finds events with `startTime` 10–15 minutes from now, sends reminder, marks `reminder_sent_at`.
+Uses absolute timestamps — timezone-agnostic.
+
+#### `GET /api/cron/streak-reminder`
+Sends "streak at risk" push at ~8:00 PM **user local time** for users with `dailyStreak > 0` and no focus session today.
 
 ---
 
@@ -1238,6 +1332,11 @@ GOOGLE_CALENDAR_CLIENT_ID      # Google OAuth app (calendar integration)
 GOOGLE_CALENDAR_CLIENT_SECRET
 GEMINI_API_KEY                 # Google Gemini (intelligence summaries)
 NEXT_PUBLIC_APP_URL            # Same as BETTER_AUTH_URL, public-facing
+VAPID_PUBLIC_KEY               # Web Push VAPID public key (server-side reference)
+VAPID_PRIVATE_KEY              # Web Push VAPID private key (server-only, NEVER in client)
+VAPID_SUBJECT                  # mailto:your@email.com
+NEXT_PUBLIC_VAPID_PUBLIC_KEY   # Same as VAPID_PUBLIC_KEY — exposed to client for PushManager.subscribe()
+CRON_SECRET                    # Bearer token for Vercel cron job authentication
 ```
 
 ---
@@ -1248,6 +1347,50 @@ NEXT_PUBLIC_APP_URL            # Same as BETTER_AUTH_URL, public-facing
 - Branch: `main`
 - Deployment: Vercel (auto-deploy on push to main)
 - Every commit to main triggers a new Vercel build
+
+---
+
+## 24. PWA + PUSH NOTIFICATIONS
+
+### Architecture
+- **Service worker**: `public/sw.js` — handles push events, notification clicks, offline fallback
+- **Registration**: inline `<script>` in `layout.tsx`, production-only (`process.env.NODE_ENV === 'production'`)
+- **Manifest**: `public/manifest.json` — standalone display, 4 icon sizes, 3 shortcuts
+- **Offline**: `public/offline.html` — minimal dark-theme page, served by SW when navigation fails
+
+### Push Flow
+1. User opens NotificationSettings sheet (bell icon in sidebar)
+2. `useNotificationStore.init()` checks browser support, fetches server prefs, syncs timezone
+3. User clicks "Allow Notifications" → `requestPermission()` → browser prompt
+4. On grant: `subscribe()` → `PushManager.subscribe()` with VAPID key → `POST /api/push/subscribe` (upsert)
+5. Server sends via `sendPushToUser()` using `web-push` npm package with VAPID credentials
+6. SW `push` event → `showNotification()` with icon, badge, actions
+7. SW `notificationclick` → focus existing window or open new one at target URL
+
+### Cron Jobs (vercel.json)
+All run every 5 minutes. Protected by `CRON_SECRET` Bearer token via `verifyCronSecret()`.
+- `/api/cron/daily-brief` — 8 AM user local time
+- `/api/cron/event-reminders` — 10-15 min before event start (absolute timestamps)
+- `/api/cron/streak-reminder` — 8 PM user local time
+
+### Timezone
+- `users.timezone` column (IANA string, default 'UTC')
+- Synced from client browser on notification store init via PATCH `/api/users/notification-preferences`
+- Cron routes use `Intl.DateTimeFormat` with user's timezone to compute local hour
+
+### PWA Icons
+Generated via `sharp` — purple (#6D59E0) background with white "L" letter.
+Files: `pwa-64.png`, `pwa-192.png`, `pwa-512.png`, `pwa-512-maskable.png`, `badge-72.png`, `shortcut-*.png`
+
+### iOS
+- `apple-mobile-web-app-capable: yes`, `apple-mobile-web-app-status-bar-style: black-translucent`
+- `globals.css`: `overscroll-behavior-y: none` + fixed body in standalone mode
+- `InstallPrompt.tsx`: detects iOS and shows "Tap share → Add to Home Screen" instructions
+
+### Install Prompt
+- `InstallPrompt.tsx`: tracks visits in localStorage, shows after 3+
+- Captures `beforeinstallprompt` event for Chrome/Edge native install
+- Dismissal persisted — won't show again
 
 ---
 

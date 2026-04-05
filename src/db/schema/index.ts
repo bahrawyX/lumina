@@ -10,6 +10,7 @@ import { focusSessions } from './focusSessions';
 import { integrations } from './integrations';
 import { moodLogs } from './moodLogs';
 import { plannerItems } from './plannerItems';
+import { pushSubscriptions } from './pushSubscriptions';
 import { sessions } from './sessions';
 import { tasks } from './tasks';
 import { users } from './users';
@@ -30,6 +31,7 @@ export * from './achievements';
 export * from './moodLogs';
 export * from './contactSubmissions';
 export * from './dailyBriefCache';
+export * from './pushSubscriptions';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),
@@ -45,6 +47,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 	moodLogs: many(moodLogs),
 	contactSubmissions: many(contactSubmissions),
 	dailyBriefCache: many(dailyBriefCache),
+	pushSubscriptions: many(pushSubscriptions),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -164,6 +167,13 @@ export const contactSubmissionsRelations = relations(contactSubmissions, ({ one 
 export const dailyBriefCacheRelations = relations(dailyBriefCache, ({ one }) => ({
 	user: one(users, {
 		fields: [dailyBriefCache.userId],
+		references: [users.id],
+	}),
+}));
+
+export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+	user: one(users, {
+		fields: [pushSubscriptions.userId],
 		references: [users.id],
 	}),
 }));

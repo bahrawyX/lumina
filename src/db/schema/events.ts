@@ -71,6 +71,7 @@ export const events = pgTable(
     originalStartTime: timestamp('original_start_time', { withTimezone: true }),
     isRecurrenceException: boolean('is_recurrence_exception').notNull().default(false),
     createdViaNl: boolean('created_via_nl').notNull().default(false),
+    reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

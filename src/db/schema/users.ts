@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -17,6 +17,20 @@ export const users = pgTable(
     bestSessionStreak: integer('best_session_streak').notNull().default(0),
     lastFocusDate: date('last_focus_date'),
     lastSessionAt: timestamp('last_session_at', { withTimezone: true }),
+    timezone: text('timezone').notNull().default('UTC'),
+    notificationPreferences: jsonb('notification_preferences').$type<{
+      dailyBrief: boolean;
+      eventReminders: boolean;
+      streakReminder: boolean;
+      taskReminders: boolean;
+      focusComplete: boolean;
+    }>().default({
+      dailyBrief: true,
+      eventReminders: true,
+      streakReminder: true,
+      taskReminders: true,
+      focusComplete: false,
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

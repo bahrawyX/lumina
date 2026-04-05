@@ -72,6 +72,22 @@ export default function PomodoroPage() {
         };
         useFocusStore.getState().sessionHistory.unshift(session);
 
+        // Send push notification if tab is in background
+        if (document.hidden) {
+          const mins = Math.round(data.duration / 60);
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: 'Focus session complete',
+              body: `${mins} min session${data.taskTitle ? ` · ${data.taskTitle}` : ''} finished`,
+              tag: 'focus-complete',
+              url: '/focus',
+              notificationType: 'focus_complete',
+            }),
+          }).catch(() => { /* fire-and-forget */ });
+        }
+
         // Prompt task completion if a task was linked
         if (data.taskId && data.taskTitle) {
           promptTaskCompletion(data.taskId, data.taskTitle);

@@ -129,6 +129,37 @@
 .pt-safe { padding-top: env(safe-area-inset-top); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 
+/* ─── PWA standalone mode (iOS/Android) ────────────────────────────────── */
+@supports (display-mode: standalone) {
+  @media (display-mode: standalone) {
+    html {
+      overscroll-behavior-y: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    body {
+      /* Prevent pull-to-refresh on iOS standalone */
+      overscroll-behavior-y: none;
+      /* Account for notch / dynamic island */
+      padding-top: env(safe-area-inset-top);
+    }
+  }
+}
+
+/* iOS rubber-band overscroll prevention in PWA mode */
+@media screen and (display-mode: standalone) {
+  html, body {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  #__next, [data-nextjs-scroll-focus-boundary] {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* ─── Thin scrollbar (time picker columns) ───────────────────────────────── */
 .thin-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(120,120,140,0.35) transparent; }
 .thin-scrollbar::-webkit-scrollbar { width: 4px; }

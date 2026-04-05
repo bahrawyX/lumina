@@ -20,6 +20,8 @@ import { useTaskBoardStore } from "@/store/useTaskBoardStore";
 import { useFocusStore } from "@/store/useFocusStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
+import InstallPrompt from "@/components/pwa/InstallPrompt";
+import OfflineIndicator from "@/components/pwa/OfflineIndicator";
 import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
@@ -343,6 +345,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <AmbientSoundDrawer />
         <FloatingAmbientPlayer />
         <PomodoroFloatingWidget />
+        <InstallPrompt />
+        <OfflineIndicator />
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">
           <div className="grid grid-cols-5 px-1 pt-1.5 pb-1.5">

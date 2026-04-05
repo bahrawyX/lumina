@@ -31,6 +31,7 @@ import { useLuminaAuthClient } from './AuthProvider';
 import { useTutorialStore } from '../store/useTutorialStore';
 import { useAmbientStore } from '../store/useAmbientStore';
 import ContactDrawer from './contact/ContactDrawer';
+import NotificationSettings from './settings/NotificationSettings';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -175,6 +176,7 @@ const AppSidebar: React.FC = () => {
   const [outlookLoading, setOutlookLoading] = React.useState(false);
   const [customContextDialogOpen, setCustomContextDialogOpen] = useState(false);
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const [editingContextName, setEditingContextName] = useState<string | null>(null);
   const [contextPendingDelete, setContextPendingDelete] = useState<string | null>(null);
   const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
@@ -959,6 +961,15 @@ const AppSidebar: React.FC = () => {
               {!isSidebarCollapsed && <span className="text-xs font-medium text-muted-foreground">Ambient Sounds</span>}
             </SidebarMenuButton>
             <SidebarMenuButton
+              onClick={() => setNotificationSettingsOpen(true)}
+              className="rounded-xl hover:bg-accent/50 gap-2.5"
+            >
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              {!isSidebarCollapsed && <span className="text-xs font-medium text-muted-foreground">Notifications</span>}
+            </SidebarMenuButton>
+            <SidebarMenuButton
               onClick={() => setContactDrawerOpen(true)}
               className="rounded-xl hover:bg-accent/50 gap-2.5"
             >
@@ -1229,6 +1240,7 @@ const AppSidebar: React.FC = () => {
         </DialogContent>
       </Dialog>
       <ContactDrawer open={contactDrawerOpen} onClose={() => setContactDrawerOpen(false)} />
+      <NotificationSettings open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen} />
     </motion.aside>
   );
 };
