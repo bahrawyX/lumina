@@ -108,7 +108,7 @@ export default function AmbientSoundDrawer() {
                       key={t.id}
                       type="button"
                       onClick={() => handleTrackClick(t.id)}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-150 cursor-pointer ${
+                      className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-150 cursor-pointer select-none ${
                         active
                           ? 'border-primary bg-primary/10'
                           : 'border-border bg-muted/50 hover:bg-muted'
@@ -118,7 +118,7 @@ export default function AmbientSoundDrawer() {
                         const AmbIcon = AMBIENT_ICONS[t.id];
                         return AmbIcon ? <AmbIcon size={32} /> : null;
                       })()}
-                      <span className={`text-xs font-medium ${active ? 'text-primary' : 'text-muted-foreground'}`}>
+                      <span className={`text-xs font-medium whitespace-nowrap ${active ? 'text-primary' : 'text-muted-foreground'}`}>
                         {t.label}
                       </span>
                     </button>

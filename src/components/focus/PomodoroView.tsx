@@ -262,7 +262,7 @@ const AmbientSection: React.FC = () => {
               key={t.id}
               type="button"
               onClick={() => handleTrackClick(t.id)}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl p-2 aspect-square max-w-[52px] w-full transition-all duration-150 ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl p-2 aspect-square max-w-[52px] w-full transition-all duration-150 select-none ${
                 active
                   ? 'bg-primary/15 border border-primary/30'
                   : 'bg-muted border border-transparent hover:bg-muted/80'

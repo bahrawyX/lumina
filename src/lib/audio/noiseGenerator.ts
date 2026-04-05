@@ -66,7 +66,7 @@ export function playTrack(track: AmbientTrack, volume = 0.6): void {
   const audio = new Audio(url);
   audio.loop = true;
   audio.volume = Math.max(0, Math.min(1, volume));
-  audio.crossOrigin = 'anonymous';
+  // No crossOrigin needed — we only do simple playback, not Web Audio graph routing
 
   // Guard: only act if this session is still current
   audio.oncanplaythrough = () => {
