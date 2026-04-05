@@ -4,7 +4,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAmbientStore } from '@/store/useAmbientStore';
 import { useTutorialStore } from '@/store/useTutorialStore';
-import { stopTrack } from '@/lib/audio/noiseGenerator';
+// Audio lifecycle is managed by useAmbientStore
 
 const TRACK_LABELS: Record<string, string> = {
   white: 'White Noise',
@@ -22,7 +22,6 @@ export default function FloatingAmbientPlayer() {
   const rightOffset = hasCompletedTutorial ? 16 : 72;
 
   const handleStop = () => {
-    stopTrack();
     stop();
   };
 

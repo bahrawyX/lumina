@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { useAmbientStore } from '@/store/useAmbientStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
-import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
+// Audio lifecycle is managed by useAmbientStore — no direct audio imports needed
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
 import { Slider } from '@/components/ui/slider';
@@ -241,20 +241,14 @@ const AmbientSection: React.FC = () => {
 
   const handleTrackClick = (track: AmbientTrack) => {
     if (activeTrack === track && isPlaying) {
-      // Clicking active playing track → stop
-      stopTrack();
       stopAmbient();
     } else {
-      // Clicking any other track (or same track when stopped) → play it
-      playTrack(track, volume);
       setTrack(track);
     }
   };
 
   const handleVolumeChange = (values: number[]) => {
-    const v = values[0];
-    setVolume(v);
-    setTrackVolume(v);
+    setVolume(values[0]);
   };
 
   return (

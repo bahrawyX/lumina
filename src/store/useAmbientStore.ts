@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import type { AmbientTrack } from '@/types';
 
 interface AmbientState {
@@ -16,23 +17,36 @@ interface AmbientActions {
   closeDrawer: () => void;
 }
 
-export const useAmbientStore = create<AmbientState & AmbientActions>()((set) => ({
+export const useAmbientStore = create<AmbientState & AmbientActions>()((set, get) => ({
   isPlaying: false,
   activeTrack: null,
   volume: 0.6,
   drawerOpen: false,
 
   setTrack: (track) => {
+    // Always stop current audio first — no two nodes simultaneously
+    stopTrack();
+
     if (track === null) {
       set({ isPlaying: false, activeTrack: null });
     } else {
+      const { volume } = get();
+      playTrack(track, volume);
       set({ isPlaying: true, activeTrack: track });
     }
   },
 
-  setVolume: (v) => set({ volume: Math.max(0, Math.min(1, v)) }),
+  setVolume: (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    setTrackVolume(clamped);
+    set({ volume: clamped });
+  },
 
-  stop: () => set({ isPlaying: false, activeTrack: null }),
+  stop: () => {
+    // Destroy audio node, then update state
+    stopTrack();
+    set({ isPlaying: false, activeTrack: null });
+  },
 
   openDrawer: () => set({ drawerOpen: true }),
 

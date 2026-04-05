@@ -3,7 +3,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAmbientStore } from '@/store/useAmbientStore';
-import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
 import type { AmbientTrack } from '@/types';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
 import { Slider } from '@/components/ui/slider';
@@ -22,22 +21,17 @@ export default function AmbientSoundDrawer() {
 
   const handleTrackClick = (track: AmbientTrack) => {
     if (activeTrack === track && isPlaying) {
-      stopTrack();
       stop();
     } else {
-      playTrack(track, volume);
       setTrack(track);
     }
   };
 
   const handleVolumeChange = (values: number[]) => {
-    const v = values[0];
-    setVolume(v);
-    setTrackVolume(v);
+    setVolume(values[0]);
   };
 
   const handleStop = () => {
-    stopTrack();
     stop();
   };
 
