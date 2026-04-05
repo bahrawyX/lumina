@@ -131,7 +131,7 @@ function saveHistory(sessions: FocusSession[], userId: string | null): void {
 export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
   // Active session is ephemeral timer state — safe to restore from localStorage for page-reload resume.
   ...(() => {
-    const restored = loadActiveSession();
+    const restored = typeof window !== 'undefined' ? loadActiveSession() : null;
     return {
       activeSession: restored?.session ?? null,
       timerState: (restored?.timerState ?? 'idle') as TimerState,
