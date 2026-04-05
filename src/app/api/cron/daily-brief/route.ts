@@ -7,36 +7,41 @@ import { sendPushToUser } from '@/lib/push/sendPushNotification';
 
 export const dynamic = 'force-dynamic';
 
+// NOTE: Vercel Hobby plan — runs once per day (8 AM UTC)
+// Upgrade to Pro for per-minute precision
+
 /**
- * Returns the current hour and minute in a given IANA timezone.
- * Uses the Intl API — no external libraries needed.
+ * Returns time-of-day greeting based on user's local hour.
  */
-function getLocalTime(tz: string): { hour: number; minute: number } {
+function getGreeting(tz: string): string {
   try {
-    const now = new Date();
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
       hour: 'numeric',
-      minute: 'numeric',
       hour12: false,
-    }).formatToParts(now);
+    }).formatToParts(new Date());
 
     let hour = 0;
-    let minute = 0;
     for (const p of parts) {
       if (p.type === 'hour') hour = parseInt(p.value, 10);
-      if (p.type === 'minute') minute = parseInt(p.value, 10);
     }
-    // Intl hour12:false returns 24 for midnight in some locales
     if (hour === 24) hour = 0;
-    return { hour, minute };
+
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
   } catch {
-    // Invalid timezone — return -1 so the check fails gracefully
-    return { hour: -1, minute: -1 };
+    return 'Good morning';
   }
 }
 
-// Runs every 5 minutes — checks which users have local time ~8:00 AM
+/**
+ * Returns today's date string (YYYY-MM-DD) in UTC.
+ */
+function getTodayUTC(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export async function GET(req: Request) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -44,6 +49,7 @@ export async function GET(req: Request) {
 
   const db = getDatabase();
   const now = new Date();
+  const todayDateStr = getTodayUTC();
 
   // Get all users with push subscriptions
   const eligibleUsers = await db
@@ -74,12 +80,9 @@ export async function GET(req: Request) {
       const prefs = user.notificationPreferences as { dailyBrief?: boolean; taskReminders?: boolean } | null;
       if (!prefs?.dailyBrief) continue;
 
-      // Check if user's LOCAL time is between 8:00 and 8:04
       const userTz = user.timezone || 'UTC';
-      const { hour, minute } = getLocalTime(userTz);
-      if (hour !== 8 || minute >= 5) continue;
 
-      // Get today's events count (in user's local date)
+      // Get today's events count
       const todayStart = new Date(now);
       todayStart.setUTCHours(0, 0, 0, 0);
       const todayEnd = new Date(now);
@@ -97,7 +100,6 @@ export async function GET(req: Request) {
         );
 
       // Get tasks due today
-      const todayDateStr = now.toISOString().slice(0, 10);
       const dueTasks = await db
         .select({ id: tasks.id, title: tasks.title })
         .from(tasks)
@@ -111,10 +113,11 @@ export async function GET(req: Request) {
 
       const eventCount = todayEvents.length;
       const name = user.name?.split(' ')[0] ?? 'there';
+      const greeting = getGreeting(userTz);
 
       // Send daily brief notification
       await sendPushToUser(userId, {
-        title: `Good morning, ${name}`,
+        title: `${greeting}, ${name}`,
         body: `${eventCount} meeting${eventCount !== 1 ? 's' : ''} today${dueTasks.length > 0 ? ` \u00b7 ${dueTasks.length} task${dueTasks.length !== 1 ? 's' : ''} due` : ''}`,
         tag: 'daily-brief',
         url: '/',

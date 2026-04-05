@@ -7,7 +7,26 @@ import { sendPushToUser } from '@/lib/push/sendPushNotification';
 
 export const dynamic = 'force-dynamic';
 
-// Runs every 5 minutes — sends reminders for events starting in 10-15 minutes
+// NOTE: Vercel Hobby plan — runs once per day (9 AM UTC)
+// Upgrade to Pro for per-minute precision (10-min-before reminders)
+
+/**
+ * Formats a Date into a human-readable local time string for the user.
+ * e.g. "9:30 AM", "2:00 PM"
+ */
+function formatEventTime(date: Date, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(11, 16);
+  }
+}
+
 export async function GET(req: Request) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -15,10 +34,11 @@ export async function GET(req: Request) {
 
   const db = getDatabase();
   const now = new Date();
-  const in10Min = new Date(now.getTime() + 10 * 60 * 1000);
-  const in15Min = new Date(now.getTime() + 15 * 60 * 1000);
 
-  // Find events starting in 10-15 minutes that haven't been reminded yet
+  // Query events starting in the next 1–24 hours that haven't been reminded
+  const in1Hour = new Date(now.getTime() + 1 * 60 * 60 * 1000);
+  const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
   const upcomingEvents = await db
     .select({
       id: events.id,
@@ -30,8 +50,8 @@ export async function GET(req: Request) {
     .from(events)
     .where(
       and(
-        gte(events.startTime, in10Min),
-        lte(events.startTime, in15Min),
+        gte(events.startTime, in1Hour),
+        lte(events.startTime, in24Hours),
         isNull(events.reminderSentAt),
         sql`${events.isAllDay} = false`,
       ),
@@ -45,9 +65,12 @@ export async function GET(req: Request) {
 
   for (const event of upcomingEvents) {
     try {
-      // Check user's notification preferences
+      // Check user's notification preferences and get timezone
       const [user] = await db
-        .select({ notificationPreferences: users.notificationPreferences })
+        .select({
+          notificationPreferences: users.notificationPreferences,
+          timezone: users.timezone,
+        })
         .from(users)
         .where(sql`${users.id} = ${event.userId}`)
         .limit(1);
@@ -55,11 +78,13 @@ export async function GET(req: Request) {
       const prefs = user?.notificationPreferences as { eventReminders?: boolean } | null;
       if (!prefs?.eventReminders) continue;
 
-      const locationText = event.location ? `· ${event.location}` : '· No location';
+      const userTz = user?.timezone || 'UTC';
+      const timeStr = formatEventTime(event.startTime, userTz);
+      const locationText = event.location ? ` · ${event.location}` : '';
 
       await sendPushToUser(event.userId, {
         title: event.title,
-        body: `Starting in 10 minutes ${locationText}`,
+        body: `Today at ${timeStr}${locationText}`,
         tag: `event-reminder-${event.id}`,
         url: '/',
         notificationType: 'event_reminder',
