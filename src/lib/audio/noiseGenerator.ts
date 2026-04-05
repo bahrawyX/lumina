@@ -2,12 +2,16 @@
  * Ambient sound player.
  * Uses high-quality looping audio files from free CDN sources.
  * Falls back to Web Audio API synthesis if loading fails.
+ *
+ * Architecture: every playTrack() call increments a session counter.
+ * Async callbacks (canplaythrough, error) check the counter before acting —
+ * if a stop/switch happened in the meantime, the stale callback is a no-op.
+ * This eliminates ghost audio from orphaned HTMLAudioElements.
  */
 
 import type { AmbientTrack } from '@/types';
 
 // ── Audio URLs — royalty-free ambient loops ──────────────────────────────────
-// Sourced from Pixabay (royalty-free, no attribution required)
 const AUDIO_URLS: Record<AmbientTrack, string> = {
   brown:    'https://archive.org/download/TenMinutesOfWhiteNoisePinkNoiseAndBrownianNoise/BrownianNoise_64kb.mp3',
   rainfall: 'https://cdn.jsdelivr.net/gh/bradtraversy/ambient-sound-mixer@main/audio/rain.mp3',
@@ -17,50 +21,84 @@ const AUDIO_URLS: Record<AmbientTrack, string> = {
 
 // ── State ────────────────────────────────────────────────────────────────────
 
+/** Monotonically increasing session ID — guards async callbacks */
+let sessionId = 0;
+
 let activeAudio: { track: AmbientTrack; element: HTMLAudioElement } | null = null;
 let fallbackCtx: AudioContext | null = null;
 let fallbackPlayer: { track: AmbientTrack; stop: () => void; setVolume: (v: number) => void } | null = null;
 
+// ── Internal: kill everything ────────────────────────────────────────────────
+
+function destroyAudioElement(): void {
+  if (!activeAudio) return;
+  const el = activeAudio.element;
+  // Remove all listeners so stale callbacks can't fire
+  el.oncanplaythrough = null;
+  el.onerror = null;
+  el.pause();
+  el.removeAttribute('src');
+  el.load(); // forces browser to release network & buffer
+  activeAudio = null;
+}
+
+function destroyFallback(): void {
+  if (!fallbackPlayer) return;
+  fallbackPlayer.stop();
+  fallbackPlayer = null;
+}
+
+function destroyAll(): void {
+  destroyAudioElement();
+  destroyFallback();
+}
+
 // ── Main API ─────────────────────────────────────────────────────────────────
 
 export function playTrack(track: AmbientTrack, volume = 0.6): void {
-  // Stop current
-  stopTrack();
+  // Kill whatever is currently playing
+  destroyAll();
 
-  // Try HTML Audio element first (real audio files)
+  // New session — stale callbacks from previous sessions will be ignored
+  const thisSession = ++sessionId;
+
   const url = AUDIO_URLS[track];
   const audio = new Audio(url);
   audio.loop = true;
   audio.volume = Math.max(0, Math.min(1, volume));
   audio.crossOrigin = 'anonymous';
 
-  // On successful load, play
-  audio.addEventListener('canplaythrough', () => {
+  // Guard: only act if this session is still current
+  audio.oncanplaythrough = () => {
+    if (sessionId !== thisSession) {
+      // Stale — a stop or switch happened; kill this orphan
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      return;
+    }
     audio.play().catch(() => {
-      // If autoplay blocked, try fallback
-      useFallback(track, volume);
+      if (sessionId !== thisSession) return;
+      // Autoplay blocked — fall back to Web Audio synthesis
+      destroyAudioElement();
+      useFallback(track, volume, thisSession);
     });
-  }, { once: true });
+  };
 
-  // On error, fall back to synthesis
-  audio.addEventListener('error', () => {
-    useFallback(track, volume);
-  }, { once: true });
+  audio.onerror = () => {
+    if (sessionId !== thisSession) return;
+    destroyAudioElement();
+    useFallback(track, volume, thisSession);
+  };
 
   audio.load();
   activeAudio = { track, element: audio };
 }
 
 export function stopTrack(): void {
-  if (activeAudio) {
-    activeAudio.element.pause();
-    activeAudio.element.src = '';
-    activeAudio = null;
-  }
-  if (fallbackPlayer) {
-    fallbackPlayer.stop();
-    fallbackPlayer = null;
-  }
+  // Bump session so any pending async callbacks become no-ops
+  sessionId++;
+  destroyAll();
 }
 
 export function setTrackVolume(volume: number): void {
@@ -92,8 +130,8 @@ function createNoiseBuffer(ctx: AudioContext, brown = false, seconds = 2): Audio
   if (brown) {
     let last = 0;
     for (let i = 0; i < data.length; i++) {
-      const white = Math.random() * 2 - 1;
-      last = (last + 0.02 * white) / 1.02;
+      const sample = Math.random() * 2 - 1;
+      last = (last + 0.02 * sample) / 1.02;
       data[i] = last * 3.5;
     }
   } else {
@@ -102,27 +140,26 @@ function createNoiseBuffer(ctx: AudioContext, brown = false, seconds = 2): Audio
   return buf;
 }
 
-function useFallback(track: AmbientTrack, volume: number): void {
-  // Clean up any existing audio element attempt
-  if (activeAudio) {
-    activeAudio.element.pause();
-    activeAudio.element.src = '';
-    activeAudio = null;
-  }
+function useFallback(track: AmbientTrack, volume: number, forSession: number): void {
+  // Double-check session is still valid
+  if (sessionId !== forSession) return;
+
+  // Clean up any lingering audio element
+  destroyAudioElement();
 
   const ctx = getAudioContext();
-  const gain = ctx.createGain();
-  gain.gain.value = volume;
-  gain.connect(ctx.destination);
+  const gainNode = ctx.createGain();
+  gainNode.gain.value = volume;
+  gainNode.connect(ctx.destination);
 
   const sources: AudioBufferSourceNode[] = [];
-  const nodes: AudioNode[] = [];
-  let running = true;
+  const nodes: AudioNode[] = [gainNode];
 
   const stop = () => {
-    running = false;
     sources.forEach((s) => { try { s.stop(); s.disconnect(); } catch {} });
     nodes.forEach((n) => { try { n.disconnect(); } catch {} });
+    sources.length = 0;
+    nodes.length = 0;
   };
 
   const isBrown = track === 'brown' || track === 'ocean';
@@ -138,7 +175,7 @@ function useFallback(track: AmbientTrack, volume: number): void {
     lpf.frequency.value = 800;
     lpf.Q.value = 0.7;
     src.connect(lpf);
-    lpf.connect(gain);
+    lpf.connect(gainNode);
     nodes.push(lpf);
   } else if (track === 'ocean') {
     const lpf = ctx.createBiquadFilter();
@@ -146,7 +183,7 @@ function useFallback(track: AmbientTrack, volume: number): void {
     lpf.frequency.value = 300;
     lpf.Q.value = 0.3;
     src.connect(lpf);
-    lpf.connect(gain);
+    lpf.connect(gainNode);
     nodes.push(lpf);
   } else if (track === 'forest') {
     const bpf = ctx.createBiquadFilter();
@@ -157,10 +194,11 @@ function useFallback(track: AmbientTrack, volume: number): void {
     windGain.gain.value = 0.3;
     src.connect(bpf);
     bpf.connect(windGain);
-    windGain.connect(gain);
+    windGain.connect(gainNode);
     nodes.push(bpf, windGain);
   } else {
-    src.connect(gain);
+    // brown noise — no extra filter, already shaped at buffer level
+    src.connect(gainNode);
   }
 
   src.start();
@@ -169,7 +207,7 @@ function useFallback(track: AmbientTrack, volume: number): void {
     track,
     stop,
     setVolume: (v: number) => {
-      gain.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), ctx.currentTime, 0.05);
+      gainNode.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), ctx.currentTime, 0.05);
     },
   };
 }
