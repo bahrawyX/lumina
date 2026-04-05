@@ -1452,14 +1452,34 @@ Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, 
 ### UI Components
 | File | Description |
 |---|---|
-| `src/components/docs/SidebarDocsTree.tsx` | Sidebar tree with expand/collapse, context menu, inline rename, add subpage |
-| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with Lumina theme + custom slash commands |
-| `src/components/docs/DocBreadcrumb.tsx` | Parent chain navigation |
+| `src/components/docs/SidebarDocsTree.tsx` | Sidebar tree with expand/collapse, context menu, inline rename, add subpage, inline icon picker (CompactEmojiPicker via Popover) |
+| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with `lumina-editor` class, transparent bg, inherited font |
+| `src/components/docs/DocBreadcrumb.tsx` | Parent chain navigation with 12px icons at each level |
 | `src/components/docs/DocSaveIndicator.tsx` | "Saving..."/"Saved ✓" AnimatePresence |
 | `src/components/docs/DocRightSidebar.tsx` | Doc info, linked task/event, focus time |
+| `src/components/docs/DocsEmptyAnimation.tsx` | SVG animated empty state (floating clipboard + blinking cursor, 120x120) |
 | `src/components/docs/QuickSwitcher.tsx` | Cmd+K global search overlay |
-| `src/components/pages/DocsHomePage.tsx` | /docs — greeting, search, pinned grid, recent list, empty state |
-| `src/components/pages/DocPage.tsx` | /docs/[id] — cover, icon, title, editor, right sidebar |
+| `src/components/pages/DocsHomePage.tsx` | /docs — greeting, search, pinned grid (20px icons), recent list (14px icons), animated empty state |
+| `src/components/pages/DocPage.tsx` | /docs/[id] — cover, CompactEmojiPicker icon selector, text-3xl title, editor, right sidebar |
+
+### CSS Overrides (globals.css)
+BlockNote editor fully themed via CSS variable overrides:
+- **Editor**: transparent background, inherited font family, 15px/1.7 line-height
+- **Headings**: H1 text-3xl 700, H2 text-2xl 600, H3 text-xl 600
+- **Slash menu**: compact 280px max-width, 12px border-radius, 13px font items, grouped labels
+- **Formatting toolbar**: 10px radius, 28px square buttons
+- **Code blocks**: JetBrains Mono, muted background, 8px radius
+- **Drag handle**: hidden by default, 0.4 opacity on block hover, 0.8 on handle hover
+- **Selection**: primary/0.15 background
+
+### Icon Sizes
+| Context | Size |
+|---|---|
+| Sidebar tree | 16px |
+| Page header | 24px (text-3xl via emoji) |
+| Cards (pinned) | 20px |
+| Breadcrumb | 12px |
+| Recent list | 14px |
 
 ### Pages
 - `/docs` → `src/app/(app)/docs/page.tsx`

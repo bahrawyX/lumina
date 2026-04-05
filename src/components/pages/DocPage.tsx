@@ -8,6 +8,12 @@ import DocEditor from '@/components/docs/DocEditor';
 import DocBreadcrumb from '@/components/docs/DocBreadcrumb';
 import DocSaveIndicator from '@/components/docs/DocSaveIndicator';
 import DocRightSidebar from '@/components/docs/DocRightSidebar';
+import { CompactEmojiPicker } from '@/components/ui/CompactEmojiPicker';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import type { Block } from '@blocknote/core';
 
@@ -35,6 +41,7 @@ export default function DocPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -68,11 +75,10 @@ export default function DocPage() {
     }
   }, [title, openDocContent, docId, updateDoc]);
 
-  // Title Enter → focus editor
+  // Title Enter -> focus editor
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      // Focus the BlockNote editor
       const editorEl = editorRef.current?.querySelector('[contenteditable]');
       if (editorEl instanceof HTMLElement) editorEl.focus();
     }
@@ -84,6 +90,15 @@ export default function DocPage() {
       saveContent(docId, blocks as any, plainText, wordCount);
     },
     [docId, saveContent]
+  );
+
+  // Icon select
+  const handleIconSelect = useCallback(
+    (emoji: string) => {
+      updateDoc(docId, { icon: emoji });
+      setIconPickerOpen(false);
+    },
+    [docId, updateDoc]
   );
 
   // Cover gradient
@@ -150,7 +165,7 @@ export default function DocPage() {
         {/* Breadcrumb + mobile menu */}
         <div className="flex items-center justify-between">
           <DocBreadcrumb docId={docId} />
-          {/* Mobile: show info button (right sidebar is hidden) */}
+          {/* Mobile: show info button */}
           <button
             type="button"
             className="md:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -166,25 +181,39 @@ export default function DocPage() {
 
         {/* Icon + controls row */}
         <div className="flex items-center gap-2 mb-2">
-          {icon ? (
-            <button
-              className="text-3xl hover:bg-muted/60 rounded-lg p-1 transition-colors"
-              onClick={() => {
-                // Simple icon cycling — in a full impl this would open emoji picker
-                updateDoc(docId, { icon: null });
-              }}
+          <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen}>
+            <PopoverTrigger asChild>
+              {icon ? (
+                <button
+                  className="text-3xl hover:bg-muted/60 rounded-lg p-1 transition-colors"
+                >
+                  {icon}
+                </button>
+              ) : (
+                <button
+                  className="text-xs text-muted-foreground hover:bg-muted/60 px-1.5 py-0.5 rounded transition-colors"
+                >
+                  Add icon
+                </button>
+              )}
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              side="bottom"
+              sideOffset={4}
+              className="p-0 w-auto border-none shadow-lg"
             >
-              {icon}
-            </button>
-          ) : null}
+              <CompactEmojiPicker onSelect={handleIconSelect} />
+            </PopoverContent>
+          </Popover>
 
           <div className="flex gap-1 text-xs text-muted-foreground">
-            {!icon && (
+            {icon && (
               <button
                 className="hover:bg-muted/60 px-1.5 py-0.5 rounded transition-colors"
-                onClick={() => updateDoc(docId, { icon: '📄' })}
+                onClick={() => updateDoc(docId, { icon: null })}
               >
-                Add icon
+                Remove icon
               </button>
             )}
             {coverGradient == null && (
@@ -206,7 +235,7 @@ export default function DocPage() {
           onBlur={handleTitleBlur}
           onKeyDown={handleTitleKeyDown}
           placeholder="Untitled"
-          className="w-full text-4xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/40 mb-1"
+          className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/40 mb-1"
         />
 
         {/* Last edited + save indicator */}
@@ -233,7 +262,7 @@ export default function DocPage() {
             key={docId}
             initialContent={openDocContent?.content as Block[] | null}
             onChange={handleEditorChange}
-            className="lumina-editor min-h-[300px]"
+            className="min-h-[300px]"
           />
         </div>
       </div>

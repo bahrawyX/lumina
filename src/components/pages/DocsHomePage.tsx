@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import DocsEmptyAnimation from '@/components/docs/DocsEmptyAnimation';
 
 export default function DocsHomePage() {
   const router = useRouter();
@@ -118,7 +119,7 @@ export default function DocsHomePage() {
                   href={`/docs/${result.id}`}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/40 transition-colors"
                 >
-                  <span className="text-sm flex-shrink-0">{result.icon || '📄'}</span>
+                  <span className="text-[14px] flex-shrink-0">{result.icon || '📄'}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{result.title}</p>
                     <p
@@ -146,7 +147,7 @@ export default function DocsHomePage() {
                 href={`/docs/${doc.id}`}
                 className="bg-card border border-border/60 rounded-xl p-4 hover:border-border hover:shadow-sm transition-all"
               >
-                <span className="text-xl block mb-2">{doc.icon || '📄'}</span>
+                <span className="text-[20px] block mb-2">{doc.icon || '📄'}</span>
                 <p className="text-sm font-medium text-foreground truncate">{doc.title}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
@@ -188,7 +189,7 @@ export default function DocsHomePage() {
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center justify-center py-16 text-center"
         >
-          <span className="text-4xl mb-4">📄</span>
+          <DocsEmptyAnimation />
           <h2 className="text-lg font-medium text-foreground mb-1">Your docs live here</h2>
           <p className="text-sm text-muted-foreground mb-6 max-w-xs">
             Notes, plans, and briefs — connected to your real work.

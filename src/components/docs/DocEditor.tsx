@@ -10,6 +10,7 @@ import { BlockNoteView } from '@blocknote/mantine';
 import { useTheme } from 'next-themes';
 import '@blocknote/mantine/style.css';
 import type { Block, BlockNoteEditor } from '@blocknote/core';
+import { cn } from '@/lib/utils';
 
 interface DocEditorProps {
   initialContent?: Block[] | null;
@@ -120,7 +121,7 @@ export default function DocEditor({ initialContent, onChange, className }: DocEd
   const slashMenuItems = useMemo(() => getLuminaSlashMenuItems(editor), [editor]);
 
   return (
-    <div className={className}>
+    <div className={cn('lumina-editor', className)}>
       <BlockNoteView
         editor={editor}
         theme={resolvedTheme === 'dark' ? 'dark' : 'light'}

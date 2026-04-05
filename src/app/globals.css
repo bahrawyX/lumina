@@ -185,7 +185,7 @@
 
 /* ─── BlockNote editor theme overrides ────────────────────────────────────── */
 .bn-container {
-  --bn-colors-editor-background: hsl(var(--background));
+  --bn-colors-editor-background: transparent;
   --bn-colors-editor-text: hsl(var(--foreground));
   --bn-colors-menu-background: hsl(var(--popover));
   --bn-colors-menu-text: hsl(var(--foreground));
@@ -195,11 +195,144 @@
   --bn-font-family: inherit;
 }
 
+/* ── Content typography ─────────────────────────────────── */
 .bn-container [class*="blockContent"] {
-  font-size: 0.9375rem;
+  font-family: inherit;
+  font-size: 0.9375rem;   /* 15px */
   line-height: 1.7;
+  color: hsl(var(--foreground));
 }
 
 .lumina-editor .bn-editor {
   padding: 0;
+  background: transparent;
+}
+
+/* ── Headings ───────────────────────────────────────────── */
+.bn-container h1[class*="blockContent"],
+.bn-container [data-level="1"][class*="blockContent"] {
+  font-size: 1.875rem;  /* text-3xl */
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.3;
+  margin-top: 1.5rem;
+}
+
+.bn-container h2[class*="blockContent"],
+.bn-container [data-level="2"][class*="blockContent"] {
+  font-size: 1.5rem;    /* text-2xl */
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  margin-top: 1.25rem;
+}
+
+.bn-container h3[class*="blockContent"],
+.bn-container [data-level="3"][class*="blockContent"] {
+  font-size: 1.25rem;   /* text-xl */
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1rem;
+}
+
+/* ── Slash command menu — compact ───────────────────────── */
+.bn-container [class*="suggestionMenu"] {
+  max-width: 280px !important;
+  min-width: 220px !important;
+  border-radius: 12px !important;
+  border: 1px solid hsl(var(--border)) !important;
+  background: hsl(var(--popover)) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04) !important;
+  padding: 4px !important;
+  max-height: 320px !important;
+  overflow-y: auto !important;
+}
+
+.bn-container [class*="suggestionMenuItem"] {
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  font-size: 0.8125rem !important;  /* 13px */
+  gap: 8px !important;
+  min-height: unset !important;
+}
+
+.bn-container [class*="suggestionMenuItem"]:hover,
+.bn-container [class*="suggestionMenuItem"][aria-selected="true"] {
+  background: hsl(var(--muted)) !important;
+}
+
+.bn-container [class*="suggestionMenuItemTitle"] {
+  font-weight: 500 !important;
+  font-size: 0.8125rem !important;
+}
+
+.bn-container [class*="suggestionMenuItemSubtitle"] {
+  font-size: 0.6875rem !important;  /* 11px */
+  color: hsl(var(--muted-foreground)) !important;
+  line-height: 1.3 !important;
+}
+
+.bn-container [class*="suggestionMenuLabel"] {
+  font-size: 0.6875rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  color: hsl(var(--muted-foreground)) !important;
+  padding: 6px 10px 4px !important;
+}
+
+/* ── Formatting toolbar ─────────────────────────────────── */
+.bn-container [class*="formattingToolbar"] {
+  border-radius: 10px !important;
+  border: 1px solid hsl(var(--border)) !important;
+  background: hsl(var(--popover)) !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+  padding: 2px !important;
+}
+
+.bn-container [class*="formattingToolbar"] button {
+  border-radius: 6px !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+
+/* ── Code blocks ────────────────────────────────────────── */
+.bn-container code {
+  font-size: 0.85em;
+  background: hsl(var(--muted));
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.bn-container pre {
+  background: hsl(var(--muted)) !important;
+  border-radius: 8px !important;
+  padding: 12px 16px !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.6 !important;
+  overflow-x: auto;
+}
+
+/* ── Selection ──────────────────────────────────────────── */
+.bn-container [class*="blockContent"] ::selection {
+  background: hsl(var(--primary) / 0.15);
+  color: inherit;
+}
+
+/* ── Drag handle ────────────────────────────────────────── */
+.bn-container [class*="dragHandle"],
+.bn-container [class*="sideMenu"] {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.bn-container [class*="blockOuter"]:hover [class*="dragHandle"],
+.bn-container [class*="blockOuter"]:hover [class*="sideMenu"] {
+  opacity: 0.4;
+}
+
+.bn-container [class*="dragHandle"]:hover,
+.bn-container [class*="sideMenu"]:hover {
+  opacity: 0.8;
 }
