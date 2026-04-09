@@ -16,6 +16,7 @@ function apiBase() {
 async function apiFetch(path: string, init?: RequestInit) {
   const res = await fetch(`${apiBase()}${path}`, {
     ...init,
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   return res;
@@ -46,7 +47,11 @@ export async function fetchOne(id: string): Promise<DocContent | null> {
   }
 }
 
-/** Create a new doc. Returns the created doc or null on failure. */
+export type CreateOneResult =
+  | { ok: true; doc: DocContent }
+  | { ok: false; reason: 'unauthorized' | 'network' | 'server'; status?: number };
+
+/** Create a new doc. Returns a discriminated result so callers can show meaningful errors. */
 export async function createOne(params: {
   title?: string;
   parentId?: string | null;
@@ -55,19 +60,22 @@ export async function createOne(params: {
   contentText?: string;
   linkedTaskId?: string | null;
   linkedEventId?: string | null;
-}): Promise<DocContent | null> {
+}): Promise<CreateOneResult> {
   try {
     const res = await apiFetch('/api/docs', {
       method: 'POST',
       body: JSON.stringify(params),
+      credentials: 'include',
     });
-    if (!res.ok) return null;
-    return await res.json();
+    if (res.status === 401) return { ok: false, reason: 'unauthorized', status: 401 };
+    if (!res.ok) return { ok: false, reason: 'server', status: res.status };
+    const doc = (await res.json()) as DocContent;
+    return { ok: true, doc };
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[docsPersistence] createOne failed:', err);
     }
-    return null;
+    return { ok: false, reason: 'network' };
   }
 }
 

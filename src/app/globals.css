@@ -20,7 +20,7 @@
     --muted-foreground: 215 16% 47%;
     --accent:       249 66% 95%;
     --accent-foreground: 249 66% 35%;
-    --destructive:  0 84% 60%;
+    --destructive:  350 70% 55%;          /* softer rose-red, less harsh than vivid red */
     --destructive-foreground: 0 0% 100%;
     --border:       220 13% 87%;          /* slightly darker for better contrast */
     --input:        220 13% 87%;
@@ -43,7 +43,7 @@
     --muted-foreground: 215 16% 57%;
     --accent:       249 30% 22%;
     --accent-foreground: 249 66% 80%;
-    --destructive:  0 72% 51%;
+    --destructive:  350 65% 58%;          /* softer rose-red for dark mode */
     --destructive-foreground: 0 0% 100%;
     --border:       240 6% 18%;           /* neutral-border */
     --input:        240 6% 18%;

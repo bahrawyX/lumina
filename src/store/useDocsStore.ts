@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import type { DocTreeNode, DocContent, DocPatch, DocSearchResult, CreateDocParams } from '@/types/doc';
 import * as docsPersistence from '@/lib/persistence/docsPersistence';
 
@@ -93,7 +94,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
   createDoc: async (params) => {
-    const result = await docsPersistence.createOne({
+    const res = await docsPersistence.createOne({
       title: params.title,
       parentId: params.parentId,
       icon: params.icon,
@@ -101,7 +102,20 @@ export const useDocsStore = create<DocsState>((set, get) => ({
       linkedEventId: params.linkedEventId,
     });
 
-    if (!result) return null;
+    if (res.ok === false) {
+      if (res.reason === 'unauthorized') {
+        toast.error('Sign in to create docs', {
+          description: 'Your session has expired. Please sign in again.',
+        });
+      } else if (res.reason === 'network') {
+        toast.error("Couldn't create doc", { description: 'Check your connection and try again.' });
+      } else {
+        toast.error("Couldn't create doc", { description: `Server error (${res.status ?? 'unknown'})` });
+      }
+      return null;
+    }
+
+    const result = res.doc;
 
     const node: DocTreeNode = {
       id: result.id,

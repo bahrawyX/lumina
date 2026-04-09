@@ -65,6 +65,16 @@ export const useDailyBriefStore = create<DailyBriefState>()(
         set({ isLoading: true, error: null });
         try {
           const res = await fetch(`/api/daily-brief?timezone=${encodeURIComponent(timezone)}`);
+          if (res.status === 401) {
+            // Not authenticated — stop trying for this session.
+            // Mark lastFetched so the effect doesn't loop on null.
+            set({
+              isLoading: false,
+              lastFetched: new Date().toISOString(),
+              error: 'unauthenticated',
+            });
+            return;
+          }
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);
           }
@@ -75,9 +85,10 @@ export const useDailyBriefStore = create<DailyBriefState>()(
             isLoading: false,
           });
         } catch (err) {
+          // Cache the failure timestamp so the mount effect doesn't re-fire forever.
           set({
             isLoading: false,
-            lastFetched: null, // Don't cache failed fetches — allow retry on next mount
+            lastFetched: new Date().toISOString(),
             error: err instanceof Error ? err.message : 'Failed to load brief',
           });
         }

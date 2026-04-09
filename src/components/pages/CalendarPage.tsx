@@ -68,8 +68,8 @@ const CalendarPage: React.FC = () => {
 
   return (
     <>
-      <header className="flex flex-col md:flex-row items-center justify-between mb-6 lg:mb-10 gap-4 lg:gap-6 px-2 lg:px-4 py-4">
-        <div className="flex items-center gap-6 lg:gap-10">
+      <header className="flex flex-col md:flex-row md:items-center justify-between mb-3 md:mb-6 lg:mb-10 gap-2 md:gap-4 lg:gap-6 px-2 lg:px-4 py-2 md:py-4">
+        <div className="flex items-center gap-3 md:gap-6 lg:gap-10 flex-wrap">
           <Tabs value={view} onValueChange={(v) => setView(v as ViewType)}>
             <TabsList className="h-9" data-tutorial="cal-view-tabs">
               <TabsTrigger value={ViewType.MONTH} className="text-xs gap-1.5">
@@ -91,7 +91,7 @@ const CalendarPage: React.FC = () => {
             key={`${view}-${currentDate.getTime()}`}
             initial={{ opacity: 0, x: -5 }}
             animate={{ opacity: 1, x: 0 }}
-            className="font-display text-3xl lg:text-4xl font-semibold tracking-tight text-gray-800 dark:text-gray-100"
+            className="font-display text-xl md:text-3xl lg:text-4xl font-semibold tracking-tight text-gray-800 dark:text-gray-100"
           >
             {view === ViewType.DAY ? (
               <> {MONTHS[currentDate.getMonth()]} <span className="text-gray-300 dark:text-gray-700 font-light">{currentDate.getDate()}</span> </>
@@ -101,7 +101,7 @@ const CalendarPage: React.FC = () => {
           </motion.h2>
         </div>
 
-        <div className="flex items-center gap-3 lg:gap-4">
+        <div className="flex items-center gap-2 md:gap-3 lg:gap-4 flex-wrap justify-end">
           <div className="relative hidden sm:flex items-center">
             <SearchIcon size={14} className="absolute left-3 text-muted-foreground pointer-events-none" />
             <Input
