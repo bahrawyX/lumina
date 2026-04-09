@@ -2,6 +2,10 @@
  * docsPersistence.ts
  * Thin client-side wrappers around /api/docs.
  * Never calls Drizzle directly — all DB access lives in the API routes.
+ *
+ * Guest mode: when the user is operating without a session, all CRUD is
+ * persisted to localStorage so the docs feature works exactly the same way
+ * tasks/events do for guests.
  */
 
 import type { DocTreeNode, DocContent, DocPatch, DocSearchResult } from '@/types/doc';
@@ -22,10 +26,63 @@ async function apiFetch(path: string, init?: RequestInit) {
   return res;
 }
 
+// ── Guest mode (localStorage-backed) ───────────────────────────────────────────
+
+const GUEST_DOCS_KEY = 'lumina-guest-docs';
+
+function isGuestUser(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('lumina-guest');
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { state?: { isGuest?: boolean } };
+    return parsed?.state?.isGuest === true;
+  } catch {
+    return false;
+  }
+}
+
+function readGuestDocs(): Record<string, DocContent> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(GUEST_DOCS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, DocContent>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeGuestDocs(map: Record<string, DocContent>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(GUEST_DOCS_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function newGuestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function stripContent(doc: DocContent): DocTreeNode {
+  const { content, contentText, coverImage, coverGradient, ...rest } = doc;
+  void content; void contentText; void coverImage; void coverGradient;
+  return rest;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /** Fetch all docs for the sidebar tree (no content field). */
 export async function fetchAll(): Promise<DocTreeNode[]> {
+  if (isGuestUser()) {
+    return Object.values(readGuestDocs()).map(stripContent);
+  }
   try {
     const res = await apiFetch('/api/docs');
     if (!res.ok) return [];
@@ -38,6 +95,9 @@ export async function fetchAll(): Promise<DocTreeNode[]> {
 
 /** Fetch a single doc with full content. */
 export async function fetchOne(id: string): Promise<DocContent | null> {
+  if (isGuestUser()) {
+    return readGuestDocs()[id] ?? null;
+  }
   try {
     const res = await apiFetch(`/api/docs/${id}`);
     if (!res.ok) return null;
@@ -61,6 +121,36 @@ export async function createOne(params: {
   linkedTaskId?: string | null;
   linkedEventId?: string | null;
 }): Promise<CreateOneResult> {
+  if (isGuestUser()) {
+    const map = readGuestDocs();
+    const now = new Date().toISOString();
+    const siblings = Object.values(map).filter((d) => (d.parentId ?? null) === (params.parentId ?? null));
+    const nextPosition = siblings.reduce((max, d) => Math.max(max, d.position), -1) + 1;
+    const wordCount = params.contentText
+      ? params.contentText.split(/\s+/).filter(Boolean).length
+      : 0;
+    const doc: DocContent = {
+      id: newGuestId(),
+      parentId: params.parentId ?? null,
+      title: params.title?.trim() || 'Untitled',
+      icon: params.icon ?? null,
+      isPinned: false,
+      isArchived: false,
+      position: nextPosition,
+      linkedTaskId: params.linkedTaskId ?? null,
+      linkedEventId: params.linkedEventId ?? null,
+      wordCount,
+      createdAt: now,
+      updatedAt: now,
+      content: params.content ?? null,
+      contentText: params.contentText ?? '',
+      coverImage: null,
+      coverGradient: null,
+    };
+    map[doc.id] = doc;
+    writeGuestDocs(map);
+    return { ok: true, doc };
+  }
   try {
     const res = await apiFetch('/api/docs', {
       method: 'POST',
@@ -84,6 +174,23 @@ export async function updateOne(
   id: string,
   patch: DocPatch & { updatedAt?: string }
 ): Promise<true | 'conflict'> {
+  if (isGuestUser()) {
+    const map = readGuestDocs();
+    const existing = map[id];
+    if (!existing) return true;
+    const wordCount =
+      typeof patch.contentText === 'string'
+        ? patch.contentText.split(/\s+/).filter(Boolean).length
+        : existing.wordCount;
+    map[id] = {
+      ...existing,
+      ...patch,
+      wordCount,
+      updatedAt: new Date().toISOString(),
+    } as DocContent;
+    writeGuestDocs(map);
+    return true;
+  }
   try {
     const res = await apiFetch(`/api/docs/${id}`, {
       method: 'PATCH',
@@ -101,6 +208,16 @@ export async function updateOne(
 
 /** Soft-delete (archive) a doc. */
 export async function deleteOne(id: string, hard = false): Promise<void> {
+  if (isGuestUser()) {
+    const map = readGuestDocs();
+    if (hard) {
+      delete map[id];
+    } else if (map[id]) {
+      map[id] = { ...map[id], isArchived: true, updatedAt: new Date().toISOString() };
+    }
+    writeGuestDocs(map);
+    return;
+  }
   try {
     const url = hard ? `/api/docs/${id}?hard=true` : `/api/docs/${id}`;
     await apiFetch(url, {
@@ -116,6 +233,21 @@ export async function deleteOne(id: string, hard = false): Promise<void> {
 
 /** Full-text search across docs. */
 export async function search(query: string): Promise<DocSearchResult[]> {
+  if (isGuestUser()) {
+    const q = query.toLowerCase();
+    return Object.values(readGuestDocs())
+      .filter((d) => !d.isArchived)
+      .filter((d) => d.title.toLowerCase().includes(q) || (d.contentText ?? '').toLowerCase().includes(q))
+      .slice(0, 25)
+      .map((d) => ({
+        id: d.id,
+        title: d.title,
+        icon: d.icon,
+        parentId: d.parentId,
+        updatedAt: d.updatedAt,
+        excerpt: (d.contentText ?? '').slice(0, 120),
+      }));
+  }
   try {
     const res = await apiFetch(`/api/docs/search?q=${encodeURIComponent(query)}`);
     if (!res.ok) return [];
