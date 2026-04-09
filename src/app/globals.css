@@ -183,16 +183,45 @@
   color: #6D59E0;
 }
 
-/* ─── BlockNote editor theme overrides ────────────────────────────────────── */
-.bn-container {
+/* ─── BlockNote + Mantine theme — bound to Lumina CSS vars ──────────────── */
+/* Set on :root so portaled menus (rendered at body) inherit them too */
+:root {
+  /* BlockNote variables */
   --bn-colors-editor-background: transparent;
   --bn-colors-editor-text: hsl(var(--foreground));
   --bn-colors-menu-background: hsl(var(--popover));
-  --bn-colors-menu-text: hsl(var(--foreground));
+  --bn-colors-menu-text: hsl(var(--popover-foreground));
+  --bn-colors-tooltip-background: hsl(var(--popover));
+  --bn-colors-tooltip-text: hsl(var(--popover-foreground));
   --bn-colors-hovered-background: hsl(var(--muted));
-  --bn-colors-selected-background: hsl(var(--primary) / 0.1);
+  --bn-colors-hovered-text: hsl(var(--foreground));
+  --bn-colors-selected-background: hsl(var(--primary) / 0.12);
+  --bn-colors-selected-text: hsl(var(--foreground));
+  --bn-colors-disabled-background: hsl(var(--muted));
+  --bn-colors-disabled-text: hsl(var(--muted-foreground));
+  --bn-colors-shadow: rgba(0, 0, 0, 0.15);
   --bn-colors-border: hsl(var(--border));
+  --bn-colors-side-menu: hsl(var(--muted-foreground));
   --bn-font-family: inherit;
+  --bn-border-radius: 8px;
+
+  /* Mantine variables — BlockNote portals (slash menu, color picker, toolbar) */
+  --mantine-color-body: hsl(var(--popover));
+  --mantine-color-text: hsl(var(--popover-foreground));
+  --mantine-color-dimmed: hsl(var(--muted-foreground));
+  --mantine-color-default: hsl(var(--popover));
+  --mantine-color-default-hover: hsl(var(--muted));
+  --mantine-color-default-color: hsl(var(--popover-foreground));
+  --mantine-color-default-border: hsl(var(--border));
+  --mantine-color-placeholder: hsl(var(--muted-foreground));
+  --mantine-color-anchor: hsl(var(--primary));
+  --mantine-color-bright: hsl(var(--foreground));
+  --mantine-primary-color-filled: hsl(var(--primary));
+  --mantine-primary-color-filled-hover: hsl(var(--primary) / 0.9);
+}
+
+.dark {
+  --bn-colors-shadow: rgba(0, 0, 0, 0.4);
 }
 
 /* ── Content typography ─────────────────────────────────── */
@@ -235,137 +264,66 @@
   margin-top: 1rem;
 }
 
-/* ── Slash command menu — compact ───────────────────────── */
-/* BlockNote portals menus to body, so we target globally */
-[class*="suggestionMenu"],
-.bn-container [class*="suggestionMenu"] {
-  max-width: 260px !important;
-  min-width: 200px !important;
-  border-radius: 10px !important;
-  border: 1px solid hsl(var(--border)) !important;
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--foreground)) !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.25) !important;
-  padding: 4px !important;
-  max-height: 300px !important;
-  overflow-y: auto !important;
+/* ── BlockNote / Mantine surfaces — colors come from CSS vars above ── */
+/* Only size/layout overrides here. Colors inherit from --mantine-* vars. */
+
+/* Slash menu (suggestion menu portal) */
+[class*="bn-suggestion-menu"],
+[class*="suggestionMenu"] {
+  max-width: 260px;
+  min-width: 200px;
+  border-radius: 10px;
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 [class*="suggestionMenuItem"],
-.bn-container [class*="suggestionMenuItem"] {
-  padding: 5px 8px !important;
-  border-radius: 6px !important;
-  font-size: 0.8125rem !important;
-  gap: 8px !important;
-  min-height: unset !important;
-  color: hsl(var(--foreground)) !important;
-  background: transparent !important;
-}
-
-[class*="suggestionMenuItem"]:hover,
-[class*="suggestionMenuItem"][aria-selected="true"],
-.bn-container [class*="suggestionMenuItem"]:hover,
-.bn-container [class*="suggestionMenuItem"][aria-selected="true"] {
-  background: hsl(var(--muted)) !important;
+[class*="bn-suggestion-menu-item"] {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  gap: 8px;
+  min-height: unset;
 }
 
 [class*="suggestionMenuItemTitle"],
-.bn-container [class*="suggestionMenuItemTitle"] {
-  font-weight: 500 !important;
-  font-size: 0.8125rem !important;
-  color: hsl(var(--foreground)) !important;
+[class*="bn-suggestion-menu-item-title"] {
+  font-weight: 500;
+  font-size: 0.8125rem;
 }
 
 [class*="suggestionMenuItemSubtitle"],
-.bn-container [class*="suggestionMenuItemSubtitle"] {
-  font-size: 0.6875rem !important;
-  color: hsl(var(--muted-foreground)) !important;
-  line-height: 1.3 !important;
+[class*="bn-suggestion-menu-item-subtitle"] {
+  font-size: 0.6875rem;
+  line-height: 1.3;
 }
 
 [class*="suggestionMenuLabel"],
-.bn-container [class*="suggestionMenuLabel"] {
-  font-size: 0.6875rem !important;
-  font-weight: 600 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.05em !important;
-  color: hsl(var(--muted-foreground)) !important;
-  padding: 6px 8px 4px !important;
+[class*="bn-suggestion-menu-label"] {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 8px 4px;
 }
 
-/* Hide keyboard shortcuts in slash menu for cleaner look */
-[class*="suggestionMenuItemBadge"] {
+/* Hide keyboard shortcut badges for cleaner compact menu */
+[class*="suggestionMenuItemBadge"],
+[class*="bn-suggestion-menu-item-badge"] {
   display: none !important;
 }
 
-/* ── Formatting toolbar ─────────────────────────────────── */
-[class*="formattingToolbar"],
-.bn-container [class*="formattingToolbar"] {
-  border-radius: 8px !important;
-  border: 1px solid hsl(var(--border)) !important;
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--foreground)) !important;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.2) !important;
-  padding: 2px !important;
+/* Formatting toolbar size only */
+[class*="formattingToolbar"] {
+  border-radius: 8px;
+  padding: 2px;
 }
 
-[class*="formattingToolbar"] button,
-.bn-container [class*="formattingToolbar"] button {
-  border-radius: 4px !important;
-  width: 26px !important;
-  height: 26px !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-[class*="formattingToolbar"] button:hover {
-  background: hsl(var(--muted)) !important;
-}
-
-/* ── All BlockNote dropdown/popover menus (color picker etc) ── */
-.mantine-Menu-dropdown,
-.mantine-Popover-dropdown,
-[class*="mantine-Menu-dropdown"],
-[class*="mantine-Popover-dropdown"] {
-  background: hsl(var(--popover)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.25) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-.mantine-Menu-item,
-[class*="mantine-Menu-item"] {
-  color: hsl(var(--foreground)) !important;
-  font-size: 0.8125rem !important;
-  border-radius: 4px !important;
-}
-
-.mantine-Menu-item:hover,
-.mantine-Menu-item[data-hovered],
-[class*="mantine-Menu-item"]:hover,
-[class*="mantine-Menu-item"][data-hovered] {
-  background: hsl(var(--muted)) !important;
-}
-
-.mantine-Menu-itemLabel,
-[class*="mantine-Menu-itemLabel"] {
-  color: hsl(var(--foreground)) !important;
-}
-
-.mantine-Menu-label,
-[class*="mantine-Menu-label"] {
-  color: hsl(var(--muted-foreground)) !important;
-  font-size: 0.6875rem !important;
-  font-weight: 600 !important;
-}
-
-/* ── Mantine tooltip (BlockNote) ──────────────────────────── */
-.mantine-Tooltip-tooltip,
-[class*="mantine-Tooltip-tooltip"] {
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--foreground)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  font-size: 0.75rem !important;
+[class*="formattingToolbar"] button {
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
 }
 
 /* ── Code blocks ────────────────────────────────────────── */
