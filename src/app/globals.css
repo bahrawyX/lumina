@@ -241,16 +241,6 @@
   background: hsl(var(--muted)) !important;
 }
 
-/* Icon section wrapper + badge inside slash menu items — Mantine defaults
-   to light grey (rgb(239,239,239)); force Lumina muted surface so dark mode
-   doesn't light up with white squares. */
-.bn-suggestion-menu [class*="bn-mt-suggestion-menu-item-section"],
-.bn-suggestion-menu [class*="mantine-Badge-root"],
-[class*="bn-suggestion-menu"] [class*="bn-mt-suggestion-menu-item-section"],
-[class*="bn-suggestion-menu"] [class*="mantine-Badge-root"] {
-  background: transparent !important;
-  color: hsl(var(--muted-foreground)) !important;
-}
 
 /* ── Content typography ─────────────────────────────────── */
 .bn-container [class*="blockContent"] {
@@ -295,50 +285,109 @@
 /* ── BlockNote / Mantine surfaces — colors come from CSS vars above ── */
 /* Only size/layout overrides here. Colors inherit from --mantine-* vars. */
 
-/* Slash menu (suggestion menu portal) */
-[class*="bn-suggestion-menu"],
-[class*="suggestionMenu"] {
-  max-width: 260px;
-  min-width: 200px;
-  border-radius: 10px;
-  padding: 4px;
-  max-height: 300px;
-  overflow-y: auto;
+/* ── Slash menu (BlockNote suggestion menu portal) ────────────────────────
+   Real class names verified in live DOM:
+     .bn-suggestion-menu                       — scroll container itself
+     .bn-suggestion-menu-item                  — each item (Mantine Group)
+     .bn-suggestion-menu-label                 — category header
+     .bn-mt-suggestion-menu-item-section       — left icon box / right badge
+     .bn-mt-suggestion-menu-item-body          — title+subtitle stack
+     .bn-mt-suggestion-menu-item-title         — item title <p>
+     .bn-mt-suggestion-menu-item-subtitle      — item subtitle <p> (hidden)
+   `html body` prefix gives us higher specificity than BlockNote defaults. */
+
+html body .bn-suggestion-menu {
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: 260px !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+  border: 1px solid hsl(var(--border) / 0.6) !important;
+  background: hsl(var(--popover)) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+  scrollbar-width: none !important; /* Firefox */
+}
+html body .bn-suggestion-menu::-webkit-scrollbar { display: none !important; }
+
+/* Each item — fixed compact row */
+html body .bn-suggestion-menu .bn-suggestion-menu-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 5px 8px !important;
+  margin: 1px 0 !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  background: transparent !important;
 }
 
-[class*="suggestionMenuItem"],
-[class*="bn-suggestion-menu-item"] {
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  gap: 8px;
-  min-height: unset;
+html body .bn-suggestion-menu .bn-suggestion-menu-item[aria-selected="true"],
+html body .bn-suggestion-menu .bn-suggestion-menu-item:hover {
+  background: hsl(var(--muted)) !important;
 }
 
-[class*="suggestionMenuItemTitle"],
-[class*="bn-suggestion-menu-item-title"] {
-  font-weight: 500;
-  font-size: 0.8125rem;
+/* Left section = icon wrapper. Mantine ships it with rgb(239,239,239). */
+html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-section:first-child {
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 26px !important;
+  border-radius: 6px !important;
+  background: hsl(var(--muted)) !important;
+  border: 1px solid hsl(var(--border) / 0.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: hsl(var(--foreground)) !important;
+  flex: 0 0 auto !important;
+}
+html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-section:first-child svg {
+  width: 14px !important;
+  height: 14px !important;
 }
 
-[class*="suggestionMenuItemSubtitle"],
-[class*="bn-suggestion-menu-item-subtitle"] {
-  font-size: 0.6875rem;
-  line-height: 1.3;
+/* Right section = keyboard shortcut badge. Hide entirely. */
+html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-section:last-child:not(:first-child) {
+  display: none !important;
 }
 
-[class*="suggestionMenuLabel"],
-[class*="bn-suggestion-menu-label"] {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 6px 8px 4px;
+/* Title + body */
+html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-body {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  gap: 0 !important;
+}
+html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-title {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  color: hsl(var(--foreground)) !important;
+  margin: 0 !important;
+}
+/* Subtitle hidden — keeps menu compact */
+html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-subtitle {
+  display: none !important;
 }
 
-/* Hide keyboard shortcut badges for cleaner compact menu */
-[class*="suggestionMenuItemBadge"],
-[class*="bn-suggestion-menu-item-badge"] {
+/* Category label */
+html body .bn-suggestion-menu .bn-suggestion-menu-label {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: hsl(var(--muted-foreground)) !important;
+  padding: 8px 8px 3px !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+/* Belt-and-braces: kill any leftover keyboard shortcut badge */
+html body .bn-suggestion-menu [class*="mantine-Badge-root"] {
   display: none !important;
 }
 

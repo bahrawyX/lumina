@@ -239,7 +239,7 @@ export default function DocPage() {
         />
 
         {/* Last edited + save indicator */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-2">
           {openDocContent?.updatedAt && (
             <span className="text-xs text-muted-foreground">
               Last edited{' '}
@@ -253,10 +253,7 @@ export default function DocPage() {
           <DocSaveIndicator />
         </div>
 
-        {/* Divider */}
-        <div className="border-t border-border/40 mb-6" />
-
-        {/* Editor */}
+        {/* Editor — sits right under the title meta, no divider */}
         <div ref={editorRef}>
           <DocEditor
             key={docId}
