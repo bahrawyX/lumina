@@ -888,6 +888,7 @@ const AppSidebar: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => setCustomContextDialogOpen(true)}
+                      aria-label="Add custom context"
                       className="p-1 rounded-md hover:bg-accent/50 transition-colors"
                     >
                       <PlusIcon size={12} className="text-muted-foreground" />
@@ -1283,6 +1284,7 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
           <SidebarMenuButton
             isActive={isActive}
             onClick={onClick}
+            aria-label={label}
             className={`relative ${collapsed ? 'justify-center' : ''}`}
             {...(dataTutorial ? { 'data-tutorial': dataTutorial } : {})}
           >
