@@ -358,16 +358,98 @@
    overrides for .bn-suggestion-menu live here anymore. Below: only the
    formatting toolbar size, which still uses BlockNote's default UI. */
 
-/* Formatting toolbar size only */
+/* ── Formatting toolbar ─────────────────────────────────── */
+html body .bn-container .bn-formatting-toolbar,
+html body .bn-container [data-bn-type="formatting-toolbar"],
 [class*="formattingToolbar"] {
-  border-radius: 8px;
-  padding: 2px;
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border) / 0.6) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+  padding: 3px !important;
 }
 
+html body .bn-container .bn-formatting-toolbar button,
+html body .bn-container [data-bn-type="formatting-toolbar"] button,
 [class*="formattingToolbar"] button {
-  border-radius: 4px;
+  color: hsl(var(--foreground)) !important;
+  border-radius: 6px !important;
+  background: transparent !important;
   width: 26px;
   height: 26px;
+}
+
+html body .bn-container .bn-formatting-toolbar button:hover,
+html body .bn-container [data-bn-type="formatting-toolbar"] button:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+/* Active/toggled toolbar button (bold, italic, etc.) */
+html body .bn-container .bn-formatting-toolbar button[data-active="true"],
+html body .bn-container [data-bn-type="formatting-toolbar"] button[aria-pressed="true"] {
+  background: hsl(var(--primary) / 0.15) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+/* ── Block hover / side menu / drag handle popover ─────── */
+html body .bn-container .bn-side-menu,
+html body .bn-container [data-bn-type="side-menu"],
+html body .bn-container .bn-drag-handle-menu {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border) / 0.6) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* ── Mantine popover used by BlockNote menus ───────────── */
+html body .mantine-Popover-dropdown {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border) / 0.6) !important;
+  border-radius: 10px !important;
+  color: hsl(var(--foreground)) !important;
+  padding: 4px !important;
+}
+
+/* Menu items inside Mantine popovers */
+html body .mantine-Menu-item,
+html body .bn-menu-item {
+  color: hsl(var(--foreground)) !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+}
+
+html body .mantine-Menu-item:hover,
+html body .bn-menu-item:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+/* Block type select — z-index fix */
+html body .bn-container [data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
+/* Remaining Mantine Paper surfaces */
+html body .mantine-Paper-root {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Mantine tooltip */
+html body .mantine-Tooltip-tooltip {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border) / 0.4) !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+}
+
+/* ── Color picker in toolbar ───────────────────────────── */
+html body .bn-container .bn-color-picker,
+html body .bn-container [data-bn-type="color-picker"] {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border) / 0.6) !important;
+  border-radius: 10px !important;
 }
 
 /* ── Code blocks ────────────────────────────────────────── */

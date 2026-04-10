@@ -63,13 +63,6 @@ const DividerIcon = () => (
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
-const AudioIcon = () => (
-  <svg {...iconProps}>
-    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-  </svg>
-);
 const ColumnsIcon = () => (
   <svg {...iconProps}>
     <rect x="3" y="3" width="7" height="18" rx="1" />
@@ -308,23 +301,7 @@ function getLuminaSlashMenuItems(
     icon: <DividerIcon />,
   };
 
-  const audioItem: DefaultReactSuggestionItem = {
-    title: 'Audio',
-    subtext: 'Embed an audio file',
-    onItemClick: () => {
-      const cursor = editor.getTextCursorPosition();
-      editor.insertBlocks(
-        [{ type: 'audio' as any, props: { name: '', url: '', caption: '', showPreview: true } } as any],
-        cursor.block,
-        'after',
-      );
-    },
-    aliases: ['audio', 'sound', 'mp3', 'music', 'voice'],
-    group: 'Media',
-    icon: <AudioIcon />,
-  };
-
-  return [...defaults, audioItem, columnsItem, taskItem, calloutItem, dividerItem];
+  return [...defaults, columnsItem, taskItem, calloutItem, dividerItem];
 }
 
 // ── Custom slash menu component ─────────────────────────────────────────────
@@ -348,8 +325,8 @@ function LuminaSuggestionMenu({
     <div
       className={cn(
         'z-50 w-64 max-h-72 overflow-y-auto overflow-x-hidden',
-        'bg-popover/95 backdrop-blur-md border border-border/60 rounded-xl',
-        'shadow-lg shadow-black/30 p-1',
+        'bg-popover border border-border/60 rounded-xl',
+        'shadow-lg p-1',
         '[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]',
       )}
     >
@@ -373,21 +350,26 @@ function LuminaSuggestionMenu({
                   onClick={() => onItemClick?.(item)}
                   className={cn(
                     'w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left',
-                    'min-h-[34px] cursor-pointer transition-colors',
+                    'min-h-[34px] cursor-pointer transition-colors border-none bg-transparent',
                     isSelected ? 'bg-muted text-foreground' : 'text-foreground hover:bg-muted/60',
                   )}
                 >
                   <div
                     className={cn(
-                      'w-7 h-7 min-w-[28px] rounded-md',
+                      'w-7 h-7 min-w-[28px] rounded-md shrink-0',
                       'bg-muted border border-border/40',
                       'flex items-center justify-center',
-                      'text-xs font-semibold text-foreground',
+                      'text-foreground',
                     )}
                   >
-                    {item.icon ?? item.title.charAt(0)}
+                    {typeof item.icon === 'string'
+                      ? <span className="text-xs font-bold">{item.icon}</span>
+                      : item.icon
+                        ? <span className="w-4 h-4 flex items-center justify-center text-foreground">{item.icon}</span>
+                        : <span className="text-xs font-bold text-muted-foreground">{item.title.slice(0, 2).toUpperCase()}</span>
+                    }
                   </div>
-                  <span className="text-sm font-medium truncate flex-1 min-w-0">{item.title}</span>
+                  <span className="text-sm font-medium truncate flex-1 min-w-0 text-foreground">{item.title}</span>
                 </button>
               );
             })}
