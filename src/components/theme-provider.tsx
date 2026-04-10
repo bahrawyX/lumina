@@ -48,6 +48,12 @@ function applyThemeToDom(
     root.setAttribute('data-theme', resolvedTheme);
   }
 
+  // Tell Mantine (BlockNote slash menu / color picker portals) to use the
+  // same color scheme. Without this, Mantine defaults to light regardless
+  // of our Tailwind `.dark` class, producing white popovers in dark mode.
+  root.setAttribute('data-mantine-color-scheme', resolvedTheme);
+  root.style.colorScheme = resolvedTheme;
+
   if (styleEl) {
     requestAnimationFrame(() => {
       styleEl?.remove();

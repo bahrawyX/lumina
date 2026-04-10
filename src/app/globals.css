@@ -224,6 +224,34 @@
   --bn-colors-shadow: rgba(0, 0, 0, 0.4);
 }
 
+/* Safety net: force Mantine popover surfaces (slash menu, color picker,
+   context menu) to use Lumina popover tokens even if Mantine's own color
+   scheme detection is stale. Mantine portals to <body>, so these selectors
+   must live at the document root, not scoped to .bn-container. */
+[class*="mantine-Popover-dropdown"],
+[class*="mantine-Menu-dropdown"],
+[class*="mantine-Paper-root"],
+[class*="bn-suggestion-menu"] {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+[class*="mantine-Skeleton-root"] {
+  background: hsl(var(--muted)) !important;
+}
+
+/* Icon section wrapper + badge inside slash menu items — Mantine defaults
+   to light grey (rgb(239,239,239)); force Lumina muted surface so dark mode
+   doesn't light up with white squares. */
+.bn-suggestion-menu [class*="bn-mt-suggestion-menu-item-section"],
+.bn-suggestion-menu [class*="mantine-Badge-root"],
+[class*="bn-suggestion-menu"] [class*="bn-mt-suggestion-menu-item-section"],
+[class*="bn-suggestion-menu"] [class*="mantine-Badge-root"] {
+  background: transparent !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
 /* ── Content typography ─────────────────────────────────── */
 .bn-container [class*="blockContent"] {
   font-family: inherit;
