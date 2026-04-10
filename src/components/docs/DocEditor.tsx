@@ -17,11 +17,7 @@ import {
   defaultInlineContentSpecs,
   defaultStyleSpecs,
 } from '@blocknote/core';
-import {
-  locales as multiColumnLocales,
-  multiColumnDropCursor,
-  withMultiColumn,
-} from '@blocknote/xl-multi-column';
+// xl-multi-column loaded lazily to reduce initial chunk size
 import { useTheme } from '@/components/theme-provider';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import '@blocknote/mantine/style.css';
@@ -124,19 +120,37 @@ const TaskBlockFactory = createReactBlockSpec(
 );
 const TaskBlock = TaskBlockFactory();
 
-// ── Multi-column + TaskBlock schema ─────────────────────────────────────────
-const schema = withMultiColumn(
-  BlockNoteSchema.create({
-    blockSpecs: {
-      ...defaultBlockSpecs,
-      taskBlock: TaskBlock,
-    },
-    inlineContentSpecs: defaultInlineContentSpecs,
-    styleSpecs: defaultStyleSpecs,
-  }),
-);
+// ── Schema: base (sync) + multi-column (lazy) ─────────────────────────────
+const baseSchema = BlockNoteSchema.create({
+  blockSpecs: {
+    ...defaultBlockSpecs,
+    taskBlock: TaskBlock,
+  },
+  inlineContentSpecs: defaultInlineContentSpecs,
+  styleSpecs: defaultStyleSpecs,
+});
 
-type LuminaEditor = typeof schema.BlockNoteEditor;
+// Lazy-load xl-multi-column and cache the enhanced schema + drop cursor
+let _multiColCache: {
+  schema: typeof baseSchema;
+  dropCursor: unknown;
+} | null = null;
+
+const loadMultiColumn = () =>
+  import('@blocknote/xl-multi-column').then((mod) => {
+    if (!_multiColCache) {
+      _multiColCache = {
+        schema: mod.withMultiColumn(baseSchema) as typeof baseSchema,
+        dropCursor: mod.multiColumnDropCursor,
+      };
+    }
+    return _multiColCache;
+  });
+
+// Pre-warm: start loading immediately (browser idle)
+const multiColReady = loadMultiColumn();
+
+type LuminaEditor = typeof baseSchema.BlockNoteEditor;
 
 // ── Lumina theme bound to our HSL CSS variables ─────────────────────────────
 const luminaBlockNoteTheme = {
@@ -391,17 +405,26 @@ export default function DocEditor({ docId, initialContent, onChange, className }
   const { resolvedTheme } = useTheme();
   void resolvedTheme;
 
+  // Wait for multi-column extension before rendering editor
+  const [multiCol, setMultiCol] = useState(_multiColCache);
+  useEffect(() => {
+    if (!multiCol) {
+      multiColReady.then(setMultiCol);
+    }
+  }, [multiCol]);
+
   // Column picker state
   const [columnPickerOpen, setColumnPickerOpen] = useState(false);
   const [columnPickerPos, setColumnPickerPos] = useState<{ top: number; left: number } | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
 
   // Track previous blocks for deletion detection
-  const previousBlocksRef = useRef<any[]>([]);
+  const previousBlocksRef = useRef<BlockLike[]>([]);
 
+  const editorSchema = multiCol?.schema ?? baseSchema;
   const editor = useCreateBlockNote({
-    schema: schema as any,
-    dropCursor: multiColumnDropCursor as any,
+    schema: editorSchema as any,
+    dropCursor: (multiCol?.dropCursor ?? undefined) as any,
     initialContent: (initialContent && initialContent.length > 0)
       ? initialContent as any
       : undefined,
