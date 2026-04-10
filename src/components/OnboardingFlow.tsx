@@ -1248,8 +1248,8 @@ const OnboardingFlow: React.FC = () => {
       await refetchAuthSession();
       await hydrateNameFromSession();
       setAuthMessage('Signed in with Google.');
-    } catch (err: any) {
-      setAuthMessage(err?.message ?? 'Google sign-in failed.');
+    } catch (err: unknown) {
+      setAuthMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
     } finally {
       setAuthBusy(null);
     }

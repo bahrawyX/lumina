@@ -29,6 +29,15 @@ import type { Block, BlockNoteEditor } from '@blocknote/core';
 import { cn } from '@/lib/utils';
 import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
 
+/** Loose shape of BlockNote document blocks at runtime */
+interface BlockLike {
+  id: string;
+  type?: string;
+  props?: Record<string, unknown>;
+  children?: BlockLike[];
+  content?: unknown;
+}
+
 // ── Inline SVG icons (project avoids lucide-react) ─────────────────────────
 const iconProps = {
   width: 14,
@@ -427,8 +436,8 @@ export default function DocEditor({ docId, initialContent, onChange, className }
 
       // Update block checked state
       try {
-        const blocks = editor.document as any[];
-        const findBlock = (blks: any[]): any => {
+        const blocks = editor.document as BlockLike[];
+        const findBlock = (blks: BlockLike[]): BlockLike | null => {
           for (const b of blks) {
             if (b.id === blockId) return b;
             if (b.children?.length) {
@@ -463,9 +472,9 @@ export default function DocEditor({ docId, initialContent, onChange, className }
   useEffect(() => {
     const handler = (e: Event) => {
       const { taskId, status } = (e as CustomEvent).detail;
-      const blocks = editor.document as any[];
+      const blocks = editor.document as BlockLike[];
 
-      const findTaskBlock = (blks: any[]): any => {
+      const findTaskBlock = (blks: BlockLike[]): BlockLike | null => {
         for (const b of blks) {
           if (b.type === 'taskBlock' && b.props?.taskId === taskId) return b;
           if (b.children?.length) {
@@ -497,24 +506,24 @@ export default function DocEditor({ docId, initialContent, onChange, className }
 
     // Detect removed taskBlocks
     const currentTaskIds = new Set(
-      (blocks as any[])
-        .filter((b: any) => b.type === 'taskBlock' && b.props?.taskId)
-        .map((b: any) => b.props.taskId),
+      (blocks as BlockLike[])
+        .filter((b) => b.type === 'taskBlock' && b.props?.taskId)
+        .map((b) => b.props!.taskId as string),
     );
 
     // Also check nested blocks (inside columns)
-    const collectTaskIds = (blks: any[]) => {
+    const collectTaskIds = (blks: BlockLike[]) => {
       for (const b of blks) {
-        if (b.type === 'taskBlock' && b.props?.taskId) currentTaskIds.add(b.props.taskId);
+        if (b.type === 'taskBlock' && b.props?.taskId) currentTaskIds.add(b.props.taskId as string);
         if (b.children?.length) collectTaskIds(b.children);
       }
     };
-    collectTaskIds(blocks as any[]);
+    collectTaskIds(blocks as BlockLike[]);
 
     const prevTaskIds = new Set<string>();
-    const collectPrevTaskIds = (blks: any[]) => {
+    const collectPrevTaskIds = (blks: BlockLike[]) => {
       for (const b of blks) {
-        if (b.type === 'taskBlock' && b.props?.taskId) prevTaskIds.add(b.props.taskId);
+        if (b.type === 'taskBlock' && b.props?.taskId) prevTaskIds.add(b.props.taskId as string);
         if (b.children?.length) collectPrevTaskIds(b.children);
       }
     };
