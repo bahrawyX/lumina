@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-05 (v7 — PWA + push notifications, cron jobs, install prompt, offline support)
+> Last updated: 2026-04-10 (v8 — multi-column layouts, taskBlock ID mapping, two-way task sync)
 
 ---
 
@@ -1218,7 +1218,8 @@ Inactive item: `text-muted-foreground`
 | 5 | ~~Low~~ Resolved | ~~`taskTitle` not persisted~~ — Fixed: `task_title` column added, API reads/writes it, UI renders with "Deep work" fallback. |
 | 6 | ~~Medium~~ Resolved | ~~Recurring event visual indicator~~ — Fixed: `RepeatIcon` shown in `TimeGridEvent.tsx` (Day/Week) and `EventItem.tsx` (Month). Opacity 50 normally, 100 on `isRecurrenceException`. Hidden on very short events. |
 | 7 | ~~Low~~ Resolved | ~~Sequential create+link~~ — Fixed: Atomic `POST /api/events/create-linked` endpoint wraps event insert + recurrence insert + task link update in one `db.transaction()`. Client wrapper `createLinkedEvent()` in `linkPersistence.ts`. `useTaskBoardStore.scheduleAsEvent()` convenience method added. |
-| 8 | ~~Low~~ Resolved | ~~Inline `/task` blocks~~ — Fixed: `/task` slash command now inserts native BlockNote `checkListItem` block. `useDocsStore.createInlineTask(title, docId)` POSTs to `/api/tasks` with `linkedDocId`. Note: Inline task blocks use content matching — switch to block ID mapping in future. |
+| 8 | ~~Low~~ Resolved | ~~Inline `/task` blocks~~ — Fixed: Custom `taskBlock` block spec with `taskId` stored in block props. `/task` slash command creates a real task via `POST /api/tasks` first, then inserts a `taskBlock` with the returned `taskId`. Block-level ID mapping replaces the old content-matching approach. Two-way sync: task board changes dispatch `lumina:task-updated` CustomEvent, doc editor listens and updates block state. Removing a taskBlock from the editor archives the linked task. |
+| 9 | ~~Medium~~ Resolved | ~~Multi-column layout deferred~~ — Fixed: `@blocknote/xl-multi-column` installed. Schema extended with `withMultiColumn`. `/columns` slash command opens `ColumnRatioPicker` (6 ratio presets: 50/50, 70/30, 30/70, 33/33/33, 50/25/25, 25/50/25). CSS overrides in `globals.css` handle flex layout, resize handles, and mobile vertical stacking. |
 
 ---
 
@@ -1401,8 +1402,10 @@ Files: `pwa-64.png`, `pwa-192.png`, `pwa-512.png`, `pwa-512-maskable.png`, `badg
 Full document/knowledge system integrated into the app. Documents link to tasks, events, and focus sessions — unlike Notion/ClickUp where documents are isolated.
 
 ### Editor
-- **BlockNote** (`@blocknote/react`, `@blocknote/core`, `@blocknote/mantine`)
+- **BlockNote** (`@blocknote/react`, `@blocknote/core`, `@blocknote/mantine`, `@blocknote/xl-multi-column`)
 - Notion-style block editor; default slash menu disabled (`slashMenu={false}`)
+- **Schema**: Extended via `withMultiColumn(BlockNoteSchema.create({...}))` which adds `columnList` and `column` block types. Custom `taskBlock` block spec added via `createReactBlockSpec` with `taskId` and `checked` props.
+- **SSR**: `DocEditor` loaded via `next/dynamic` with `{ ssr: false }`. Page route wraps `DocPage` in `<div suppressHydrationWarning>` to prevent Next.js 16 Turbopack hydration crashes from BlockNote's client-only DOM.
 - **Custom slash menu** — `LuminaSuggestionMenu` React component inside
   `DocEditor.tsx`. Replaces BlockNote's Mantine portal entirely so styling
   is plain Tailwind (`w-64`, `max-h-72`, `bg-popover`, `border-border/60`),
@@ -1414,10 +1417,12 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
 - **Slash items** (built into `getLuminaSlashMenuItems`):
   - All BlockNote defaults (Headings, Basic Blocks, Lists, Image, Video, …)
   - **Audio** — native BlockNote `audio` block, group "Media"
-  - **Task** — native BlockNote `checkListItem` block, group "Lumina". Creates real task via `useDocsStore.createInlineTask()` → `POST /api/tasks { linkedDocId }`. Content-matching for checkbox toggle (block ID mapping planned for future).
+  - **Task** — custom `taskBlock` with `taskId` prop, group "Lumina". Creates real task via `POST /api/tasks` first, then inserts block with returned ID. Checkbox syncs status bidirectionally via `lumina:taskblock-toggle` and `lumina:task-updated` CustomEvents.
+  - **Columns** — opens `ColumnRatioPicker` popover with 6 ratio presets (50/50, 70/30, 30/70, 33/33/33, 50/25/25, 25/50/25). Inserts `columnList` block with `column` children at specified flex ratios.
   - **Callout** — `💡 ` prefix paragraph, group "Lumina"
   - **Divider** — long em-dash run, group "Lumina"
   - Each item has an inline-SVG `icon` rendered inside a 28×28 muted box.
+- **Task block two-way sync**: `useTaskBoardStore.updateTask()` dispatches `lumina:task-updated` CustomEvent when status/title changes. DocEditor listens and updates matching `taskBlock` blocks. Removing a taskBlock from the doc triggers task archival via `PATCH /api/tasks/{id}`.
 - Auto-save: 1000ms debounce, "Saving…"/"✓ Saved" indicator (text-only, emerald-500/60).
 - **Dark mode**: Nuclear CSS `!important` overrides in `globals.css` force transparent backgrounds on all BlockNote/Mantine layers inside `.lumina-editor`.
 - **Last edited**: Relative time via `formatDistanceToNow` + `·` separator + save indicator.
@@ -1462,13 +1467,14 @@ Indexes: user_id, parent_id, (user_id, parent_id), linked_task_id, linked_event_
 
 ### Store: `useDocsStore` (src/store/useDocsStore.ts)
 State: `docs`, `openDocId`, `openDocContent`, `expandedIds`, `dbHydrated`, `isSaving`, `lastSavedAt`, `searchQuery`, `searchResults`, `isSearching`
-Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, `deleteDoc`, `pinDoc`, `moveDoc`, `saveContent` (1000ms debounced), `createInlineTask` (POST /api/tasks with linkedDocId), `search`, `clearSearch`, `openDoc`, `closeDoc`, `toggleExpanded`
+Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, `deleteDoc`, `pinDoc`, `moveDoc`, `saveContent` (1000ms debounced), `search`, `clearSearch`, `openDoc`, `closeDoc`, `toggleExpanded`
 
 ### UI Components
 | File | Description |
 |---|---|
 | `src/components/docs/SidebarDocsTree.tsx` | Sidebar tree with expand/collapse, context menu, inline rename, add subpage, inline icon picker (CompactEmojiPicker via Popover) |
-| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with `lumina-editor` class, transparent bg, inherited font |
+| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with `lumina-editor` class, transparent bg, inherited font, custom `taskBlock` spec, multi-column schema, two-way task sync |
+| `src/components/docs/ColumnRatioPicker.tsx` | Visual column ratio picker (6 presets), backdrop-blur popover, mobile note |
 | `src/components/docs/DocBreadcrumb.tsx` | Parent chain navigation with 12px icons at each level |
 | `src/components/docs/DocSaveIndicator.tsx` | "Saving..."/"Saved ✓" AnimatePresence |
 | `src/components/docs/DocRightSidebar.tsx` | Doc info, linked task/event, focus time |
@@ -1489,11 +1495,14 @@ BlockNote editor themed via a mix of the `Theme` object (passed to
 - **Selection**: primary/0.15 background
 - **Mantine portal safety net**: `mantine-Popover-dropdown`,
   `mantine-Menu-dropdown`, `mantine-Paper-root` get `--popover` background
+- **Multi-column**: `.bn-column-list` flex row, `.bn-column` flex with `--column-width`, resize handles hidden until hover, mobile stacks vertically at 768px
 
-### Future enhancements (deferred)
-- **Multi-column / container blocks** — `@blocknote/xl-multi-column` is the
-  upstream package. Not installed yet; deferred until the column block UX
-  is designed for Lumina's narrow doc width.
+### Multi-column layout
+- **`@blocknote/xl-multi-column`** installed. Schema extended via `withMultiColumn()`.
+- `/columns` slash command opens `ColumnRatioPicker.tsx` with 6 ratio presets.
+- `columnList` block contains `column` children, each with `--column-width` CSS custom property for flex sizing.
+- CSS overrides in `globals.css`: flex layout, 16px gap, resize handles (4px, border color, opacity transition), mobile stacking at 768px breakpoint.
+- `multiColumnDropCursor` from the package enables drag-and-drop between columns.
 
 ### Icon Sizes
 | Context | Size |

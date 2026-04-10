@@ -240,6 +240,17 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     });
     // Fire-and-forget DB persistence after updateTask resolves
     tasksPersistence.updateOne(id, { ...patch });
+
+    // Two-way sync: notify any open doc editors about task status/title changes
+    if (patch.status !== undefined || patch.title !== undefined) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('lumina:task-updated', {
+            detail: { taskId: id, status: patch.status, title: patch.title },
+          }),
+        );
+      }
+    }
   },
 
   rollOverTasks: (taskIds, nextDate) => {

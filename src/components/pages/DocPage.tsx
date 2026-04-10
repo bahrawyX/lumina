@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import { useDocsStore } from '@/store/useDocsStore';
 import * as docsPersistence from '@/lib/persistence/docsPersistence';
-import DocEditor from '@/components/docs/DocEditor';
+
+const DocEditor = dynamic(() => import('@/components/docs/DocEditor'), { ssr: false });
 import DocBreadcrumb from '@/components/docs/DocBreadcrumb';
 import DocSaveIndicator from '@/components/docs/DocSaveIndicator';
 import DocRightSidebar from '@/components/docs/DocRightSidebar';
@@ -36,7 +38,6 @@ export default function DocPage() {
   const setOpenDocContent = useDocsStore((s) => s.setOpenDocContent);
   const saveContent = useDocsStore((s) => s.saveContent);
   const updateDoc = useDocsStore((s) => s.updateDoc);
-  const createInlineTask = useDocsStore((s) => s.createInlineTask);
   const docs = useDocsStore((s) => s.docs);
 
   const [title, setTitle] = useState('');
@@ -92,16 +93,6 @@ export default function DocPage() {
       saveContent(docId, blocks as any, plainText, wordCount);
     },
     [docId, saveContent]
-  );
-
-  // Inline task creation from /task slash command
-  const handleTaskCreate = useCallback(
-    (title: string) => {
-      if (title.trim()) {
-        createInlineTask(title.trim(), docId);
-      }
-    },
-    [docId, createInlineTask]
   );
 
   // Icon select
@@ -267,9 +258,9 @@ export default function DocPage() {
         <div ref={editorRef} className="bg-transparent">
           <DocEditor
             key={docId}
+            docId={docId}
             initialContent={openDocContent?.content as Block[] | null}
             onChange={handleEditorChange}
-            onTaskCreate={handleTaskCreate}
             className="min-h-[300px] bg-transparent"
           />
         </div>

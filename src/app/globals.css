@@ -282,6 +282,49 @@
   background-color: transparent !important;
 }
 
+/* ── Multi-column layout overrides ───────────────────────────────────────── */
+.lumina-editor .bn-column-list {
+  display: flex !important;
+  gap: 16px !important;
+  width: 100% !important;
+}
+
+.lumina-editor .bn-column {
+  flex: var(--column-width, 1) !important;
+  min-width: 0 !important;
+  min-height: 40px !important;
+}
+
+.lumina-editor .bn-column:focus-within {
+  outline: none !important;
+}
+
+.lumina-editor .bn-column-resize-handle {
+  width: 4px !important;
+  background: hsl(var(--border)) !important;
+  border-radius: 2px !important;
+  cursor: col-resize !important;
+  opacity: 0 !important;
+  transition: opacity 150ms !important;
+}
+
+.lumina-editor .bn-column-list:hover .bn-column-resize-handle {
+  opacity: 1 !important;
+}
+
+/* Mobile: stack columns vertically */
+@media (max-width: 768px) {
+  .lumina-editor .bn-column-list {
+    flex-direction: column !important;
+  }
+  .lumina-editor .bn-column {
+    flex: 1 1 100% !important;
+  }
+  .lumina-editor .bn-column-resize-handle {
+    display: none !important;
+  }
+}
+
 /* ── Headings ───────────────────────────────────────────── */
 .bn-container h1[class*="blockContent"],
 .bn-container [data-level="1"][class*="blockContent"] {
