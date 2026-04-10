@@ -123,10 +123,13 @@ export default function DocsHomePage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{result.title}</p>
                     <p
-                      className="text-xs text-muted-foreground truncate"
+                      className="text-xs text-muted-foreground truncate [&_mark]:bg-primary/20 [&_mark]:text-foreground [&_mark]:rounded-sm [&_mark]:px-0.5"
                       dangerouslySetInnerHTML={{ __html: result.excerpt }}
                     />
                   </div>
+                  <span className="text-xs text-muted-foreground/60 flex-shrink-0">
+                    {formatDistanceToNow(new Date(result.updatedAt), { addSuffix: true })}
+                  </span>
                 </Link>
               ))}
             </div>

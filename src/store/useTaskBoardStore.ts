@@ -8,7 +8,7 @@ import {
 } from '../utils/taskBoard';
 import { useDailyPlanStore } from './useDailyPlanStore';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
-import { unlinkTaskEvent } from '@/lib/persistence/linkPersistence';
+import { unlinkTaskEvent, createLinkedEvent } from '@/lib/persistence/linkPersistence';
 import { getStorageItem, setStorageItem } from '@/lib/storage';
 import { uid } from '@/lib/uid';
 
@@ -60,6 +60,13 @@ interface TaskBoardState {
   clearContextReference: (context: string) => void;
   moveTask: (id: string, toStatus: TaskStatus, toIndex?: number) => void;
   reorderColumn: (status: TaskStatus, orderedIds: string[]) => void;
+  scheduleAsEvent: (taskId: string, payload: {
+    date: string;
+    startTime?: string;
+    endTime?: string;
+    isAllDay?: boolean;
+    recurrence?: { rrule: string; exdates?: string[]; until?: string };
+  }) => Promise<{ eventId: string; recurrenceId?: string | null } | null>;
 }
 
 export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
@@ -394,6 +401,37 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     // Fire-and-forget DB persistence for reordered tasks — commit-time only
     const updated = get().tasks.filter(t => t.status === status);
     updated.forEach(t => tasksPersistence.updateOne(t.id, { order: t.order }));
+  },
+
+  // ── Schedule task as calendar event (atomic endpoint) ─────────────────────
+  scheduleAsEvent: async (taskId, payload) => {
+    const task = get().tasks.find(t => t.id === taskId);
+    if (!task) return null;
+
+    const result = await createLinkedEvent({
+      title: task.title,
+      description: task.description,
+      date: payload.date,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      isAllDay: payload.isAllDay,
+      recurrence: payload.recurrence,
+      taskId,
+    });
+
+    if (!result) return null;
+
+    // Optimistic update — mark task as linked
+    set((state) => ({
+      tasks: state.tasks.map(t =>
+        t.id === taskId
+          ? { ...t, linkedEventId: result.eventId, updatedAt: new Date().toISOString() }
+          : t
+      ),
+    }));
+    saveTasks(get().tasks, get().userId);
+
+    return { eventId: result.eventId, recurrenceId: result.recurrenceId ?? null };
   },
 }));
 

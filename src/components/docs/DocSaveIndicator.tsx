@@ -16,10 +16,9 @@ export default function DocSaveIndicator() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="text-xs text-muted-foreground flex items-center gap-1"
+          className="text-xs text-muted-foreground/60"
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
-          Saving...
+          Saving…
         </motion.span>
       ) : lastSavedAt ? (
         <motion.span
@@ -27,12 +26,9 @@ export default function DocSaveIndicator() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="text-xs text-muted-foreground flex items-center gap-1"
+          className="text-xs text-emerald-500/60"
         >
-          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Saved
+          ✓ Saved
         </motion.span>
       ) : null}
     </AnimatePresence>

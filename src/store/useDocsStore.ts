@@ -41,6 +41,9 @@ interface DocsState {
   setOpenDocContent: (doc: DocContent) => void;
   saveContent: (id: string, content: Record<string, unknown>[], contentText: string, wordCount: number) => void;
 
+  // Inline tasks
+  createInlineTask: (title: string, docId: string) => Promise<string | null>;
+
   // Search
   search: (query: string) => Promise<void>;
   clearSearch: () => void;
@@ -256,6 +259,22 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
       set({ isSaving: false, lastSavedAt: new Date().toISOString() });
     }, 1000);
+  },
+
+  // ── Inline tasks ───────────────────────────────────────────────────────────
+  createInlineTask: async (title, docId) => {
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, linkedDocId: docId }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.id ?? null;
+    } catch {
+      return null;
+    }
   },
 
   // ── Search ─────────────────────────────────────────────────────────────────

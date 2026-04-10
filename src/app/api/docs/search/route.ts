@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
     const db = getDatabase();
 
     const tsvector = sql`to_tsvector('english', coalesce(${docs.title}, '') || ' ' || coalesce(${docs.contentText}, ''))`;
-    const tsquery = sql`plainto_tsquery('english', ${q})`;
+    // Prefix search: "quar" → "quar:*", "quarterly review" → "quarterly:* & review:*"
+    const tsquery = sql`to_tsquery('english', ${q.replace(/\s+/g, ':* & ') + ':*'})`;
 
     const results = await db
       .select({

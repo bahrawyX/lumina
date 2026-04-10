@@ -1216,9 +1216,9 @@ Inactive item: `text-muted-foreground`
 | 3 | ~~Medium~~ Resolved | ~~Planner localStorage-only~~ — Fixed: Full DB persistence via API routes + Zustand optimistic updates. |
 | 4 | Low | No unique DB constraint for one primary local calendar per user (app logic handles it but DB doesn't enforce). |
 | 5 | ~~Low~~ Resolved | ~~`taskTitle` not persisted~~ — Fixed: `task_title` column added, API reads/writes it, UI renders with "Deep work" fallback. |
-| 6 | Medium | Recurring event visual indicator (↻ loop icon) not yet shown on event chips in day/week/month views. Affects: `DayView.tsx`, `WeekView.tsx`, `MonthView.tsx`. |
-| 7 | Low | `POST /api/events` and `POST /api/tasks` create each side independently before `POST /api/link` is called. If event creation succeeds but link call fails, the event exists without a link. Consider wrapping all three in a single API endpoint for truly atomic create+link. |
-| 8 | Low | Inline `/task` blocks in docs editor insert a `☐` prefix paragraph but do not yet create a real task in `useTaskBoardStore` or sync checkbox state bidirectionally. Full two-way task sync is a follow-up. |
+| 6 | ~~Medium~~ Resolved | ~~Recurring event visual indicator~~ — Fixed: `RepeatIcon` shown in `TimeGridEvent.tsx` (Day/Week) and `EventItem.tsx` (Month). Opacity 50 normally, 100 on `isRecurrenceException`. Hidden on very short events. |
+| 7 | ~~Low~~ Resolved | ~~Sequential create+link~~ — Fixed: Atomic `POST /api/events/create-linked` endpoint wraps event insert + recurrence insert + task link update in one `db.transaction()`. Client wrapper `createLinkedEvent()` in `linkPersistence.ts`. `useTaskBoardStore.scheduleAsEvent()` convenience method added. |
+| 8 | ~~Low~~ Resolved | ~~Inline `/task` blocks~~ — Fixed: `/task` slash command now inserts native BlockNote `checkListItem` block. `useDocsStore.createInlineTask(title, docId)` POSTs to `/api/tasks` with `linkedDocId`. Note: Inline task blocks use content matching — switch to block ID mapping in future. |
 
 ---
 
@@ -1414,11 +1414,13 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
 - **Slash items** (built into `getLuminaSlashMenuItems`):
   - All BlockNote defaults (Headings, Basic Blocks, Lists, Image, Video, …)
   - **Audio** — native BlockNote `audio` block, group "Media"
-  - **Task** — `☐ ` prefix paragraph, group "Lumina"
+  - **Task** — native BlockNote `checkListItem` block, group "Lumina". Creates real task via `useDocsStore.createInlineTask()` → `POST /api/tasks { linkedDocId }`. Content-matching for checkbox toggle (block ID mapping planned for future).
   - **Callout** — `💡 ` prefix paragraph, group "Lumina"
   - **Divider** — long em-dash run, group "Lumina"
   - Each item has an inline-SVG `icon` rendered inside a 28×28 muted box.
-- Auto-save: 1000ms debounce, "Saving..."/"Saved ✓" indicator.
+- Auto-save: 1000ms debounce, "Saving…"/"✓ Saved" indicator (text-only, emerald-500/60).
+- **Dark mode**: Nuclear CSS `!important` overrides in `globals.css` force transparent backgrounds on all BlockNote/Mantine layers inside `.lumina-editor`.
+- **Last edited**: Relative time via `formatDistanceToNow` + `·` separator + save indicator.
 
 ### Database
 #### `docs` table
@@ -1455,12 +1457,12 @@ Indexes: user_id, parent_id, (user_id, parent_id), linked_task_id, linked_event_
 | `/api/docs/[id]` | GET | Full doc with content |
 | `/api/docs/[id]` | PATCH | Update with 409 stale-write protection |
 | `/api/docs/[id]` | DELETE | Soft delete (archive). `?hard=true` + `{confirm:true}` for permanent |
-| `/api/docs/search` | GET | PostgreSQL FTS with `ts_headline` excerpts, limit 20 |
+| `/api/docs/search` | GET | PostgreSQL FTS with `to_tsquery` prefix search (`:*` suffix), `ts_headline` `<mark>` excerpts, limit 20 |
 | `/api/docs/ai-stream` | POST | Gemini streaming proxy, 10/min rate limit |
 
 ### Store: `useDocsStore` (src/store/useDocsStore.ts)
 State: `docs`, `openDocId`, `openDocContent`, `expandedIds`, `dbHydrated`, `isSaving`, `lastSavedAt`, `searchQuery`, `searchResults`, `isSearching`
-Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, `deleteDoc`, `pinDoc`, `moveDoc`, `saveContent` (1000ms debounced), `search`, `clearSearch`, `openDoc`, `closeDoc`, `toggleExpanded`
+Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, `deleteDoc`, `pinDoc`, `moveDoc`, `saveContent` (1000ms debounced), `createInlineTask` (POST /api/tasks with linkedDocId), `search`, `clearSearch`, `openDoc`, `closeDoc`, `toggleExpanded`
 
 ### UI Components
 | File | Description |
@@ -1471,7 +1473,7 @@ Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, 
 | `src/components/docs/DocSaveIndicator.tsx` | "Saving..."/"Saved ✓" AnimatePresence |
 | `src/components/docs/DocRightSidebar.tsx` | Doc info, linked task/event, focus time |
 | `src/components/docs/DocsEmptyAnimation.tsx` | SVG animated empty state (floating clipboard + blinking cursor, 120x120) |
-| `src/components/docs/QuickSwitcher.tsx` | Cmd+K global search overlay |
+| `src/components/docs/QuickSwitcher.tsx` | Cmd+K global search overlay — docs section uses `/api/docs/search` API (200ms debounce) for prefix matching |
 | `src/components/pages/DocsHomePage.tsx` | /docs — greeting, search, pinned grid (20px icons), recent list (14px icons), animated empty state |
 | `src/components/pages/DocPage.tsx` | /docs/[id] — cover, CompactEmojiPicker icon selector, text-3xl title, editor, right sidebar |
 

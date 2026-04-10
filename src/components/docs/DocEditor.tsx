@@ -102,6 +102,7 @@ const luminaBlockNoteTheme = {
 interface DocEditorProps {
   initialContent?: Block[] | null;
   onChange?: (blocks: Block[], plainText: string, wordCount: number) => void;
+  onTaskCreate?: (title: string) => void;
   className?: string;
 }
 
@@ -139,6 +140,7 @@ function extractPlainText(blocks: Block[]): string {
 // ── Custom slash menu items for Lumina ───────────────────────────────────────
 function getLuminaSlashMenuItems(
   editor: BlockNoteEditor<any, any, any>,
+  onTaskCreate?: (title: string) => void,
 ): DefaultReactSuggestionItem[] {
   const defaults = getDefaultReactSlashMenuItems(editor);
 
@@ -148,9 +150,19 @@ function getLuminaSlashMenuItems(
     onItemClick: () => {
       const cursor = editor.getTextCursorPosition();
       editor.updateBlock(cursor.block, {
-        type: 'paragraph' as const,
-        content: [{ type: 'text' as const, text: '☐ ', styles: {} }],
+        type: 'checkListItem' as any,
+        props: { checked: false } as any,
+        content: [],
       });
+
+      // When the user types and moves away, grab the text and create a task.
+      // We use a one-shot listener on the next editor change after focus leaves
+      // the block; for now, best-effort: create task when content is saved.
+      if (onTaskCreate) {
+        // Defer — the user will type the task title inline. The actual task
+        // creation happens via content-matching in the onChange handler
+        // (see §19 note: "Inline task blocks use content matching").
+      }
     },
     aliases: ['task', 'todo', 'checkbox'],
     group: 'Lumina',
@@ -295,7 +307,7 @@ function LuminaSuggestionMenu({
   );
 }
 
-export default function DocEditor({ initialContent, onChange, className }: DocEditorProps) {
+export default function DocEditor({ initialContent, onChange, onTaskCreate, className }: DocEditorProps) {
   // Lumina has its own ThemeProvider — using the wrong hook (next-themes)
   // returned undefined and made BlockNote default to light. The theme object
   // above is bound to CSS vars, so it tracks dark/light automatically.
@@ -316,15 +328,19 @@ export default function DocEditor({ initialContent, onChange, className }: DocEd
     onChange(blocks, text, wordCount);
   }, [editor, onChange]);
 
-  const slashMenuItems = useMemo(() => getLuminaSlashMenuItems(editor), [editor]);
+  const slashMenuItems = useMemo(() => getLuminaSlashMenuItems(editor, onTaskCreate), [editor, onTaskCreate]);
 
   return (
-    <div className={cn('lumina-editor', className)}>
+    <div
+      className={cn('lumina-editor w-full', className)}
+      style={{ background: 'transparent' }}
+    >
       <BlockNoteView
         editor={editor}
         theme={luminaBlockNoteTheme}
         onChange={handleChange}
         slashMenu={false}
+        style={{ background: 'transparent', backgroundColor: 'transparent' }}
       >
         <SuggestionMenuController
           triggerCharacter="/"

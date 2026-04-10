@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 import type { Block } from '@blocknote/core';
 
 const COVER_GRADIENTS = [
@@ -35,6 +36,7 @@ export default function DocPage() {
   const setOpenDocContent = useDocsStore((s) => s.setOpenDocContent);
   const saveContent = useDocsStore((s) => s.saveContent);
   const updateDoc = useDocsStore((s) => s.updateDoc);
+  const createInlineTask = useDocsStore((s) => s.createInlineTask);
   const docs = useDocsStore((s) => s.docs);
 
   const [title, setTitle] = useState('');
@@ -90,6 +92,16 @@ export default function DocPage() {
       saveContent(docId, blocks as any, plainText, wordCount);
     },
     [docId, saveContent]
+  );
+
+  // Inline task creation from /task slash command
+  const handleTaskCreate = useCallback(
+    (title: string) => {
+      if (title.trim()) {
+        createInlineTask(title.trim(), docId);
+      }
+    },
+    [docId, createInlineTask]
   );
 
   // Icon select
@@ -161,7 +173,7 @@ export default function DocPage() {
       )}
 
       {/* Content area */}
-      <div className="flex-1 px-4 md:px-16 py-6 max-w-3xl mx-auto w-full">
+      <div className="flex-1 px-4 md:px-8 py-6 md:py-10 max-w-3xl mx-auto w-full">
         {/* Breadcrumb + mobile menu */}
         <div className="flex items-center justify-between">
           <DocBreadcrumb docId={docId} />
@@ -235,31 +247,30 @@ export default function DocPage() {
           onBlur={handleTitleBlur}
           onKeyDown={handleTitleKeyDown}
           placeholder="Untitled"
-          className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/40 mb-1"
+          className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/40 mb-2"
         />
 
         {/* Last edited + save indicator */}
-        <div className="flex items-center gap-3 mb-2">
+        <div className="flex items-center gap-2 mb-4 text-xs text-muted-foreground/60">
           {openDocContent?.updatedAt && (
-            <span className="text-xs text-muted-foreground">
-              Last edited{' '}
-              {new Date(openDocContent.updatedAt).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })}
+            <span>
+              Edited {formatDistanceToNow(new Date(openDocContent.updatedAt), { addSuffix: true })}
             </span>
+          )}
+          {openDocContent?.updatedAt && (
+            <span className="text-muted-foreground/30">·</span>
           )}
           <DocSaveIndicator />
         </div>
 
         {/* Editor — sits right under the title meta, no divider */}
-        <div ref={editorRef}>
+        <div ref={editorRef} className="bg-transparent">
           <DocEditor
             key={docId}
             initialContent={openDocContent?.content as Block[] | null}
             onChange={handleEditorChange}
-            className="min-h-[300px]"
+            onTaskCreate={handleTaskCreate}
+            className="min-h-[300px] bg-transparent"
           />
         </div>
       </div>

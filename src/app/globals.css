@@ -254,6 +254,34 @@
   background: transparent;
 }
 
+/* ── Nuclear transparent background — kill every white/light box ─────────
+   BlockNote + Mantine inject several layers of background colors (editor
+   root, ProseMirror, block groups, Mantine Paper, RichTextEditor wrapper).
+   In dark mode these leak through as white boxes. Force every layer inside
+   .lumina-editor to be transparent so only the app's own background shows. */
+.lumina-editor,
+.lumina-editor *,
+.lumina-editor .bn-container,
+.lumina-editor .bn-editor,
+.lumina-editor [class*="bn-"],
+.lumina-editor .ProseMirror,
+.lumina-editor .mantine-Paper-root,
+.lumina-editor [data-mantine-color-scheme],
+.lumina-editor .bn-block-group,
+.lumina-editor .bn-block,
+.lumina-editor .bn-block-outer {
+  background: transparent !important;
+  background-color: transparent !important;
+  --mantine-color-body: transparent !important;
+}
+
+.lumina-editor .mantine-RichTextEditor-root,
+.lumina-editor .mantine-RichTextEditor-content,
+.lumina-editor .mantine-RichTextEditor-typographyStylesProvider {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* ── Headings ───────────────────────────────────────────── */
 .bn-container h1[class*="blockContent"],
 .bn-container [data-level="1"][class*="blockContent"] {

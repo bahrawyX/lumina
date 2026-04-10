@@ -27,7 +27,9 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [apiDocResults, setApiDocResults] = useState<{ id: string; title: string; icon: string | null; isPinned?: boolean }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const docs = useDocsStore((s) => s.docs);
   const tasks = useTaskBoardStore((s) => s.tasks);
@@ -39,28 +41,61 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
     if (open) {
       setQuery('');
       setActiveIndex(0);
+      setApiDocResults([]);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
+
+  // Debounced API doc search when query changes
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = query.trim();
+    if (!q) {
+      setApiDocResults([]);
+      return;
+    }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/docs/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setApiDocResults(data.slice(0, 5));
+        }
+      } catch { /* best-effort */ }
+    }, 200);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [query]);
 
   // Filter results
   const results = useMemo<SearchItem[]>(() => {
     const q = query.toLowerCase().trim();
     const items: SearchItem[] = [];
 
-    // Docs
-    const filteredDocs = docs
-      .filter((d) => !d.isArchived && (q === '' || d.title.toLowerCase().includes(q)))
-      .slice(0, 5);
-    for (const doc of filteredDocs) {
-      items.push({
-        id: `doc-${doc.id}`,
-        title: doc.title,
-        type: 'doc',
-        icon: doc.icon || '📄',
-        subtitle: doc.isPinned ? 'Pinned' : undefined,
-        href: `/docs/${doc.id}`,
-      });
+    // Docs — use API results when query present, local list when empty
+    if (q && apiDocResults.length > 0) {
+      for (const doc of apiDocResults) {
+        items.push({
+          id: `doc-${doc.id}`,
+          title: doc.title,
+          type: 'doc',
+          icon: doc.icon || '📄',
+          href: `/docs/${doc.id}`,
+        });
+      }
+    } else {
+      const filteredDocs = docs
+        .filter((d) => !d.isArchived && (q === '' || d.title.toLowerCase().includes(q)))
+        .slice(0, 5);
+      for (const doc of filteredDocs) {
+        items.push({
+          id: `doc-${doc.id}`,
+          title: doc.title,
+          type: 'doc',
+          icon: doc.icon || '📄',
+          subtitle: doc.isPinned ? 'Pinned' : undefined,
+          href: `/docs/${doc.id}`,
+        });
+      }
     }
 
     // Tasks
@@ -127,7 +162,7 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
     items.push(...filteredActions);
 
     return items;
-  }, [query, docs, tasks, events, createDoc, router]);
+  }, [query, docs, tasks, events, apiDocResults, createDoc, router]);
 
   // Keyboard nav
   const handleKeyDown = useCallback(

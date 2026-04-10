@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId } = body as {
+  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId } = body as {
     title?: string;
     description?: string;
     status?: string;
@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
     scheduledEnd?: string | null;
     remainingFocusTime?: number | null;
     linkedEventId?: string | null;
+    linkedDocId?: string | null;
   };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
         scheduledEnd: normalizeTimeString(scheduledEnd),
         remainingFocusTime: normalizeRemainingFocusTime(remainingFocusTime),
         linkedEventId: typeof linkedEventId === 'string' && linkedEventId.trim() ? linkedEventId : null,
+        linkedDocId: typeof linkedDocId === 'string' && linkedDocId.trim() ? linkedDocId : null,
       })
       .returning({ id: tasks.id });
 
