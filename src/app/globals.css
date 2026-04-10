@@ -224,14 +224,13 @@
   --bn-colors-shadow: rgba(0, 0, 0, 0.4);
 }
 
-/* Safety net: force Mantine popover surfaces (slash menu, color picker,
-   context menu) to use Lumina popover tokens even if Mantine's own color
-   scheme detection is stale. Mantine portals to <body>, so these selectors
-   must live at the document root, not scoped to .bn-container. */
+/* Safety net: force the remaining Mantine popover surfaces (color picker,
+   formatting toolbar, file panel) to use Lumina popover tokens. The slash
+   menu is now a custom React component (LuminaSuggestionMenu) so it isn't
+   in this list. Mantine portals to <body>, so selectors live at the root. */
 [class*="mantine-Popover-dropdown"],
 [class*="mantine-Menu-dropdown"],
-[class*="mantine-Paper-root"],
-[class*="bn-suggestion-menu"] {
+[class*="mantine-Paper-root"] {
   background: hsl(var(--popover)) !important;
   color: hsl(var(--popover-foreground)) !important;
   border-color: hsl(var(--border)) !important;
@@ -282,114 +281,11 @@
   margin-top: 1rem;
 }
 
-/* ── BlockNote / Mantine surfaces — colors come from CSS vars above ── */
-/* Only size/layout overrides here. Colors inherit from --mantine-* vars. */
-
-/* ── Slash menu (BlockNote suggestion menu portal) ────────────────────────
-   Real class names verified in live DOM:
-     .bn-suggestion-menu                       — scroll container itself
-     .bn-suggestion-menu-item                  — each item (Mantine Group)
-     .bn-suggestion-menu-label                 — category header
-     .bn-mt-suggestion-menu-item-section       — left icon box / right badge
-     .bn-mt-suggestion-menu-item-body          — title+subtitle stack
-     .bn-mt-suggestion-menu-item-title         — item title <p>
-     .bn-mt-suggestion-menu-item-subtitle      — item subtitle <p> (hidden)
-   `html body` prefix gives us higher specificity than BlockNote defaults. */
-
-html body .bn-suggestion-menu {
-  width: 260px !important;
-  min-width: 260px !important;
-  max-width: 260px !important;
-  max-height: 300px !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  padding: 4px !important;
-  border-radius: 12px !important;
-  border: 1px solid hsl(var(--border) / 0.6) !important;
-  background: hsl(var(--popover)) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
-  scrollbar-width: none !important; /* Firefox */
-}
-html body .bn-suggestion-menu::-webkit-scrollbar { display: none !important; }
-
-/* Each item — fixed compact row */
-html body .bn-suggestion-menu .bn-suggestion-menu-item {
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  padding: 5px 8px !important;
-  margin: 1px 0 !important;
-  min-height: 34px !important;
-  max-height: 34px !important;
-  border-radius: 8px !important;
-  cursor: pointer !important;
-  font-size: 13px !important;
-  background: transparent !important;
-}
-
-html body .bn-suggestion-menu .bn-suggestion-menu-item[aria-selected="true"],
-html body .bn-suggestion-menu .bn-suggestion-menu-item:hover {
-  background: hsl(var(--muted)) !important;
-}
-
-/* Left section = icon wrapper. Mantine ships it with rgb(239,239,239). */
-html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-section:first-child {
-  width: 26px !important;
-  min-width: 26px !important;
-  height: 26px !important;
-  border-radius: 6px !important;
-  background: hsl(var(--muted)) !important;
-  border: 1px solid hsl(var(--border) / 0.4) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  color: hsl(var(--foreground)) !important;
-  flex: 0 0 auto !important;
-}
-html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-section:first-child svg {
-  width: 14px !important;
-  height: 14px !important;
-}
-
-/* Right section = keyboard shortcut badge. Hide entirely. */
-html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-section:last-child:not(:first-child) {
-  display: none !important;
-}
-
-/* Title + body */
-html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-body {
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-  gap: 0 !important;
-}
-html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-title {
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  line-height: 1.2 !important;
-  color: hsl(var(--foreground)) !important;
-  margin: 0 !important;
-}
-/* Subtitle hidden — keeps menu compact */
-html body .bn-suggestion-menu .bn-mt-suggestion-menu-item-subtitle {
-  display: none !important;
-}
-
-/* Category label */
-html body .bn-suggestion-menu .bn-suggestion-menu-label {
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.06em !important;
-  color: hsl(var(--muted-foreground)) !important;
-  padding: 8px 8px 3px !important;
-  margin: 0 !important;
-  background: transparent !important;
-}
-
-/* Belt-and-braces: kill any leftover keyboard shortcut badge */
-html body .bn-suggestion-menu [class*="mantine-Badge-root"] {
-  display: none !important;
-}
+/* ── BlockNote / Mantine surfaces — colors come from CSS vars above ──────
+   The slash menu is now a fully custom React component
+   (LuminaSuggestionMenu in DocEditor.tsx) styled with Tailwind. No CSS
+   overrides for .bn-suggestion-menu live here anymore. Below: only the
+   formatting toolbar size, which still uses BlockNote's default UI. */
 
 /* Formatting toolbar size only */
 [class*="formattingToolbar"] {

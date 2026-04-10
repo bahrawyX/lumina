@@ -1402,10 +1402,23 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
 
 ### Editor
 - **BlockNote** (`@blocknote/react`, `@blocknote/core`, `@blocknote/mantine`)
-- Notion-style block editor with slash commands built-in
-- Custom Lumina slash commands: `/task` (☐ prefix), `/callout` (💡), `/divider`
-- Theme matched via CSS variable overrides in `globals.css`
-- Auto-save: 1000ms debounce, "Saving..."/"Saved ✓" indicator
+- Notion-style block editor; default slash menu disabled (`slashMenu={false}`)
+- **Custom slash menu** — `LuminaSuggestionMenu` React component inside
+  `DocEditor.tsx`. Replaces BlockNote's Mantine portal entirely so styling
+  is plain Tailwind (`w-64`, `max-h-72`, `bg-popover`, `border-border/60`),
+  no CSS specificity wars with BlockNote's stylesheet.
+- **Theme** passed as a `Theme` object bound to Lumina HSL CSS vars
+  (`hsl(var(--popover))`, etc.). Light/dark toggle propagates instantly
+  with no editor remount. Uses Lumina's own `useTheme` from
+  `@/components/theme-provider` — `next-themes` is **not** in the tree.
+- **Slash items** (built into `getLuminaSlashMenuItems`):
+  - All BlockNote defaults (Headings, Basic Blocks, Lists, Image, Video, …)
+  - **Audio** — native BlockNote `audio` block, group "Media"
+  - **Task** — `☐ ` prefix paragraph, group "Lumina"
+  - **Callout** — `💡 ` prefix paragraph, group "Lumina"
+  - **Divider** — long em-dash run, group "Lumina"
+  - Each item has an inline-SVG `icon` rendered inside a 28×28 muted box.
+- Auto-save: 1000ms debounce, "Saving..."/"Saved ✓" indicator.
 
 ### Database
 #### `docs` table
@@ -1463,14 +1476,22 @@ Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, 
 | `src/components/pages/DocPage.tsx` | /docs/[id] — cover, CompactEmojiPicker icon selector, text-3xl title, editor, right sidebar |
 
 ### CSS Overrides (globals.css)
-BlockNote editor fully themed via CSS variable overrides:
+BlockNote editor themed via a mix of the `Theme` object (passed to
+`BlockNoteView`) and a small set of overrides in `globals.css`:
 - **Editor**: transparent background, inherited font family, 15px/1.7 line-height
 - **Headings**: H1 text-3xl 700, H2 text-2xl 600, H3 text-xl 600
-- **Slash menu**: compact 280px max-width, 12px border-radius, 13px font items, grouped labels
+- **Slash menu**: **no CSS** — fully owned by `LuminaSuggestionMenu` (Tailwind)
 - **Formatting toolbar**: 10px radius, 28px square buttons
 - **Code blocks**: JetBrains Mono, muted background, 8px radius
 - **Drag handle**: hidden by default, 0.4 opacity on block hover, 0.8 on handle hover
 - **Selection**: primary/0.15 background
+- **Mantine portal safety net**: `mantine-Popover-dropdown`,
+  `mantine-Menu-dropdown`, `mantine-Paper-root` get `--popover` background
+
+### Future enhancements (deferred)
+- **Multi-column / container blocks** — `@blocknote/xl-multi-column` is the
+  upstream package. Not installed yet; deferred until the column block UX
+  is designed for Lumina's narrow doc width.
 
 ### Icon Sizes
 | Context | Size |
