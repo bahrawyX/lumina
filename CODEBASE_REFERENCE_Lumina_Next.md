@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-11 (v9 — contenteditable keyboard guard, toolbar polish, block type dropdown fix)
+> Last updated: 2026-04-11 (v10 — standalone auth page, sidebar docs tree, light mode polish, selection colors removed)
 
 ---
 
@@ -81,6 +81,9 @@ This is the single source of truth for the Lumina codebase. It covers:
 ### Theme
 - **next-themes** — dark/light mode
 
+### Package management
+- **`.npmrc`** — `legacy-peer-deps=true` for Vercel deploy. Required because `@blocknote/shadcn@0.47.3` declares peer dep `tailwindcss@^4.1.12` but project uses v3.4.19. Pre-compiled CSS works fine — only the peer declaration is overly strict.
+
 ---
 
 ## 3. DIRECTORY MAP
@@ -99,6 +102,7 @@ src/
 │   │   ├── performance/page.tsx    ← Contribution heatmap + stats
 │   │   └── intelligence/page.tsx  ← Intelligence/profile page
 │   ├── auth/
+│   │   ├── signin/page.tsx         ← Standalone sign-in/sign-up page (guest→account conversion)
 │   │   └── popup-complete/page.tsx ← OAuth popup bridge (posts lumina:oauth-complete to opener)
 │   ├── onboarding/
 │   │   ├── layout.tsx
@@ -1223,7 +1227,14 @@ Inactive item: `text-muted-foreground`
 | 10 | ~~Low~~ Resolved | ~~Migrate DocEditor from mantine to shadcn~~ — Fixed: `@blocknote/mantine` replaced with `@blocknote/shadcn`. Mantine fully removed from dependency tree. Lazy xl-multi-column chunk reduced from 512KB to 450KB. globals.css reduced from 494 to 360 lines (all Mantine overrides removed). |
 | 11 | ~~High~~ Resolved | ~~Single-key shortcuts intercept typing in BlockNote editor~~ — Fixed: `AppShell.tsx` global keydown handler now checks `e.target.isContentEditable` and `e.target.closest('[contenteditable]')` in addition to `HTMLInputElement`/`HTMLTextAreaElement`. Keys like `p`, `t`, `f`, `n`, `g`, `m`, `w`, `d` no longer fire navigation/actions when typing in the editor. |
 | 12 | ~~Medium~~ Resolved | ~~Block type selector dropdown broken (dark bg, truncated labels)~~ — Fixed: CSS overrides in `globals.css` target `[role="listbox"]` and `[role="option"]` inside `[data-radix-popper-content-wrapper]`. Dropdown now uses `--popover`/`--border` tokens, 160px min-width, no label truncation, themed hover/selected states. |
-| 13 | ~~Low~~ Resolved | ~~Formatting toolbar buttons too small~~ — Fixed: CSS overrides give toolbar buttons 32px min touch targets, 18px SVG icons, 6px radius, primary-tinted active states (`data-state="on"`). Block type combobox trigger restyled: 110px min-width, borderless, 13px font. |
+| 13 | ~~Low~~ Resolved | ~~Formatting toolbar buttons too small~~ — Fixed: CSS overrides give toolbar buttons 28px compact targets, 15px icons, primary-tinted active states. Block type combobox: 100px min-width, borderless, 12px font. Side menu (plus/drag): 20px square, 14px icons. |
+| 14 | ~~Medium~~ Resolved | ~~GuestBanner links to /onboarding~~ — Fixed: "Create an account" link now goes to `/auth/signin` (standalone auth page) instead of re-running the full 9-step onboarding. On auth success: marks onboarding complete, clears guest mode, resets tutorial prompt. |
+| 15 | ~~Medium~~ Resolved | ~~`text-primary-foreground` not resolving~~ — Fixed: `tailwind.config.js` was missing `foreground` key in the `primary` color object. Added `foreground: 'hsl(var(--primary-foreground))'`. All `bg-primary` buttons now render white text in both modes. |
+| 16 | ~~Low~~ Resolved | ~~Light mode borders too faint~~ — Fixed: `--border` darkened from 87% to 82% lightness. Card borders, input borders visible on white backgrounds. Contribution heatmap cells use stronger fills in light mode (20%/35% vs 15%/30%). |
+| 17 | ~~Low~~ Resolved | ~~Custom selection colors causing readability issues~~ — Fixed: Removed ALL `::selection` overrides (globals.css, BlockNote, AppShell `selection:` Tailwind classes). Browser defaults used everywhere. |
+| 18 | ~~Low~~ Resolved | ~~Pomodoro page scrollbar visible~~ — Fixed: Right settings panel `overflow-y-auto` → `overflow-hidden`. Page container gets `no-scrollbar` utility. |
+| 19 | ~~Low~~ Resolved | ~~BlockNote dropdown menus show scrollbar on open~~ — Fixed: All dropdown menus, color picker, sub-content panels have `overflow: hidden`, `scrollbar-width: none`, `::-webkit-scrollbar { display: none }`. |
+| 20 | ~~Low~~ Resolved | ~~BlockNote tooltips not light-mode friendly~~ — Fixed: Override `[data-slot="tooltip-content"]` to use `--popover`/`--popover-foreground` instead of `bg-primary`. |
 
 ---
 
@@ -1474,7 +1485,8 @@ Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, 
 ### UI Components
 | File | Description |
 |---|---|
-| `src/components/docs/SidebarDocsTree.tsx` | Sidebar tree with expand/collapse, context menu, inline rename, add subpage, inline icon picker (CompactEmojiPicker via Popover) |
+| `src/components/docs/SidebarDocsTree.tsx` | Full-featured sidebar tree (expand/collapse, context menu, inline rename, add subpage, emoji picker). Currently unused — replaced by inline tree in Sidebar.tsx |
+| `src/components/Sidebar.tsx` (inline) | `SidebarDocsInlineTree` + `InlineDocItem` — compact nested doc tree rendered under the Docs nav item. Chevron toggle, 12px depth nesting, active doc highlight. Uses `useDocsStore.expandedIds` |
 | `src/components/docs/DocEditor.tsx` | BlockNote wrapper with `lumina-editor` class, transparent bg, inherited font, custom `taskBlock` spec, multi-column schema, two-way task sync |
 | `src/components/docs/ColumnRatioPicker.tsx` | Visual column ratio picker (6 presets), backdrop-blur popover, mobile note |
 | `src/components/docs/DocBreadcrumb.tsx` | Parent chain navigation with 12px icons at each level |
@@ -1491,10 +1503,13 @@ BlockNote editor themed via a mix of the `Theme` object (passed to
 - **Editor**: transparent background, inherited font family, 15px/1.7 line-height
 - **Headings**: H1 text-3xl 700, H2 text-2xl 600, H3 text-xl 600
 - **Slash menu**: **no CSS** — fully owned by `LuminaSuggestionMenu` (Tailwind)
-- **Formatting toolbar**: 10px radius, 32px min touch targets, 18px SVG icons, primary-tinted active state (`data-state="on"`)
+- **Formatting toolbar**: 8px radius, 28px compact buttons, 15px SVG icons, primary-tinted active state (`data-state="on"`)
 - **Code blocks**: JetBrains Mono, muted background, 8px radius
 - **Drag handle**: hidden by default, 0.4 opacity on block hover, 0.8 on handle hover
-- **Selection**: primary/0.15 background
+- **Side menu** (plus + drag): 20×20px buttons, 14px icons
+- **Tooltips**: neutral `--popover`/`--popover-foreground` instead of `bg-primary` (light mode friendly)
+- **Dropdown menus**: `overflow: hidden`, no scrollbar flash on open (all menus, color picker, sub-content)
+- **Selection**: browser defaults (all custom `::selection` overrides removed)
 - **Block type selector dropdown**: Radix Select (`[role="listbox"]`) styled via CSS overrides — `--popover`/`--border` tokens, 160px min-width, no label truncation, themed hover/selected/checked states for both light and dark modes. Combobox trigger: 110px min-width, borderless, 13px font.
 - **Shadcn renderer**: `@blocknote/shadcn` uses Radix primitives natively — no Mantine override needed. BlockNote toolbar, menus, and popovers inherit from Lumina's CSS variables via `--bn-colors-*` tokens.
 - **Multi-column**: `.bn-column-list` flex row, `.bn-column` flex with `--column-width`, resize handles hidden until hover, mobile stacks vertically at 768px
@@ -1533,6 +1548,34 @@ BlockNote editor themed via a mix of the `Theme` object (passed to
 - Pinned cards single column
 - Mobile FAB for new doc
 - Breadcrumbs: compact with immediate parent only
+
+## 26. STANDALONE AUTH PAGE
+
+### Route
+`/auth/signin` → `src/app/auth/signin/page.tsx`
+
+### Purpose
+Guest-to-account conversion page. Linked from GuestBanner ("Create an account to save permanently →"). Replaces the previous flow of sending guests back through the full 9-step onboarding.
+
+### Features
+- Centered card layout with Lumina logo
+- Sign in / Create account tab toggle (same UI as onboarding step 1)
+- Email + password fields with inline Zod validation
+- Google OAuth via popup (reuses `lumina:oauth-complete` message protocol)
+- No "Continue as Guest" option (user is already a guest)
+- "← Back" button
+
+### On successful auth
+1. `useOnboardingStore.getState().complete()` — prevents AppShell redirect to `/onboarding`
+2. `useGuestStore.getState().setGuest(false)` — clears guest mode
+3. `useTutorialStore.setState({ hasSeenPrompt: false, hasCompletedTutorial: false })` — resets tutorial so "New to Lumina? Explore" prompt reappears
+4. `router.replace('/')` — redirects to home
+
+### Key reuse
+- `useLuminaAuthClient()` from `AuthProvider.tsx`
+- OAuth popup pattern from `OnboardingFlow.tsx` (inlined as `useOAuthPopup` hook)
+- Validation schemas from `src/lib/validation.ts`
+- `GoogleProviderIcon` from `src/components/icons`
 
 ---
 
