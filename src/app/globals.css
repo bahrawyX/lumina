@@ -317,7 +317,11 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
 }
 
-/* Formatting toolbar — compact, clean */
+/* Formatting toolbar — compact, clean, pushed away from selection */
+.bn-shadcn .bn-toolbar.bn-formatting-toolbar {
+  margin-top: -6px;
+}
+
 .bn-shadcn .bn-toolbar {
   border-radius: 8px;
   padding: 2px 3px;
@@ -466,10 +470,14 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   overflow-x: auto;
 }
 
-/* ── Selection ──────────────────────────────────────────── */
+/* ── Selection — subtle tint, readable in both modes ───── */
 .bn-container [class*="blockContent"] ::selection {
-  background: hsl(var(--primary) / 0.15);
+  background: hsl(var(--primary) / 0.18);
   color: inherit;
+}
+
+.dark .bn-container [class*="blockContent"] ::selection {
+  background: hsl(var(--primary) / 0.28);
 }
 
 /* ── Drag handle ────────────────────────────────────────── */
