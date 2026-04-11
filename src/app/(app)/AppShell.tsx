@@ -181,7 +181,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable) ||
+        (e.target instanceof HTMLElement && e.target.closest('[contenteditable]'))
       )
         return;
       const key = e.key.toLowerCase();

@@ -308,9 +308,85 @@
 
 /* ── BlockNote shadcn surfaces ──────────────────────────── */
 
-/* Formatting toolbar */
+/* Formatting toolbar — rounded, comfortable padding */
 .bn-shadcn .bn-toolbar {
   border-radius: 10px;
+  padding: 3px 4px;
+  gap: 2px;
+}
+
+/* Formatting toolbar buttons — min 32px touch target */
+.bn-shadcn .bn-toolbar button {
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 6px;
+}
+
+/* Formatting toolbar toggle icons — slightly larger for clarity */
+.bn-shadcn .bn-toolbar [data-slot="toggle"] svg,
+.bn-shadcn .bn-toolbar button:not([role="combobox"]) svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Formatting toolbar active state — stronger highlight */
+.bn-shadcn .bn-toolbar [data-state="on"] {
+  background: hsl(var(--primary) / 0.14) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+/* ── Block type select dropdown ────────────────────────── */
+
+/* Trigger — clean border-less look inside toolbar */
+.bn-shadcn .bn-toolbar button[role="combobox"] {
+  min-width: 110px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  gap: 6px;
+  padding: 0 10px;
+  height: 32px;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Dropdown content — proper colors and sizing */
+.bn-shadcn .bn-select,
+html body [data-radix-popper-content-wrapper] [role="listbox"] {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  min-width: 160px !important;
+  padding: 4px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+}
+
+.dark html body [data-radix-popper-content-wrapper] [role="listbox"],
+html body .dark [data-radix-popper-content-wrapper] [role="listbox"] {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Dropdown items — full-width, good padding, no truncation */
+html body [data-radix-popper-content-wrapper] [role="option"] {
+  padding: 6px 10px !important;
+  border-radius: 5px !important;
+  font-size: 0.8125rem !important;
+  cursor: pointer;
+  color: hsl(var(--popover-foreground)) !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+}
+
+html body [data-radix-popper-content-wrapper] [role="option"]:hover,
+html body [data-radix-popper-content-wrapper] [role="option"][data-highlighted] {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+html body [data-radix-popper-content-wrapper] [role="option"][data-state="checked"] {
+  background: hsl(var(--primary) / 0.12) !important;
+  color: hsl(var(--primary)) !important;
 }
 
 /* Block type select — z-index fix */
