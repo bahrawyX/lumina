@@ -205,41 +205,11 @@
   --bn-font-family: inherit;
   --bn-border-radius: 8px;
 
-  /* Mantine variables — BlockNote portals (slash menu, color picker, toolbar) */
-  --mantine-color-body: hsl(var(--popover));
-  --mantine-color-text: hsl(var(--popover-foreground));
-  --mantine-color-dimmed: hsl(var(--muted-foreground));
-  --mantine-color-default: hsl(var(--popover));
-  --mantine-color-default-hover: hsl(var(--muted));
-  --mantine-color-default-color: hsl(var(--popover-foreground));
-  --mantine-color-default-border: hsl(var(--border));
-  --mantine-color-placeholder: hsl(var(--muted-foreground));
-  --mantine-color-anchor: hsl(var(--primary));
-  --mantine-color-bright: hsl(var(--foreground));
-  --mantine-primary-color-filled: hsl(var(--primary));
-  --mantine-primary-color-filled-hover: hsl(var(--primary) / 0.9);
 }
 
 .dark {
   --bn-colors-shadow: rgba(0, 0, 0, 0.4);
 }
-
-/* Safety net: force the remaining Mantine popover surfaces (color picker,
-   formatting toolbar, file panel) to use Lumina popover tokens. The slash
-   menu is now a custom React component (LuminaSuggestionMenu) so it isn't
-   in this list. Mantine portals to <body>, so selectors live at the root. */
-[class*="mantine-Popover-dropdown"],
-[class*="mantine-Menu-dropdown"],
-[class*="mantine-Paper-root"] {
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--popover-foreground)) !important;
-  border-color: hsl(var(--border)) !important;
-}
-
-[class*="mantine-Skeleton-root"] {
-  background: hsl(var(--muted)) !important;
-}
-
 
 /* ── Content typography ─────────────────────────────────── */
 .bn-container [class*="blockContent"] {
@@ -254,30 +224,14 @@
   background: transparent;
 }
 
-/* ── Nuclear transparent background — kill every white/light box ─────────
-   BlockNote + Mantine inject several layers of background colors (editor
-   root, ProseMirror, block groups, Mantine Paper, RichTextEditor wrapper).
-   In dark mode these leak through as white boxes. Force every layer inside
-   .lumina-editor to be transparent so only the app's own background shows. */
+/* ── Transparent editor background ──────────────────────── */
 .lumina-editor,
-.lumina-editor *,
 .lumina-editor .bn-container,
 .lumina-editor .bn-editor,
-.lumina-editor [class*="bn-"],
 .lumina-editor .ProseMirror,
-.lumina-editor .mantine-Paper-root,
-.lumina-editor [data-mantine-color-scheme],
 .lumina-editor .bn-block-group,
 .lumina-editor .bn-block,
 .lumina-editor .bn-block-outer {
-  background: transparent !important;
-  background-color: transparent !important;
-  --mantine-color-body: transparent !important;
-}
-
-.lumina-editor .mantine-RichTextEditor-root,
-.lumina-editor .mantine-RichTextEditor-content,
-.lumina-editor .mantine-RichTextEditor-typographyStylesProvider {
   background: transparent !important;
   background-color: transparent !important;
 }
@@ -352,104 +306,16 @@
   margin-top: 1rem;
 }
 
-/* ── BlockNote / Mantine surfaces — colors come from CSS vars above ──────
-   The slash menu is now a fully custom React component
-   (LuminaSuggestionMenu in DocEditor.tsx) styled with Tailwind. No CSS
-   overrides for .bn-suggestion-menu live here anymore. Below: only the
-   formatting toolbar size, which still uses BlockNote's default UI. */
+/* ── BlockNote shadcn surfaces ──────────────────────────── */
 
-/* ── Formatting toolbar ─────────────────────────────────── */
-html body .bn-container .bn-formatting-toolbar,
-html body .bn-container [data-bn-type="formatting-toolbar"],
-[class*="formattingToolbar"] {
-  background: hsl(var(--popover)) !important;
-  border: 1px solid hsl(var(--border) / 0.6) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-  padding: 3px !important;
-}
-
-html body .bn-container .bn-formatting-toolbar button,
-html body .bn-container [data-bn-type="formatting-toolbar"] button,
-[class*="formattingToolbar"] button {
-  color: hsl(var(--foreground)) !important;
-  border-radius: 6px !important;
-  background: transparent !important;
-  width: 26px;
-  height: 26px;
-}
-
-html body .bn-container .bn-formatting-toolbar button:hover,
-html body .bn-container [data-bn-type="formatting-toolbar"] button:hover {
-  background: hsl(var(--muted)) !important;
-}
-
-/* Active/toggled toolbar button (bold, italic, etc.) */
-html body .bn-container .bn-formatting-toolbar button[data-active="true"],
-html body .bn-container [data-bn-type="formatting-toolbar"] button[aria-pressed="true"] {
-  background: hsl(var(--primary) / 0.15) !important;
-  color: hsl(var(--primary)) !important;
-}
-
-/* ── Block hover / side menu / drag handle popover ─────── */
-html body .bn-container .bn-side-menu,
-html body .bn-container [data-bn-type="side-menu"],
-html body .bn-container .bn-drag-handle-menu {
-  background: hsl(var(--popover)) !important;
-  border: 1px solid hsl(var(--border) / 0.6) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* ── Mantine popover used by BlockNote menus ───────────── */
-html body .mantine-Popover-dropdown {
-  background: hsl(var(--popover)) !important;
-  border: 1px solid hsl(var(--border) / 0.6) !important;
-  border-radius: 10px !important;
-  color: hsl(var(--foreground)) !important;
-  padding: 4px !important;
-}
-
-/* Menu items inside Mantine popovers */
-html body .mantine-Menu-item,
-html body .bn-menu-item {
-  color: hsl(var(--foreground)) !important;
-  border-radius: 6px !important;
-  font-size: 13px !important;
-}
-
-html body .mantine-Menu-item:hover,
-html body .bn-menu-item:hover {
-  background: hsl(var(--muted)) !important;
+/* Formatting toolbar */
+.bn-shadcn .bn-toolbar {
+  border-radius: 10px;
 }
 
 /* Block type select — z-index fix */
 html body .bn-container [data-radix-popper-content-wrapper] {
   z-index: 9999 !important;
-}
-
-/* Remaining Mantine Paper surfaces */
-html body .mantine-Paper-root {
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* Mantine tooltip */
-html body .mantine-Tooltip-tooltip {
-  background: hsl(var(--popover)) !important;
-  border: 1px solid hsl(var(--border) / 0.4) !important;
-  color: hsl(var(--foreground)) !important;
-  font-size: 12px !important;
-  border-radius: 6px !important;
-}
-
-/* ── Color picker in toolbar ───────────────────────────── */
-html body .bn-container .bn-color-picker,
-html body .bn-container [data-bn-type="color-picker"] {
-  background: hsl(var(--popover)) !important;
-  border: 1px solid hsl(var(--border) / 0.6) !important;
-  border-radius: 10px !important;
 }
 
 /* ── Code blocks ────────────────────────────────────────── */

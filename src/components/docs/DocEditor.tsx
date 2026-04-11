@@ -9,8 +9,7 @@ import {
   type DefaultReactSuggestionItem,
   type SuggestionMenuProps,
 } from '@blocknote/react';
-import { BlockNoteView } from '@blocknote/mantine';
-import type { Theme } from '@blocknote/mantine';
+import { BlockNoteView } from '@blocknote/shadcn';
 import {
   BlockNoteSchema,
   defaultBlockSpecs,
@@ -20,7 +19,7 @@ import {
 // xl-multi-column loaded lazily to reduce initial chunk size
 import { useTheme } from '@/components/theme-provider';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
-import '@blocknote/mantine/style.css';
+import '@blocknote/shadcn/style.css';
 import type { Block, BlockNoteEditor } from '@blocknote/core';
 import { cn } from '@/lib/utils';
 import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
@@ -144,52 +143,6 @@ const loadMultiColumn = () =>
 const multiColReady = loadMultiColumn();
 
 type LuminaEditor = typeof baseSchema.BlockNoteEditor;
-
-// ── Lumina theme bound to our HSL CSS variables ─────────────────────────────
-const luminaBlockNoteTheme = {
-  colors: {
-    editor: {
-      text: 'hsl(var(--foreground))',
-      background: 'transparent',
-    },
-    menu: {
-      text: 'hsl(var(--popover-foreground))',
-      background: 'hsl(var(--popover))',
-    },
-    tooltip: {
-      text: 'hsl(var(--popover-foreground))',
-      background: 'hsl(var(--popover))',
-    },
-    hovered: {
-      text: 'hsl(var(--foreground))',
-      background: 'hsl(var(--muted))',
-    },
-    selected: {
-      text: 'hsl(var(--foreground))',
-      background: 'hsl(var(--primary) / 0.18)',
-    },
-    disabled: {
-      text: 'hsl(var(--muted-foreground))',
-      background: 'transparent',
-    },
-    shadow: 'rgba(0, 0, 0, 0.25)',
-    border: 'hsl(var(--border))',
-    sideMenu: 'hsl(var(--muted-foreground))',
-    highlights: {
-      gray:   { text: '#aaaaaa', background: 'hsl(var(--muted))' },
-      brown:  { text: '#b5856a', background: '#3b2a23' },
-      red:    { text: '#e57373', background: '#3a1d1d' },
-      orange: { text: '#fb923c', background: '#3a2515' },
-      yellow: { text: '#fbbf24', background: '#3a2c10' },
-      green:  { text: '#4ade80', background: '#163024' },
-      blue:   { text: '#60a5fa', background: '#162339' },
-      purple: { text: '#c084fc', background: '#241439' },
-      pink:   { text: '#f472b6', background: '#3a1530' },
-    },
-  },
-  borderRadius: 8,
-  fontFamily: 'inherit',
-} satisfies Theme;
 
 // ── Editor props ────────────────────────────────────────────────────────────
 interface DocEditorProps {
@@ -385,7 +338,6 @@ function LuminaSuggestionMenu({
 // ═════════════════════════════════════════════════════════════════════════════
 export default function DocEditor({ docId, initialContent, onChange, className }: DocEditorProps) {
   const { resolvedTheme } = useTheme();
-  void resolvedTheme;
 
   // Wait for multi-column extension before rendering editor
   const [multiCol, setMultiCol] = useState(_multiColCache);
@@ -610,10 +562,9 @@ export default function DocEditor({ docId, initialContent, onChange, className }
     >
       <BlockNoteView
         editor={editor}
-        theme={luminaBlockNoteTheme}
+        theme={resolvedTheme}
         onChange={handleChange}
         slashMenu={false}
-        style={{ background: 'transparent', backgroundColor: 'transparent' }}
       >
         <SuggestionMenuController
           triggerCharacter="/"

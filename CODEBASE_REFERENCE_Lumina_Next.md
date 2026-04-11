@@ -1220,7 +1220,7 @@ Inactive item: `text-muted-foreground`
 | 7 | ~~Low~~ Resolved | ~~Sequential create+link~~ — Fixed: Atomic `POST /api/events/create-linked` endpoint wraps event insert + recurrence insert + task link update in one `db.transaction()`. Client wrapper `createLinkedEvent()` in `linkPersistence.ts`. `useTaskBoardStore.scheduleAsEvent()` convenience method added. |
 | 8 | ~~Low~~ Resolved | ~~Inline `/task` blocks~~ — Fixed: Custom `taskBlock` block spec with `taskId` stored in block props. `/task` slash command creates a real task via `POST /api/tasks` first, then inserts a `taskBlock` with the returned `taskId`. Block-level ID mapping replaces the old content-matching approach. Two-way sync: task board changes dispatch `lumina:task-updated` CustomEvent, doc editor listens and updates block state. Removing a taskBlock from the editor archives the linked task. |
 | 9 | ~~Medium~~ Resolved | ~~Multi-column layout deferred~~ — Fixed: `@blocknote/xl-multi-column` installed. Schema extended with `withMultiColumn`. `/columns` slash command opens `ColumnRatioPicker` (6 ratio presets: 50/50, 70/30, 30/70, 33/33/33, 50/25/25, 25/50/25). CSS overrides in `globals.css` handle flex layout, resize handles, and mobile vertical stacking. |
-| 10 | Low | Low priority optimization: migrate DocEditor from `@blocknote/mantine` to `@blocknote/shadcn` to eliminate Mantine transitive dependency. Would reduce initial doc page chunk from 890KB to estimated ~600KB. Requires replacing `BlockNoteView` theme prop with shadcn equivalent and testing all slash menu + toolbar styling. |
+| 10 | ~~Low~~ Resolved | ~~Migrate DocEditor from mantine to shadcn~~ — Fixed: `@blocknote/mantine` replaced with `@blocknote/shadcn`. Mantine fully removed from dependency tree. Lazy xl-multi-column chunk reduced from 512KB to 450KB. globals.css reduced from 494 to 360 lines (all Mantine overrides removed). |
 
 ---
 
@@ -1403,12 +1403,12 @@ Files: `pwa-64.png`, `pwa-192.png`, `pwa-512.png`, `pwa-512-maskable.png`, `badg
 Full document/knowledge system integrated into the app. Documents link to tasks, events, and focus sessions — unlike Notion/ClickUp where documents are isolated.
 
 ### Editor
-- **BlockNote** (`@blocknote/react`, `@blocknote/core`, `@blocknote/mantine`, `@blocknote/xl-multi-column`)
+- **BlockNote** (`@blocknote/react`, `@blocknote/core`, `@blocknote/shadcn`, `@blocknote/xl-multi-column`)
 - Notion-style block editor; default slash menu disabled (`slashMenu={false}`)
 - **Schema**: Extended via `withMultiColumn(BlockNoteSchema.create({...}))` which adds `columnList` and `column` block types. Custom `taskBlock` block spec added via `createReactBlockSpec` with `taskId` and `checked` props.
 - **SSR**: `DocEditor` loaded via `next/dynamic` with `{ ssr: false }`. Page route wraps `DocPage` in `<div suppressHydrationWarning>` to prevent Next.js 16 Turbopack hydration crashes from BlockNote's client-only DOM.
 - **Custom slash menu** — `LuminaSuggestionMenu` React component inside
-  `DocEditor.tsx`. Replaces BlockNote's Mantine portal entirely so styling
+  `DocEditor.tsx`. Replaces BlockNote's default suggestion menu entirely so styling
   is plain Tailwind (`w-64`, `max-h-72`, `bg-popover`, `border-border/60`),
   no CSS specificity wars with BlockNote's stylesheet.
 - **Theme** passed as a `Theme` object bound to Lumina HSL CSS vars
@@ -1425,7 +1425,7 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
   - Each item has an inline-SVG `icon` rendered inside a 28×28 muted box.
 - **Task block two-way sync**: `useTaskBoardStore.updateTask()` dispatches `lumina:task-updated` CustomEvent when status/title changes. DocEditor listens and updates matching `taskBlock` blocks. Removing a taskBlock from the doc triggers task archival via `PATCH /api/tasks/{id}`.
 - Auto-save: 1000ms debounce, "Saving…"/"✓ Saved" indicator (text-only, emerald-500/60).
-- **Dark mode**: Nuclear CSS `!important` overrides in `globals.css` force transparent backgrounds on all BlockNote/Mantine layers inside `.lumina-editor`.
+- **Dark mode**: CSS `!important` overrides in `globals.css` force transparent backgrounds on BlockNote layers inside `.lumina-editor`. `BlockNoteView` receives `theme={resolvedTheme}` from the theme provider.
 - **Last edited**: Relative time via `formatDistanceToNow` + `·` separator + save indicator.
 
 ### Database
@@ -1494,8 +1494,7 @@ BlockNote editor themed via a mix of the `Theme` object (passed to
 - **Code blocks**: JetBrains Mono, muted background, 8px radius
 - **Drag handle**: hidden by default, 0.4 opacity on block hover, 0.8 on handle hover
 - **Selection**: primary/0.15 background
-- **Mantine portal safety net**: `mantine-Popover-dropdown`,
-  `mantine-Menu-dropdown`, `mantine-Paper-root` get `--popover` background
+- **Shadcn renderer**: `@blocknote/shadcn` uses Radix primitives natively — no Mantine override needed. BlockNote toolbar, menus, and popovers inherit from Lumina's CSS variables via `--bn-colors-*` tokens.
 - **Multi-column**: `.bn-column-list` flex row, `.bn-column` flex with `--column-width`, resize handles hidden until hover, mobile stacks vertically at 768px
 
 ### Multi-column layout
