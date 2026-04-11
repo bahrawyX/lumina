@@ -308,48 +308,77 @@
 
 /* ── BlockNote shadcn surfaces ──────────────────────────── */
 
-/* Formatting toolbar — rounded, comfortable padding */
+/* Tooltips — neutral in both modes (override shadcn primary bg) */
+.bn-shadcn [data-slot="tooltip-content"] {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  font-size: 0.75rem !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Formatting toolbar — compact, clean */
 .bn-shadcn .bn-toolbar {
-  border-radius: 10px;
-  padding: 3px 4px;
-  gap: 2px;
+  border-radius: 8px;
+  padding: 2px 3px;
+  gap: 1px;
 }
 
-/* Formatting toolbar buttons — min 32px touch target */
+/* Formatting toolbar buttons — compact 28px */
 .bn-shadcn .bn-toolbar button {
-  min-width: 32px;
-  min-height: 32px;
-  border-radius: 6px;
+  min-width: 28px;
+  min-height: 28px;
+  height: 28px !important;
+  border-radius: 5px;
+  padding: 0 4px !important;
 }
 
-/* Formatting toolbar toggle icons — slightly larger for clarity */
+/* Formatting toolbar icons — 15px for cleaner look */
 .bn-shadcn .bn-toolbar [data-slot="toggle"] svg,
 .bn-shadcn .bn-toolbar button:not([role="combobox"]) svg {
-  width: 18px !important;
-  height: 18px !important;
+  width: 15px !important;
+  height: 15px !important;
 }
 
-/* Formatting toolbar active state — stronger highlight */
+/* Formatting toolbar active state — subtle highlight */
 .bn-shadcn .bn-toolbar [data-state="on"] {
-  background: hsl(var(--primary) / 0.14) !important;
+  background: hsl(var(--primary) / 0.12) !important;
   color: hsl(var(--primary)) !important;
+}
+
+/* ── Side menu (plus + drag handle) — smaller ─────────── */
+
+.bn-shadcn .bn-side-menu .bn-button,
+.bn-shadcn .bn-side-menu button {
+  height: 20px !important;
+  min-height: 20px !important;
+  width: 20px !important;
+  min-width: 20px !important;
+  padding: 0 !important;
+  border-radius: 4px;
+}
+
+.bn-shadcn .bn-side-menu .bn-button svg,
+.bn-shadcn .bn-side-menu button svg {
+  width: 14px !important;
+  height: 14px !important;
 }
 
 /* ── Block type select dropdown ────────────────────────── */
 
-/* Trigger — clean border-less look inside toolbar */
+/* Trigger — compact, borderless */
 .bn-shadcn .bn-toolbar button[role="combobox"] {
-  min-width: 110px;
-  font-size: 0.8125rem;
+  min-width: 100px;
+  font-size: 0.75rem;
   font-weight: 500;
-  gap: 6px;
-  padding: 0 10px;
-  height: 32px;
+  gap: 4px;
+  padding: 0 8px !important;
+  height: 28px !important;
   border: none !important;
   box-shadow: none !important;
 }
 
-/* Dropdown content — proper colors and sizing */
+/* Dropdown content — proper colors, no scrollbar */
 .bn-shadcn .bn-select,
 html body [data-radix-popper-content-wrapper] [role="listbox"] {
   background: hsl(var(--popover)) !important;
@@ -366,7 +395,7 @@ html body .dark [data-radix-popper-content-wrapper] [role="listbox"] {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
 }
 
-/* Dropdown items — full-width, good padding, no truncation */
+/* Dropdown items — clean padding, no truncation */
 html body [data-radix-popper-content-wrapper] [role="option"] {
   padding: 6px 10px !important;
   border-radius: 5px !important;
@@ -387,6 +416,31 @@ html body [data-radix-popper-content-wrapper] [role="option"][data-highlighted] 
 html body [data-radix-popper-content-wrapper] [role="option"][data-state="checked"] {
   background: hsl(var(--primary) / 0.12) !important;
   color: hsl(var(--primary)) !important;
+}
+
+/* ── All BlockNote dropdown menus — no scrollbar ──────── */
+
+.bn-shadcn [data-slot="dropdown-menu-content"],
+.bn-shadcn .bn-menu-dropdown,
+.bn-shadcn .bn-color-picker-dropdown {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+}
+
+.bn-shadcn [data-slot="dropdown-menu-content"]::-webkit-scrollbar,
+.bn-shadcn .bn-menu-dropdown::-webkit-scrollbar,
+.bn-shadcn .bn-color-picker-dropdown::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Sub-content (nested menus like Colors) — no scrollbar */
+.bn-shadcn [data-slot="dropdown-menu-sub-content"] {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+}
+
+.bn-shadcn [data-slot="dropdown-menu-sub-content"]::-webkit-scrollbar {
+  display: none !important;
 }
 
 /* Block type select — z-index fix */
