@@ -50,7 +50,7 @@ export const GuestBanner: React.FC = () => {
               <span className="font-semibold">Guest mode — </span>
               data is stored in this browser only and will be lost on sign-out or device change.{' '}
               <Link
-                href="/onboarding"
+                href="/auth/signin"
                 className="font-semibold underline underline-offset-2 hover:opacity-70 transition-opacity"
               >
                 Create an account to save permanently →
