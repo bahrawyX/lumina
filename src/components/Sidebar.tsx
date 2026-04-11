@@ -29,6 +29,8 @@ import {
 } from './icons';
 import { useLuminaAuthClient } from './AuthProvider';
 import { useTutorialStore } from '../store/useTutorialStore';
+import { useDocsStore } from '../store/useDocsStore';
+import type { DocTreeNode } from '@/types/doc';
 import { useAmbientStore } from '../store/useAmbientStore';
 import ContactDrawer from './contact/ContactDrawer';
 import NotificationSettings from './settings/NotificationSettings';
@@ -208,6 +210,9 @@ const AppSidebar: React.FC = () => {
   const isTasksPage = pathname === '/tasks';
   const isPlanPage = pathname === '/plan';
   const isDocsPage = pathname === '/docs' || pathname.startsWith('/docs/');
+  const [docsTreeOpen, setDocsTreeOpen] = useState(false);
+  const sidebarDocs = useDocsStore((s) => s.docs);
+  const docsHydrated = useDocsStore((s) => s.dbHydrated);
 
   const allCategories = [...CATEGORIES, ...customCategories];
   const tasksUsingPendingContext = contextPendingDelete
@@ -866,15 +871,57 @@ const AppSidebar: React.FC = () => {
                   onClick={() => router.push('/performance')}
                   dataTutorial="nav-performance"
                 />
-                <WorkspaceItem
-                  icon={DocsIcon}
-                  label="Docs"
-                  isActive={isDocsPage}
-                  collapsed={isSidebarCollapsed}
-                  showTooltip={tooltipsReady}
-                  href="/docs"
-                  onClick={() => router.push('/docs')}
-                />
+                {/* Docs — with inline collapsible tree */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={isDocsPage}
+                    onClick={() => router.push('/docs')}
+                    className="relative"
+                  >
+                    <Link href="/docs" prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
+                    {isDocsPage && (
+                      <motion.div
+                        layoutId="sidebar-active-nav"
+                        className="absolute inset-0 rounded-xl bg-accent/70"
+                        transition={{ duration: 0.15, ease: 'easeOut' }}
+                      />
+                    )}
+                    <DocsIcon
+                      size={16}
+                      strokeWidth={1.5}
+                      className={`relative z-10 flex-shrink-0 transition-colors ${isDocsPage ? 'text-foreground' : 'text-muted-foreground'}`}
+                    />
+                    {!isSidebarCollapsed && (
+                      <span className="relative z-10 font-sans text-sm truncate flex-1">Docs</span>
+                    )}
+                    {!isSidebarCollapsed && docsHydrated && sidebarDocs.filter(d => !d.isArchived).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDocsTreeOpen(!docsTreeOpen); }}
+                        className="relative z-10 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-colors"
+                      >
+                        <motion.svg
+                          width={10}
+                          height={10}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2.5}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          animate={{ rotate: docsTreeOpen ? 90 : 0 }}
+                          transition={{ duration: 0.12 }}
+                        >
+                          <polyline points="9 18 15 12 9 6" />
+                        </motion.svg>
+                      </button>
+                    )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                {/* Inline docs file tree */}
+                {!isSidebarCollapsed && docsTreeOpen && docsHydrated && (
+                  <SidebarDocsInlineTree docs={sidebarDocs} />
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -1314,5 +1361,95 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
   )
 );
 WorkspaceItem.displayName = 'WorkspaceItem';
+
+/* ─── Inline docs tree (compact, nested) ───────────────────────────────────── */
+
+function buildDocsTree(docs: DocTreeNode[]): (DocTreeNode & { children: DocTreeNode[] })[] {
+  const childrenMap = new Map<string | 'root', DocTreeNode[]>();
+  for (const doc of docs) {
+    if (doc.isArchived) continue;
+    const key = doc.parentId ?? 'root';
+    if (!childrenMap.has(key)) childrenMap.set(key, []);
+    childrenMap.get(key)!.push(doc);
+  }
+  function attach(node: DocTreeNode): DocTreeNode & { children: DocTreeNode[] } {
+    const kids = (childrenMap.get(node.id) ?? []).sort((a, b) => a.position - b.position).map(attach);
+    return { ...node, children: kids };
+  }
+  return (childrenMap.get('root') ?? [])
+    .sort((a, b) => { if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1; return a.position - b.position; })
+    .map(attach);
+}
+
+type TreeNode = DocTreeNode & { children: TreeNode[] };
+
+const InlineDocItem: React.FC<{ node: TreeNode; depth: number }> = ({ node, depth }) => {
+  const pathname = usePathname();
+  const isActive = pathname === `/docs/${node.id}`;
+  const expandedIds = useDocsStore((s) => s.expandedIds);
+  const toggleExpanded = useDocsStore((s) => s.toggleExpanded);
+  const hasChildren = node.children.length > 0;
+  const isExpanded = expandedIds.includes(node.id);
+
+  return (
+    <>
+      <Link
+        href={`/docs/${node.id}`}
+        className={`group flex items-center gap-1.5 py-1 pr-2 rounded-md text-xs transition-colors truncate ${
+          isActive
+            ? 'bg-accent/60 text-foreground font-medium'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+        }`}
+        style={{ paddingLeft: `${20 + depth * 12}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleExpanded(node.id); }}
+          >
+            <motion.svg
+              width={8} height={8} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
+              animate={{ rotate: isExpanded ? 90 : 0 }}
+              transition={{ duration: 0.1 }}
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </motion.svg>
+          </button>
+        ) : (
+          <span className="flex-shrink-0 w-3.5" />
+        )}
+        {node.icon ? (
+          <span className="flex-shrink-0 text-[11px] leading-none">{node.icon}</span>
+        ) : (
+          <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
+            className="flex-shrink-0 text-muted-foreground/50"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+        )}
+        <span className="truncate">{node.title}</span>
+      </Link>
+      {isExpanded && hasChildren && node.children.map((child) => (
+        <InlineDocItem key={child.id} node={child} depth={depth + 1} />
+      ))}
+    </>
+  );
+};
+
+const SidebarDocsInlineTree: React.FC<{ docs: DocTreeNode[] }> = ({ docs }) => {
+  const tree = buildDocsTree(docs);
+  if (tree.length === 0) return null;
+  return (
+    <div className="mt-0.5 mb-1">
+      {tree.map((node) => (
+        <InlineDocItem key={node.id} node={node as TreeNode} depth={0} />
+      ))}
+    </div>
+  );
+};
 
 export default AppSidebar;

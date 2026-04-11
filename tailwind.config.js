@@ -18,6 +18,7 @@ export default {
       colors: {
         primary: {
           DEFAULT: '#6D59E0',
+          foreground: 'hsl(var(--primary-foreground))',
           hover:   '#5B4AC5',
           soft:    '#6D59E015',
         },
