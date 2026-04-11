@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-10 (v8 — multi-column layouts, taskBlock ID mapping, two-way task sync)
+> Last updated: 2026-04-11 (v9 — contenteditable keyboard guard, toolbar polish, block type dropdown fix)
 
 ---
 
@@ -90,7 +90,7 @@ src/
 ├── app/
 │   ├── (app)/                      ← Authenticated app route group
 │   │   ├── layout.tsx              ← Wraps all app pages in <AppShell>
-│   │   ├── AppShell.tsx            ← Main shell: sidebar, mobile nav, GuestBanner, beforeunload handler
+│   │   ├── AppShell.tsx            ← Main shell: sidebar, mobile nav, GuestBanner, beforeunload handler, global keyboard shortcuts (contenteditable-aware)
 │   │   ├── page.tsx                ← Calendar view
 │   │   ├── tasks/page.tsx          ← Task board
 │   │   ├── plan/page.tsx           ← Daily planner
@@ -1221,6 +1221,9 @@ Inactive item: `text-muted-foreground`
 | 8 | ~~Low~~ Resolved | ~~Inline `/task` blocks~~ — Fixed: Custom `taskBlock` block spec with `taskId` stored in block props. `/task` slash command creates a real task via `POST /api/tasks` first, then inserts a `taskBlock` with the returned `taskId`. Block-level ID mapping replaces the old content-matching approach. Two-way sync: task board changes dispatch `lumina:task-updated` CustomEvent, doc editor listens and updates block state. Removing a taskBlock from the editor archives the linked task. |
 | 9 | ~~Medium~~ Resolved | ~~Multi-column layout deferred~~ — Fixed: `@blocknote/xl-multi-column` installed. Schema extended with `withMultiColumn`. `/columns` slash command opens `ColumnRatioPicker` (6 ratio presets: 50/50, 70/30, 30/70, 33/33/33, 50/25/25, 25/50/25). CSS overrides in `globals.css` handle flex layout, resize handles, and mobile vertical stacking. |
 | 10 | ~~Low~~ Resolved | ~~Migrate DocEditor from mantine to shadcn~~ — Fixed: `@blocknote/mantine` replaced with `@blocknote/shadcn`. Mantine fully removed from dependency tree. Lazy xl-multi-column chunk reduced from 512KB to 450KB. globals.css reduced from 494 to 360 lines (all Mantine overrides removed). |
+| 11 | ~~High~~ Resolved | ~~Single-key shortcuts intercept typing in BlockNote editor~~ — Fixed: `AppShell.tsx` global keydown handler now checks `e.target.isContentEditable` and `e.target.closest('[contenteditable]')` in addition to `HTMLInputElement`/`HTMLTextAreaElement`. Keys like `p`, `t`, `f`, `n`, `g`, `m`, `w`, `d` no longer fire navigation/actions when typing in the editor. |
+| 12 | ~~Medium~~ Resolved | ~~Block type selector dropdown broken (dark bg, truncated labels)~~ — Fixed: CSS overrides in `globals.css` target `[role="listbox"]` and `[role="option"]` inside `[data-radix-popper-content-wrapper]`. Dropdown now uses `--popover`/`--border` tokens, 160px min-width, no label truncation, themed hover/selected states. |
+| 13 | ~~Low~~ Resolved | ~~Formatting toolbar buttons too small~~ — Fixed: CSS overrides give toolbar buttons 32px min touch targets, 18px SVG icons, 6px radius, primary-tinted active states (`data-state="on"`). Block type combobox trigger restyled: 110px min-width, borderless, 13px font. |
 
 ---
 
@@ -1411,10 +1414,7 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
   `DocEditor.tsx`. Replaces BlockNote's default suggestion menu entirely so styling
   is plain Tailwind (`w-64`, `max-h-72`, `bg-popover`, `border-border/60`),
   no CSS specificity wars with BlockNote's stylesheet.
-- **Theme** passed as a `Theme` object bound to Lumina HSL CSS vars
-  (`hsl(var(--popover))`, etc.). Light/dark toggle propagates instantly
-  with no editor remount. Uses Lumina's own `useTheme` from
-  `@/components/theme-provider` — `next-themes` is **not** in the tree.
+- **Theme** — `BlockNoteView` receives `theme={resolvedTheme}` (string `'light'`|`'dark'`) from Lumina's own `useTheme` (`@/components/theme-provider`). The shadcn renderer sets `data-color-scheme` on `.bn-container` accordingly. CSS variables (`--bn-colors-*`) map to Lumina HSL tokens. `next-themes` is **not** in the tree.
 - **Slash items** (built into `getLuminaSlashMenuItems`):
   - All BlockNote defaults (Headings, Basic Blocks, Lists, Image, Video, …)
   - **Audio** — native BlockNote `audio` block, group "Media"
@@ -1425,6 +1425,7 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
   - Each item has an inline-SVG `icon` rendered inside a 28×28 muted box.
 - **Task block two-way sync**: `useTaskBoardStore.updateTask()` dispatches `lumina:task-updated` CustomEvent when status/title changes. DocEditor listens and updates matching `taskBlock` blocks. Removing a taskBlock from the doc triggers task archival via `PATCH /api/tasks/{id}`.
 - Auto-save: 1000ms debounce, "Saving…"/"✓ Saved" indicator (text-only, emerald-500/60).
+- **Keyboard shortcut guard**: AppShell's global `keydown` handler (single-key shortcuts like `p`, `t`, `f`, `n`, `g`, `m`, `w`, `d`) checks `e.target.isContentEditable` and `e.target.closest('[contenteditable]')` to bail out when the user is typing in the BlockNote editor. Without this, single-key presses would trigger navigation/actions instead of inserting characters.
 - **Dark mode**: CSS `!important` overrides in `globals.css` force transparent backgrounds on BlockNote layers inside `.lumina-editor`. `BlockNoteView` receives `theme={resolvedTheme}` from the theme provider.
 - **Last edited**: Relative time via `formatDistanceToNow` + `·` separator + save indicator.
 
@@ -1490,10 +1491,11 @@ BlockNote editor themed via a mix of the `Theme` object (passed to
 - **Editor**: transparent background, inherited font family, 15px/1.7 line-height
 - **Headings**: H1 text-3xl 700, H2 text-2xl 600, H3 text-xl 600
 - **Slash menu**: **no CSS** — fully owned by `LuminaSuggestionMenu` (Tailwind)
-- **Formatting toolbar**: 10px radius, 28px square buttons
+- **Formatting toolbar**: 10px radius, 32px min touch targets, 18px SVG icons, primary-tinted active state (`data-state="on"`)
 - **Code blocks**: JetBrains Mono, muted background, 8px radius
 - **Drag handle**: hidden by default, 0.4 opacity on block hover, 0.8 on handle hover
 - **Selection**: primary/0.15 background
+- **Block type selector dropdown**: Radix Select (`[role="listbox"]`) styled via CSS overrides — `--popover`/`--border` tokens, 160px min-width, no label truncation, themed hover/selected/checked states for both light and dark modes. Combobox trigger: 110px min-width, borderless, 13px font.
 - **Shadcn renderer**: `@blocknote/shadcn` uses Radix primitives natively — no Mantine override needed. BlockNote toolbar, menus, and popovers inherit from Lumina's CSS variables via `--bn-colors-*` tokens.
 - **Multi-column**: `.bn-column-list` flex row, `.bn-column` flex with `--column-width`, resize handles hidden until hover, mobile stacks vertically at 768px
 
