@@ -22,8 +22,8 @@
     --accent-foreground: 249 66% 35%;
     --destructive:  350 70% 55%;          /* softer rose-red, less harsh than vivid red */
     --destructive-foreground: 0 0% 100%;
-    --border:       220 13% 87%;          /* slightly darker for better contrast */
-    --input:        220 13% 87%;
+    --border:       220 13% 82%;          /* visible on white cards in light mode */
+    --input:        220 13% 82%;
     --ring:         249 66% 61%;
     --radius:       0.5rem;
   }
@@ -177,11 +177,7 @@
   backdrop-filter: blur(16px) saturate(160%);
 }
 
-/* ─── Selection ───────────────────────────────────────────────────────────── */
-::selection {
-  background-color: rgba(109,89,224,0.1);
-  color: #6D59E0;
-}
+/* ─── Selection — use browser defaults ────────────────────────────────────── */
 
 /* ─── BlockNote + Mantine theme — bound to Lumina CSS vars ──────────────── */
 /* Set on :root so portaled menus (rendered at body) inherit them too */
@@ -470,15 +466,7 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   overflow-x: auto;
 }
 
-/* ── Selection — subtle tint, readable in both modes ───── */
-.bn-container [class*="blockContent"] ::selection {
-  background: hsl(var(--primary) / 0.18);
-  color: inherit;
-}
-
-.dark .bn-container [class*="blockContent"] ::selection {
-  background: hsl(var(--primary) / 0.28);
-}
+/* ── Selection — browser defaults (no custom override) ─── */
 
 /* ── Drag handle ────────────────────────────────────────── */
 .bn-container [class*="dragHandle"],

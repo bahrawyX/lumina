@@ -816,7 +816,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         </div>
 
         {/* ── RIGHT: Settings Panel ─────────────────────────────────── */}
-        <div className="bg-muted/30 p-5 md:p-6 flex flex-col gap-6 border-t md:border-t-0 border-border/40 md:rounded-r-2xl rounded-b-2xl md:rounded-bl-none overflow-y-auto">
+        <div className="bg-muted/30 p-5 md:p-6 flex flex-col gap-6 border-t md:border-t-0 border-border/40 md:rounded-r-2xl rounded-b-2xl md:rounded-bl-none overflow-hidden">
           <SessionConfig
             workMins={workMins}
             shortBreakMins={shortBreakMins}

@@ -140,7 +140,7 @@ export default function PomodoroPage() {
   }, [lastSessionId]);
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto no-scrollbar">
       <div className="w-full px-4 py-4 space-y-4">
         {moodLogsLoaded && moodLogs.length >= 3 && (
           <div className="max-w-lg mx-auto">

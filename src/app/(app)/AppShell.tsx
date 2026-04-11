@@ -323,7 +323,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       <div
-        className="flex h-screen w-full bg-warm-50 dark:bg-neutral-dark overflow-hidden text-gray-800 dark:text-gray-100 antialiased selection:bg-primary selection:text-primary-foreground"
+        className="flex h-screen w-full bg-warm-50 dark:bg-neutral-dark overflow-hidden text-gray-800 dark:text-gray-100 antialiased"
         style={{ animation: 'appShellFadeIn 0.4s cubic-bezier(0.4,0,0.2,1) both' }}
       >
         <div className="hidden md:flex md:h-full">
