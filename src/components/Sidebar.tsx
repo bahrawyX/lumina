@@ -32,6 +32,8 @@ import { useTutorialStore } from '../store/useTutorialStore';
 import { useDocsStore } from '../store/useDocsStore';
 import type { DocTreeNode } from '@/types/doc';
 import { useAmbientStore } from '../store/useAmbientStore';
+import { useGoalsStore, selectActiveGoalCount } from '../store/useGoalsStore';
+import { useCoinsStore, selectCoinBalance } from '../store/useCoinsStore';
 import ContactDrawer from './contact/ContactDrawer';
 import NotificationSettings from './settings/NotificationSettings';
 import { motion } from 'framer-motion';
@@ -98,6 +100,20 @@ const KanbanIcon: React.FC<{ size?: number; strokeWidth?: number; className?: st
     <rect x="3" y="3" width="5" height="18" rx="1" />
     <rect x="10" y="3" width="5" height="12" rx="1" />
     <rect x="17" y="3" width="5" height="8" rx="1" />
+  </svg>
+);
+
+const GoalsIcon: React.FC<{ size?: number; strokeWidth?: number; className?: string }> = ({ size = 16, strokeWidth = 1.5, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="12" r="6" />
+    <circle cx="12" cy="12" r="2" />
+  </svg>
+);
+
+const ShopIcon: React.FC<{ size?: number; strokeWidth?: number; className?: string }> = ({ size = 16, strokeWidth = 1.5, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="12" cy="12" r="10" /><path d="M12 6v12M8 10h8M8 14h8" />
   </svg>
 );
 
@@ -208,6 +224,9 @@ const AppSidebar: React.FC = () => {
   const isCalendarPage = pathname === '/';
   const isIntelligencePage = pathname === '/intelligence';
   const isTasksPage = pathname === '/tasks';
+  const isGoalsPage = pathname === '/goals';
+  const activeGoalCount = useGoalsStore(selectActiveGoalCount);
+  const coinBalance = useCoinsStore(selectCoinBalance);
   const isPlanPage = pathname === '/plan';
   const isDocsPage = pathname === '/docs' || pathname.startsWith('/docs/');
   const [docsTreeOpen, setDocsTreeOpen] = useState(false);
@@ -852,6 +871,17 @@ const AppSidebar: React.FC = () => {
                   dataTutorial="nav-tasks"
                 />
                 <WorkspaceItem
+                  icon={GoalsIcon}
+                  label="Goals"
+                  isActive={isGoalsPage}
+                  collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
+                  href="/goals"
+                  onClick={() => router.push('/goals')}
+                  dataTutorial="nav-goals"
+                  badge={activeGoalCount}
+                />
+                <WorkspaceItem
                   icon={PlanDayIcon}
                   label="Plan Day"
                   isActive={isPlanPage}
@@ -870,6 +900,16 @@ const AppSidebar: React.FC = () => {
                   href="/performance"
                   onClick={() => router.push('/performance')}
                   dataTutorial="nav-performance"
+                />
+                <WorkspaceItem
+                  icon={ShopIcon}
+                  label="Shop"
+                  isActive={pathname === '/shop'}
+                  collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
+                  href="/shop"
+                  onClick={() => router.push('/shop')}
+                  badge={coinBalance}
                 />
                 {/* Docs — with inline collapsible tree */}
                 <SidebarMenuItem>
@@ -1321,10 +1361,12 @@ interface WorkspaceItemProps {
   href: string;
   onClick: () => void;
   dataTutorial?: string;
+  /** Small count badge shown after the label */
+  badge?: number;
 }
 
 const WorkspaceItem = React.memo<WorkspaceItemProps>(
-  ({ icon: Icon, label, isActive, collapsed, showTooltip, href, onClick, dataTutorial }) => (
+  ({ icon: Icon, label, isActive, collapsed, showTooltip, href, onClick, dataTutorial, badge }) => (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1352,6 +1394,11 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             />
             {!collapsed && (
               <span className="relative z-10 font-sans text-sm truncate">{label}</span>
+            )}
+            {!collapsed && badge != null && badge > 0 && (
+              <span className="relative z-10 ml-auto text-[10px] font-semibold tabular-nums text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 border border-border/50">
+                {badge}
+              </span>
             )}
           </SidebarMenuButton>
         </TooltipTrigger>

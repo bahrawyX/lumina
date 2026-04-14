@@ -36,12 +36,20 @@ interface TaskColumnProps {
   onAutoScheduleTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
   onFocusTask: (task: Task) => void;
+  /** Map of parentId → direct children for subtask rendering */
+  subtaskMap?: Record<string, Task[]>;
+  /** All tasks for resolving sub-subtask children */
+  allTasks?: Task[];
+  onAddSubtask?: (parentId: string, title: string) => void;
+  onToggleSubtaskDone?: (taskId: string) => void;
+  onMarkParentDone?: (taskId: string) => void;
 }
 
 export const TaskColumn = React.memo<TaskColumnProps>(({
   id, label, tasks, linkedEvents, isDragOver,
   onPriorityChange,
   onAddTask, onEditTask, onScheduleTask, onAutoScheduleTask, onDeleteTask, onFocusTask,
+  subtaskMap = {}, allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone,
 }) => {
   const { setNodeRef } = useDroppable({ id });
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -130,6 +138,11 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
                     onAutoSchedule={onAutoScheduleTask}
                     onDelete={onDeleteTask}
                     onFocus={onFocusTask}
+                    subtasks={subtaskMap[task.id] ?? []}
+                    allTasks={allTasks}
+                    onAddSubtask={onAddSubtask}
+                    onToggleSubtaskDone={onToggleSubtaskDone}
+                    onMarkParentDone={onMarkParentDone}
                   />
                 </motion.div>
               ))}

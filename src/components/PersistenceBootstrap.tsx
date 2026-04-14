@@ -31,12 +31,17 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { useDailyPlanStore } from '@/store/useDailyPlanStore';
 import { useStreakStore } from '@/store/useStreakStore';
 import { useDocsStore } from '@/store/useDocsStore';
+import { useGoalsStore } from '@/store/useGoalsStore';
+import { useCoinsStore } from '@/store/useCoinsStore';
 import { authClient } from '@/lib/auth-client';
+import { useGuestStore } from '@/store/useGuestStore';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
 import * as plannerPersistence from '@/lib/persistence/plannerPersistence';
 import * as docsPersistence from '@/lib/persistence/docsPersistence';
+import * as goalsPersistence from '@/lib/persistence/goalsPersistence';
+import * as coinsPersistence from '@/lib/persistence/coinsPersistence';
 
 // migrateMany stubs — imported to satisfy any callers referencing them
 export { migrateMany as migrateEventsMany } from '@/lib/persistence/eventsPersistence';
@@ -69,6 +74,14 @@ export default function PersistenceBootstrap() {
   const hydrateDocsFailed = useDocsStore((s) => s.hydrateFromDbFailed);
   const docsHydrated = useDocsStore((s) => s.dbHydrated);
 
+  const hydrateGoals = useGoalsStore((s) => s.hydrateFromDb);
+  const hydrateGoalsFailed = useGoalsStore((s) => s.hydrateFromDbFailed);
+  const goalsHydrated = useGoalsStore((s) => s.dbHydrated);
+
+  const hydrateCoins = useCoinsStore((s) => s.hydrateFromDb);
+  const hydrateCoinsFailed = useCoinsStore((s) => s.hydrateFromDbFailed);
+  const coinsHydrated = useCoinsStore((s) => s.dbHydrated);
+
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
@@ -76,6 +89,15 @@ export default function PersistenceBootstrap() {
   const hydrateFocusSessionLengthFromDb = useSettingsStore((s) => s.hydrateFocusSessionLengthFromDb);
 
   const { data: session } = authClient.useSession();
+
+  // Clear stale guest flag when a real session is present.
+  // Prevents the GuestBanner from showing after a user signs in on
+  // a browser that previously used guest mode.
+  useEffect(() => {
+    if (session?.user?.id && useGuestStore.getState().isGuest) {
+      useGuestStore.getState().clearGuestSession();
+    }
+  }, [session?.user?.id]);
 
   useEffect(() => {
     // Guard against double-run in StrictMode / remounts
@@ -151,6 +173,24 @@ export default function PersistenceBootstrap() {
             .then((docs) => hydrateDocs(docs))
             .catch(() => {
               if (isDev) hydrateDocsFailed();
+            }),
+
+      // Hydrate goals store
+      goalsHydrated
+        ? Promise.resolve()
+        : goalsPersistence.fetchAllForCurrentUser()
+            .then((goals) => hydrateGoals(goals))
+            .catch(() => {
+              if (isDev) hydrateGoalsFailed();
+            }),
+
+      // Hydrate coins/economy store
+      coinsHydrated
+        ? Promise.resolve()
+        : coinsPersistence.fetchCoinsData()
+            .then((data) => hydrateCoins(data))
+            .catch(() => {
+              if (isDev) hydrateCoinsFailed();
             }),
 
       // Hydrate streak store from API

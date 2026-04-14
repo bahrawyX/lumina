@@ -5,6 +5,8 @@ import { getDatabase } from '@/lib/db';
 import { focusSessions, users, achievements, tasks } from '@/db/schema';
 import { computeStreakUpdate } from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
+import { awardCoinsBatch } from '@/lib/coins/awardCoins';
+import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
 
 /** GET /api/focus-sessions — return session history for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -183,6 +185,39 @@ export async function POST(req: NextRequest) {
 
       return { sessionId: row.id, newAchievements };
     });
+
+    // Fire-and-forget: additional coin awards from the new earn rules engine.
+    // These are ON TOP of the existing streak-based 1 coin/min from computeStreakUpdate.
+    void (async () => {
+      try {
+        // Lookup task priority for bonus
+        let taskPriority: string | undefined;
+        if (rawTaskId) {
+          const [t] = await db.select({ priority: tasks.priority }).from(tasks).where(eq(tasks.id, rawTaskId)).limit(1);
+          taskPriority = t?.priority;
+        }
+        // Check for focus boost consumable
+        const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
+        const consumables = (u?.consumables as Record<string, number>) ?? {};
+        const hasFocusBoost = (consumables.focusBoost ?? 0) > 0;
+
+        const awards = focusSessionAwards(durationMinutes, taskPriority, false, hasFocusBoost);
+        const streakAwards = streakMilestoneAwards(streakUpdate.dailyStreak, streakUpdate.sessionStreak);
+        const allAwards = [...awards, ...streakAwards];
+
+        if (allAwards.length > 0) {
+          await awardCoinsBatch(userId, allAwards);
+          // Decrement focus boost if used
+          if (hasFocusBoost) {
+            const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
+            updated.focusBoost = Math.max(0, (consumables.focusBoost ?? 0) - 1);
+            await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
+          }
+        }
+      } catch (e) {
+        console.error('[focus-sessions] additional coin awards failed', e);
+      }
+    })();
 
     return NextResponse.json(
       {

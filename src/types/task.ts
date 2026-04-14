@@ -20,6 +20,10 @@ export interface Task {
   remainingFocusTime?: number | null;
   /** Estimated work duration in minutes. Defaults to 30 when not set. */
   durationMinutes?: number;
+  /** Parent task ID for subtask hierarchy. null = root task. */
+  parentTaskId?: string | null;
+  /** Nesting depth: 0 = root, 1 = subtask, 2 = sub-subtask. */
+  depth?: number;
 }
 
 export interface Column {

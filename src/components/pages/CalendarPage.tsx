@@ -16,6 +16,9 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { DailyBriefCard } from '@/components/intelligence/DailyBriefCard';
+import { GoalsWidget } from '@/components/dashboard/GoalsWidget';
+import { CoinsWidget } from '@/components/dashboard/CoinsWidget';
+import { TodaySummaryWidget } from '@/components/dashboard/TodaySummaryWidget';
 import {
   ChevronLeftIcon, ChevronRightIcon, UndoIcon, RedoIcon,
   SearchIcon, SparkIcon as ZapIcon, MonthIcon as LayoutGridIcon,
@@ -182,6 +185,13 @@ const CalendarPage: React.FC = () => {
       </header>
 
       <DailyBriefCard />
+
+      {/* Dashboard widgets — command center */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 flex-shrink-0">
+        <TodaySummaryWidget />
+        <GoalsWidget />
+        <CoinsWidget />
+      </div>
 
       <div className="flex-1 min-h-0 relative">
         <AnimatePresence mode="wait" custom={navDirection}>

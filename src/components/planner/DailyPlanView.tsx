@@ -106,9 +106,9 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
     [planItems]
   );
 
-  // Task pool: non-done tasks not already planned
+  // Task pool: non-done ROOT tasks not already planned (subtasks never appear in pool)
   const poolTasks = useMemo(
-    () => allTasks.filter((t) => t.status !== 'done' && !plannedTaskIds.has(t.id)),
+    () => allTasks.filter((t) => t.status !== 'done' && !t.parentTaskId && !plannedTaskIds.has(t.id)),
     [allTasks, plannedTaskIds]
   );
 

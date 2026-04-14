@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import type { CalendarEvent } from '../../types';
 import type { Task, TaskPriority, TaskDifficulty } from '../../types/task';
 import { useDailyPlanStore } from '../../store/useDailyPlanStore';
+import { useTaskBoardStore } from '../../store/useTaskBoardStore';
+import { highlightText } from '../../utils/highlightText';
 import {
   getDueDatePresentation,
   formatDateOnly,
@@ -19,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { PRIORITY_META, DIFFICULTY_META, PRIORITY_OPTIONS } from '../../utils/taskBadges';
 
 // ── More icon ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +36,13 @@ const EditIcon: React.FC = () => (
   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+  </svg>
+);
+
+const CopyIcon: React.FC = () => (
+  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </svg>
 );
 
@@ -70,47 +81,166 @@ export interface TaskCardProps {
   onDelete: (id: string) => void;
   onFocus: (task: Task) => void;
   isDragOverlay?: boolean;
+  /** Direct subtasks of this task */
+  subtasks?: Task[];
+  /** All tasks in store (for resolving sub-subtask children) */
+  allTasks?: Task[];
+  /** Callback to add a subtask to this task */
+  onAddSubtask?: (parentId: string, title: string) => void;
+  /** Toggle subtask done/todo */
+  onToggleSubtaskDone?: (taskId: string) => void;
+  /** Mark parent task as done */
+  onMarkParentDone?: (taskId: string) => void;
 }
 
-const PRIORITY_META: Record<TaskPriority, { label: string; className: string; itemClassName: string }> = {
-  high: {
-    label: 'High',
-    className: 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15',
-    itemClassName: 'text-destructive focus:text-destructive focus:bg-destructive/15',
-  },
-  medium: {
-    label: 'Medium',
-    className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15',
-    itemClassName: 'text-amber-600 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-300 focus:bg-amber-500/15',
-  },
-  low: {
-    label: 'Low',
-    className: 'border-border bg-muted/60 text-muted-foreground hover:bg-muted',
-    itemClassName: 'text-muted-foreground focus:text-foreground focus:bg-muted',
-  },
+
+// ── Chevron icon ────────────────────────────────────────────────────────────
+const ChevronIcon: React.FC<{ open: boolean }> = ({ open }) => (
+  <svg
+    width={12} height={12} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+    className={`transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+  >
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+);
+
+// ── Subtask row ─────────────────────────────────────────────────────────────
+const SubtaskRow: React.FC<{
+  task: Task;
+  depth: number;
+  children?: Task[];
+  allTasks?: Task[];
+  onToggleDone?: (id: string) => void;
+  onMarkParentDone?: (id: string) => void;
+}> = ({ task, depth, children = [], allTasks = [], onToggleDone, onMarkParentDone }) => {
+  const isDone = task.status === 'done';
+  const indent = depth === 1 ? 'ml-4' : 'ml-8';
+  const showPriority = depth < 2; // depth 2 (sub-subtask) = most compact
+  const subChildren = allTasks.filter(t => t.parentTaskId === task.id);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onToggleDone?.(task.id);
+
+    // Check if all siblings are now done after this toggle
+    if (!isDone && children.length > 0) {
+      const allSiblingsDone = children.every(c => c.id === task.id ? true : c.status === 'done');
+      if (allSiblingsDone && onMarkParentDone) {
+        const parentId = task.parentTaskId;
+        if (parentId) {
+          toast('All subtasks done — mark parent complete?', {
+            duration: 8000,
+            action: {
+              label: 'Complete',
+              onClick: () => onMarkParentDone(parentId),
+            },
+          });
+        }
+      }
+    }
+  };
+
+  return (
+    <>
+      <div
+        className={`${indent} flex items-center gap-2 py-1.5 min-h-[32px] group/subtask`}
+        onClick={e => e.stopPropagation()}
+        onPointerDown={e => e.stopPropagation()}
+      >
+        {/* Checkbox */}
+        <button
+          type="button"
+          onClick={handleToggle}
+          className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+            isDone
+              ? 'bg-primary border-primary text-primary-foreground'
+              : 'border-border hover:border-primary/50'
+          }`}
+        >
+          {isDone && (
+            <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          )}
+        </button>
+
+        {/* Title */}
+        <span className={`flex-1 text-xs leading-snug min-w-0 truncate ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+          {task.title}
+        </span>
+
+        {/* Priority badge (hidden for depth 2) */}
+        {showPriority && (
+          <span className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_META[task.priority].className}`}>
+            {task.priority[0]?.toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      {/* Render sub-subtasks recursively (max depth 2) */}
+      {subChildren.length > 0 && subChildren.map(sub => (
+        <SubtaskRow
+          key={sub.id}
+          task={sub}
+          depth={(sub.depth ?? 0)}
+          allTasks={allTasks}
+          onToggleDone={onToggleDone}
+          onMarkParentDone={onMarkParentDone}
+        />
+      ))}
+    </>
+  );
 };
 
-const DIFFICULTY_META: Record<TaskDifficulty, { label: string; short: string; className: string }> = {
-  easy: {
-    label: 'Easy',
-    short: 'E',
-    className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  },
-  medium: {
-    label: 'Medium',
-    short: 'M',
-    className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  },
-  hard: {
-    label: 'Hard',
-    short: 'H',
-    className: 'border-destructive/25 bg-destructive/10 text-destructive',
-  },
+// ── Inline add subtask input ────────────────────────────────────────────────
+const InlineAddSubtask: React.FC<{ onAdd: (title: string) => void }> = ({ onAdd }) => {
+  const [value, setValue] = useState('');
+  const [active, setActive] = useState(false);
+
+  const handleSubmit = () => {
+    const trimmed = value.trim();
+    if (trimmed && trimmed.length <= 255) {
+      onAdd(trimmed);
+      setValue('');
+    }
+  };
+
+  if (!active) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setActive(true); }}
+        onPointerDown={e => e.stopPropagation()}
+        className="ml-4 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        + Add subtask
+      </button>
+    );
+  }
+
+  return (
+    <div className="ml-4 flex items-center gap-1.5 py-1" onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+      <input
+        autoFocus
+        type="text"
+        maxLength={255}
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') handleSubmit();
+          if (e.key === 'Escape') { setActive(false); setValue(''); }
+        }}
+        onBlur={() => { if (!value.trim()) setActive(false); }}
+        placeholder="Subtask title..."
+        className="flex-1 text-xs bg-transparent border-b border-border focus:border-primary outline-none py-0.5 text-foreground placeholder:text-muted-foreground/60"
+      />
+    </div>
+  );
 };
 
-const PRIORITY_OPTIONS: TaskPriority[] = ['high', 'medium', 'low'];
-
-export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false }) => {
+export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false, subtasks = [], allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone }) => {
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
   // Stable today string — changes only when the calendar day rolls over (memoised once per mount)
   const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -118,6 +248,18 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
     () => getPlanItemsForDate(todayKey).find(p => p.taskId === task.id) ?? null,
     [todayKey, task.id, getPlanItemsForDate]
   );
+
+  const searchQuery = useTaskBoardStore(s => s.searchQuery);
+  const recentlyDuplicatedId = useTaskBoardStore(s => s.recentlyDuplicatedId);
+  const clearRecentlyDuplicated = useTaskBoardStore(s => s.clearRecentlyDuplicated);
+  const justDuplicated = recentlyDuplicatedId === task.id;
+
+  // Auto-clear the highlight flag after the animation finishes
+  React.useEffect(() => {
+    if (!justDuplicated) return;
+    const t = setTimeout(() => clearRecentlyDuplicated(), 700);
+    return () => clearTimeout(t);
+  }, [justDuplicated, clearRecentlyDuplicated]);
 
   const {
     attributes,
@@ -136,6 +278,15 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
     // Prevent layout jank on the source node during drag
     willChange: isDragging ? 'transform' : undefined,
   };
+
+  const [subtasksExpanded, setSubtasksExpanded] = useState(false);
+  const subtasksDone = useMemo(() => subtasks.filter(s => s.status === 'done').length, [subtasks]);
+  const subtasksTotal = subtasks.length;
+  const hasSubtasks = subtasksTotal > 0;
+
+  const handleAddSubtask = useCallback((title: string) => {
+    onAddSubtask?.(task.id, title);
+  }, [onAddSubtask, task.id]);
 
   const dueDate = useMemo(
     () => getDueDatePresentation(task.dueDate, task.status),
@@ -177,6 +328,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
             ? 'shadow-lg ring-1 ring-primary/20 border-border'
             : 'shadow-sm hover:shadow-md border-border'
           }
+          ${justDuplicated ? 'bg-primary/10 transition-[background-color] duration-[600ms]' : ''}
         `}
         {...listeners}
       >
@@ -197,7 +349,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
 
             {/* Title */}
             <p className="flex-1 text-sm font-medium leading-snug text-foreground min-w-0 break-words">
-              {task.title}
+              {searchQuery ? highlightText(task.title, searchQuery) : task.title}
             </p>
 
             {/* Actions menu — stop propagation so click doesn't trigger drag */}
@@ -249,6 +401,13 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                     <EditIcon />
                     Edit
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    useTaskBoardStore.getState().duplicateTask(task.id);
+                    toast.success('Task duplicated', { duration: 2500 });
+                  }}>
+                    <CopyIcon />
+                    Duplicate
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => onDelete(task.id)}
@@ -262,12 +421,55 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
             </div>
           </div>
 
+          {/* Subtask progress pill */}
+          {hasSubtasks && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setSubtasksExpanded(prev => !prev); }}
+              onPointerDown={e => e.stopPropagation()}
+              aria-label={subtasksExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
+              aria-expanded={subtasksExpanded}
+              className="flex items-center gap-1 pl-[14px] mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded"
+            >
+              <ChevronIcon open={subtasksExpanded} />
+              <span className="font-medium">{subtasksDone}/{subtasksTotal} subtasks</span>
+            </button>
+          )}
+
           {/* Description */}
           {task.description && (
             <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed line-clamp-2 pl-[14px]">
               {task.description}
             </p>
           )}
+
+          {/* Expandable subtask list */}
+          <AnimatePresence initial={false}>
+            {subtasksExpanded && hasSubtasks && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden pl-[14px] border-l-2 border-border/50 ml-[14px] mt-1"
+              >
+                {subtasks.map(sub => (
+                  <SubtaskRow
+                    key={sub.id}
+                    task={sub}
+                    depth={sub.depth ?? 1}
+                    children={subtasks}
+                    allTasks={allTasks}
+                    onToggleDone={onToggleSubtaskDone}
+                    onMarkParentDone={onMarkParentDone}
+                  />
+                ))}
+                {(task.depth ?? 0) < 2 && (
+                  <InlineAddSubtask onAdd={handleAddSubtask} />
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Footer: metadata chips */}
           <div className="flex flex-wrap items-center gap-1.5 pl-[14px]">

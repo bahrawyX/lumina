@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__list_teams",
+      "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__list_projects",
+      "Bash(npm run:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(ls -la /c/Users/PC/Documents/GitHub/lumina/src/store/*.ts)",
+      "Bash(ls /c/Users/PC/Documents/GitHub/lumina/src/hooks/*.ts)",
+      "Bash(ls C:/Users/PC/Documents/GitHub/lumina/.env*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__list_deployments",
+      "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__get_project"
+    ]
+  }
+}

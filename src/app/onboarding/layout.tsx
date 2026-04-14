@@ -1,6 +1,6 @@
 "use client";
 
-import { Toaster as SonnerToaster } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function OnboardingLayout({
   children,
@@ -10,10 +10,7 @@ export default function OnboardingLayout({
   return (
     <>
       {children}
-      <SonnerToaster
-        position="bottom-right"
-        toastOptions={{ classNames: { toast: "font-sans text-sm" } }}
-      />
+      <Toaster />
     </>
   );
 }

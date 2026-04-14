@@ -96,6 +96,8 @@ export const useDailyBriefStore = create<DailyBriefState>()(
 
       dismiss: () => {
         set({ dismissedDate: format(new Date(), 'yyyy-MM-dd') });
+        // Award coins for reading daily brief (fire-and-forget, server dedupes by day)
+        void fetch('/api/coins/award-brief', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => {});
       },
 
       refresh: async (timezone) => {

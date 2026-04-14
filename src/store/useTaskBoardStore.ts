@@ -41,6 +41,68 @@ function loadTasks(userId: string | null): Task[] {
   }
 }
 
+// ── List view preferences persistence ────────────────────────────────────────
+
+export type ListSortColumn = 'title' | 'priority' | 'difficulty' | 'dueDate' | 'status' | 'focusTime';
+export type ListSortDirection = 'asc' | 'desc';
+export type ListGroupBy = 'status' | 'priority' | 'difficulty' | 'dueDate' | 'none';
+export type TaskViewMode = 'kanban' | 'list';
+export type DueDateFilter = 'all' | 'overdue' | 'today' | 'this_week' | 'next_week' | 'no_date' | 'has_date';
+
+const VIEW_PREFS_KEY = 'lumina_task_view_prefs';
+
+interface ViewPrefs {
+  viewMode: TaskViewMode;
+  listSortColumn: ListSortColumn;
+  listSortDirection: ListSortDirection;
+  listGroupBy: ListGroupBy;
+  listCollapsedGroups: string[];
+  // Filter state
+  searchQuery: string;
+  priorityFilter: TaskPriority[];
+  difficultyFilter: TaskDifficulty[];
+  dueDateFilter: DueDateFilter;
+}
+
+const VALID_DUE_DATE_FILTERS: DueDateFilter[] = ['all', 'overdue', 'today', 'this_week', 'next_week', 'no_date', 'has_date'];
+
+function loadViewPrefs(): ViewPrefs {
+  try {
+    const raw = getStorageItem(VIEW_PREFS_KEY);
+    if (!raw) return defaultViewPrefs();
+    const parsed = JSON.parse(raw);
+    return {
+      viewMode: parsed.viewMode === 'list' ? 'list' : 'kanban',
+      listSortColumn: ['title','priority','difficulty','dueDate','status','focusTime'].includes(parsed.listSortColumn) ? parsed.listSortColumn : 'status',
+      listSortDirection: parsed.listSortDirection === 'desc' ? 'desc' : 'asc',
+      listGroupBy: ['status','priority','difficulty','dueDate','none'].includes(parsed.listGroupBy) ? parsed.listGroupBy : 'status',
+      listCollapsedGroups: Array.isArray(parsed.listCollapsedGroups) ? parsed.listCollapsedGroups : [],
+      searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
+      priorityFilter: Array.isArray(parsed.priorityFilter) ? parsed.priorityFilter.filter((p: unknown) => p === 'low' || p === 'medium' || p === 'high') : [],
+      difficultyFilter: Array.isArray(parsed.difficultyFilter) ? parsed.difficultyFilter.filter((d: unknown) => d === 'easy' || d === 'medium' || d === 'hard') : [],
+      dueDateFilter: VALID_DUE_DATE_FILTERS.includes(parsed.dueDateFilter) ? parsed.dueDateFilter : 'all',
+    };
+  } catch { return defaultViewPrefs(); }
+}
+
+function defaultViewPrefs(): ViewPrefs {
+  return {
+    viewMode: 'kanban',
+    listSortColumn: 'status',
+    listSortDirection: 'asc',
+    listGroupBy: 'status',
+    listCollapsedGroups: [],
+    searchQuery: '',
+    priorityFilter: [],
+    difficultyFilter: [],
+    dueDateFilter: 'all',
+  };
+}
+
+function saveViewPrefs(prefs: ViewPrefs): void {
+  setStorageItem(VIEW_PREFS_KEY, JSON.stringify(prefs));
+}
+
 // ── Store interface ──────────────────────────────────────────────────────────
 
 interface TaskBoardState {
@@ -48,10 +110,37 @@ interface TaskBoardState {
   dbHydrated: boolean;
   userId: string | null;
 
+  // List view state
+  viewMode: TaskViewMode;
+  listSortColumn: ListSortColumn;
+  listSortDirection: ListSortDirection;
+  listGroupBy: ListGroupBy;
+  listCollapsedGroups: string[];
+  setViewMode: (mode: TaskViewMode) => void;
+  setListSort: (column: ListSortColumn, direction?: ListSortDirection) => void;
+  setListGroupBy: (groupBy: ListGroupBy) => void;
+  toggleListGroupCollapse: (groupKey: string) => void;
+
+  // Filter state
+  searchQuery: string;
+  priorityFilter: TaskPriority[];
+  difficultyFilter: TaskDifficulty[];
+  dueDateFilter: DueDateFilter;
+  setSearchQuery: (q: string) => void;
+  setPriorityFilter: (p: TaskPriority[]) => void;
+  setDifficultyFilter: (d: TaskDifficulty[]) => void;
+  setDueDateFilter: (f: DueDateFilter) => void;
+  clearAllFilters: () => void;
+
   hydrateFromDb: (tasks: Task[]) => void;
   hydrateFromDbFailed: () => void;
   setUserId: (userId: string) => void;
-  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty; dueDate?: string | null; durationMinutes?: number }) => Task | null;
+  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty; dueDate?: string | null; durationMinutes?: number; parentTaskId?: string | null; depth?: number }) => Task | null;
+  addSubtask: (parentId: string, input: { title: string; status?: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty }) => Task | null;
+  duplicateTask: (taskId: string) => Promise<void>;
+  /** ID of the task most recently created via duplicate — used for highlight flash animation */
+  recentlyDuplicatedId: string | null;
+  clearRecentlyDuplicated: () => void;
   updateTask: (id: string, patch: Partial<Omit<Task, 'id' | 'createdAt'>>) => void;
   rollOverTasks: (taskIds: string[], nextDate: string) => void;
   deleteTask: (id: string) => void;
@@ -74,6 +163,53 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   tasks: [],
   dbHydrated: false,
   userId: null,
+  recentlyDuplicatedId: null,
+
+  // List view preferences (hydrated from localStorage immediately)
+  ...loadViewPrefs(),
+
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
+    saveViewPrefs({ ...loadViewPrefs(), viewMode: mode });
+  },
+  setListSort: (column, direction) => {
+    const current = get();
+    // Toggle direction if same column, otherwise default asc
+    const dir = direction ?? (current.listSortColumn === column && current.listSortDirection === 'asc' ? 'desc' : 'asc');
+    set({ listSortColumn: column, listSortDirection: dir });
+    saveViewPrefs({ ...loadViewPrefs(), listSortColumn: column, listSortDirection: dir });
+  },
+  setListGroupBy: (groupBy) => {
+    set({ listGroupBy: groupBy, listCollapsedGroups: [] });
+    saveViewPrefs({ ...loadViewPrefs(), listGroupBy: groupBy, listCollapsedGroups: [] });
+  },
+  toggleListGroupCollapse: (groupKey) => {
+    const current = get().listCollapsedGroups;
+    const next = current.includes(groupKey) ? current.filter(k => k !== groupKey) : [...current, groupKey];
+    set({ listCollapsedGroups: next });
+    saveViewPrefs({ ...loadViewPrefs(), listCollapsedGroups: next });
+  },
+
+  setSearchQuery: (q) => {
+    set({ searchQuery: q });
+    saveViewPrefs({ ...loadViewPrefs(), searchQuery: q });
+  },
+  setPriorityFilter: (p) => {
+    set({ priorityFilter: p });
+    saveViewPrefs({ ...loadViewPrefs(), priorityFilter: p });
+  },
+  setDifficultyFilter: (d) => {
+    set({ difficultyFilter: d });
+    saveViewPrefs({ ...loadViewPrefs(), difficultyFilter: d });
+  },
+  setDueDateFilter: (f) => {
+    set({ dueDateFilter: f });
+    saveViewPrefs({ ...loadViewPrefs(), dueDateFilter: f });
+  },
+  clearAllFilters: () => {
+    set({ searchQuery: '', priorityFilter: [], difficultyFilter: [], dueDateFilter: 'all' });
+    saveViewPrefs({ ...loadViewPrefs(), searchQuery: '', priorityFilter: [], difficultyFilter: [], dueDateFilter: 'all' });
+  },
 
   setUserId: (userId) => {
     set({ userId });
@@ -93,7 +229,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   },
 
 
-  addTask: ({ title, description, status, priority = 'medium', difficulty = 'medium', dueDate, durationMinutes }) => {
+  addTask: ({ title, description, status, priority = 'medium', difficulty = 'medium', dueDate, durationMinutes, parentTaskId = null, depth = 0 }) => {
     const trimmed = title.trim();
     if (!trimmed) return null;
 
@@ -123,6 +259,8 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       scheduledStart: null,
       scheduledEnd: null,
       remainingFocusTime: null,
+      parentTaskId: parentTaskId ?? null,
+      depth: depth ?? 0,
     };
 
     set((state) => {
@@ -133,6 +271,22 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     // Fire-and-forget DB persistence
     tasksPersistence.createOne(task);
     return task;
+  },
+
+  addSubtask: (parentId, { title, status = 'todo', priority = 'medium', difficulty = 'medium' }) => {
+    const parent = get().tasks.find(t => t.id === parentId);
+    if (!parent) return null;
+    const parentDepth = parent.depth ?? 0;
+    if (parentDepth >= 2) return null; // max 3 levels
+
+    return get().addTask({
+      title,
+      status,
+      priority,
+      difficulty,
+      parentTaskId: parentId,
+      depth: parentDepth + 1,
+    });
   },
 
   updateTask: (id, patch) => {
@@ -275,22 +429,110 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   },
 
   deleteTask: (id) => {
-    const task = get().tasks.find(t => t.id === id);
+    const allTasks = get().tasks;
+    const task = allTasks.find(t => t.id === id);
+
+    // Collect all descendant IDs recursively
+    const collectDescendants = (pid: string): string[] => {
+      const children = allTasks.filter(t => t.parentTaskId === pid);
+      return children.flatMap(c => [c.id, ...collectDescendants(c.id)]);
+    };
+    const descendantIds = collectDescendants(id);
+    const idsToRemove = new Set([id, ...descendantIds]);
+
     set((state) => {
-      const next = state.tasks.filter(t => t.id !== id);
+      const next = state.tasks.filter(t => !idsToRemove.has(t.id));
       saveTasks(next, state.userId);
       return { tasks: next };
     });
-    // Clean up any planner items referencing this task across all dates
-    useDailyPlanStore.getState().removeAllByTaskId(id);
-    // Fire-and-forget DB persistence
+
+    // Clean up planner items for the task and all descendants
+    const planStore = useDailyPlanStore.getState();
+    idsToRemove.forEach(tid => planStore.removeAllByTaskId(tid));
+
+    // Fire-and-forget DB persistence — CASCADE handles children
     tasksPersistence.deleteOne(id);
-    // Clean up linked calendar event (lazy import to avoid circular dep)
-    if (task?.linkedEventId) {
-      import('./useCalendarEventsStore').then(({ useCalendarEventsStore }) =>
-        useCalendarEventsStore.getState().deleteEvent(task.linkedEventId!)
-      );
+
+    // Clean up linked calendar events for task + descendants
+    const tasksWithEvents = allTasks.filter(t => idsToRemove.has(t.id) && t.linkedEventId);
+    if (tasksWithEvents.length > 0) {
+      import('./useCalendarEventsStore').then(({ useCalendarEventsStore }) => {
+        tasksWithEvents.forEach(t =>
+          useCalendarEventsStore.getState().deleteEvent(t.linkedEventId!)
+        );
+      });
     }
+  },
+
+  duplicateTask: async (taskId) => {
+    const original = get().tasks.find(t => t.id === taskId);
+    if (!original) return;
+
+    const now = new Date().toISOString();
+    const optimisticId = uid();
+
+    // Bump existing todo column orders by 1, insert the duplicate at order 0
+    const optimistic: Task = {
+      ...original,
+      id: optimisticId,
+      title: `${original.title} (copy)`,
+      status: 'todo',
+      order: 0,
+      createdAt: now,
+      updatedAt: now,
+      linkedEventId: null,
+      scheduledStart: null,
+      scheduledEnd: null,
+      remainingFocusTime: null,
+      parentTaskId: null,
+      depth: 0,
+    };
+
+    set((state) => {
+      const bumped = state.tasks.map(t =>
+        t.status === 'todo' && !t.parentTaskId ? { ...t, order: t.order + 1 } : t
+      );
+      const next = [...bumped, optimistic];
+      saveTasks(next, state.userId);
+      return { tasks: next, recentlyDuplicatedId: optimisticId };
+    });
+
+    // Persist: hit the duplicate endpoint
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Duplicate failed (${res.status})`);
+      const real = await res.json();
+
+      // Replace optimistic with real
+      set((state) => {
+        const next = state.tasks.map(t =>
+          t.id === optimisticId
+            ? { ...optimistic, id: real.id, createdAt: real.createdAt, updatedAt: real.updatedAt }
+            : t
+        );
+        saveTasks(next, state.userId);
+        return { tasks: next, recentlyDuplicatedId: real.id };
+      });
+    } catch (err) {
+      console.error('[duplicateTask]', err);
+      // Rollback: remove optimistic
+      set((state) => {
+        const next = state.tasks.filter(t => t.id !== optimisticId);
+        saveTasks(next, state.userId);
+        return { tasks: next, recentlyDuplicatedId: null };
+      });
+      // Lazy-import sonner to avoid circular deps
+      import('sonner').then(({ toast }) => {
+        toast.error("Couldn't duplicate task");
+      });
+    }
+  },
+
+  clearRecentlyDuplicated: () => {
+    set({ recentlyDuplicatedId: null });
   },
 
   unlinkEvent: (eventId) => {
@@ -454,3 +696,33 @@ export const selectTasksByStatus = (status: TaskStatus) => (state: TaskBoardStat
     .sort((a, b) => a.order - b.order);
 
 export const selectAllTasks = (state: TaskBoardState) => state.tasks;
+
+/** Root tasks only (no parent) for a given status column. */
+export const selectRootTasksByStatus = (status: TaskStatus) => (state: TaskBoardState) =>
+  state.tasks
+    .filter(t => !t.parentTaskId && t.status === status)
+    .sort((a, b) => a.order - b.order);
+
+/** Direct children of a given parent, sorted by createdAt. */
+export const selectSubtasks = (parentId: string) => (state: TaskBoardState) =>
+  state.tasks
+    .filter(t => t.parentTaskId === parentId)
+    .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+
+/** Progress count for direct children of a parent. */
+export const selectSubtaskProgress = (parentId: string) => (state: TaskBoardState) => {
+  const children = state.tasks.filter(t => t.parentTaskId === parentId);
+  return {
+    total: children.length,
+    done: children.filter(t => t.status === 'done').length,
+  };
+};
+
+/** Count all descendants (recursive) of a task. */
+export const selectDescendantCount = (taskId: string) => (state: TaskBoardState) => {
+  const count = (pid: string): number => {
+    const children = state.tasks.filter(t => t.parentTaskId === pid);
+    return children.reduce((sum, c) => sum + 1 + count(c.id), 0);
+  };
+  return count(taskId);
+};

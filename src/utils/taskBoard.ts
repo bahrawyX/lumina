@@ -201,6 +201,12 @@ function normalizePersistedTask(rawTask: PersistedTaskRecord, index: number): Ta
     remainingFocusTime: typeof rawTask.remainingFocusTime === 'number' && Number.isFinite(rawTask.remainingFocusTime)
       ? Math.max(0, Math.round(rawTask.remainingFocusTime))
       : null,
+    parentTaskId: typeof rawTask.parentTaskId === 'string' && rawTask.parentTaskId.trim()
+      ? rawTask.parentTaskId
+      : null,
+    depth: typeof rawTask.depth === 'number' && Number.isFinite(rawTask.depth)
+      ? Math.max(0, Math.min(2, rawTask.depth))
+      : 0,
   };
 }
 

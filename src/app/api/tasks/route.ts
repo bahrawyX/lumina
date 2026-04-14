@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
       order: index,
       context: null,
       linkedEventId: row.linkedEventId ?? null,
+      parentTaskId: row.parentTaskId ?? null,
+      depth: row.depth ?? 0,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId } = body as {
+  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId } = body as {
     title?: string;
     description?: string;
     status?: string;
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
     remainingFocusTime?: number | null;
     linkedEventId?: string | null;
     linkedDocId?: string | null;
+    parentTaskId?: string | null;
   };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -104,6 +107,27 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = getDatabase();
+
+    // Subtask depth validation
+    let resolvedParentTaskId: string | null = null;
+    let resolvedDepth = 0;
+
+    if (typeof parentTaskId === 'string' && parentTaskId.trim()) {
+      const [parent] = await db
+        .select({ id: tasks.id, depth: tasks.depth })
+        .from(tasks)
+        .where(and(eq(tasks.id, parentTaskId), eq(tasks.userId, userId)));
+
+      if (!parent) {
+        return NextResponse.json({ error: 'Parent task not found' }, { status: 404 });
+      }
+      if (parent.depth >= 2) {
+        return NextResponse.json({ error: 'Maximum nesting depth reached (3 levels)' }, { status: 400 });
+      }
+      resolvedParentTaskId = parentTaskId;
+      resolvedDepth = parent.depth + 1;
+    }
+
     const [row] = await db
       .insert(tasks)
       .values({
@@ -120,6 +144,8 @@ export async function POST(req: NextRequest) {
         remainingFocusTime: normalizeRemainingFocusTime(remainingFocusTime),
         linkedEventId: typeof linkedEventId === 'string' && linkedEventId.trim() ? linkedEventId : null,
         linkedDocId: typeof linkedDocId === 'string' && linkedDocId.trim() ? linkedDocId : null,
+        parentTaskId: resolvedParentTaskId,
+        depth: resolvedDepth,
       })
       .returning({ id: tasks.id });
 

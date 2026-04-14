@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useDocsStore } from '@/store/useDocsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
+import { useGoalsStore } from '@/store/useGoalsStore';
+import { SHOP_ITEMS } from '@/config/shopItems';
+import { computeGoalProgress, TIMEFRAME_LABELS } from '@/types/goal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +19,7 @@ interface QuickSwitcherProps {
 interface SearchItem {
   id: string;
   title: string;
-  type: 'doc' | 'task' | 'event' | 'action';
+  type: 'doc' | 'task' | 'event' | 'goal' | 'shop' | 'action';
   icon: string;
   subtitle?: string;
   href?: string;
@@ -34,6 +37,7 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
   const docs = useDocsStore((s) => s.docs);
   const tasks = useTaskBoardStore((s) => s.tasks);
   const events = useCalendarEventsStore((s) => s.events);
+  const goals = useGoalsStore((s) => s.goals);
   const createDoc = useDocsStore((s) => s.createDoc);
 
   // Focus input on open
@@ -128,6 +132,39 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
       });
     }
 
+    // Goals
+    const filteredGoals = goals
+      .filter((g) => g.status === 'active' && (q === '' || g.title.toLowerCase().includes(q)))
+      .slice(0, 3);
+    for (const goal of filteredGoals) {
+      const progress = computeGoalProgress(goal);
+      items.push({
+        id: `goal-${goal.id}`,
+        title: goal.title,
+        type: 'goal',
+        icon: goal.emoji || '🎯',
+        subtitle: `${progress}% · ${TIMEFRAME_LABELS[goal.timeframe]}`,
+        href: '/goals',
+      });
+    }
+
+    // Shop items
+    if (q) {
+      const filteredShop = SHOP_ITEMS
+        .filter((item) => item.name.toLowerCase().includes(q))
+        .slice(0, 3);
+      for (const item of filteredShop) {
+        items.push({
+          id: `shop-${item.id}`,
+          title: item.name,
+          type: 'shop',
+          icon: item.emoji,
+          subtitle: `${item.cost} coins`,
+          href: '/shop',
+        });
+      }
+    }
+
     // Actions (always shown at bottom)
     const actions: SearchItem[] = [
       {
@@ -162,7 +199,7 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
     items.push(...filteredActions);
 
     return items;
-  }, [query, docs, tasks, events, apiDocResults, createDoc, router]);
+  }, [query, docs, tasks, events, goals, apiDocResults, createDoc, router]);
 
   // Keyboard nav
   const handleKeyDown = useCallback(
@@ -192,8 +229,8 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
   // Group results by type
   const grouped = useMemo(() => {
     const groups: { label: string; items: (SearchItem & { globalIndex: number })[] }[] = [];
-    const typeOrder: SearchItem['type'][] = ['doc', 'task', 'event', 'action'];
-    const labels: Record<string, string> = { doc: 'DOCS', task: 'TASKS', event: 'EVENTS', action: 'ACTIONS' };
+    const typeOrder: SearchItem['type'][] = ['doc', 'task', 'event', 'goal', 'shop', 'action'];
+    const labels: Record<string, string> = { doc: 'DOCS', task: 'TASKS', event: 'EVENTS', goal: 'GOALS', shop: 'SHOP', action: 'ACTIONS' };
 
     let globalIdx = 0;
     for (const type of typeOrder) {

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  foreignKey,
   index,
   integer,
   pgEnum,
@@ -49,6 +50,10 @@ export const tasks = pgTable(
     remainingFocusTime: integer('remaining_focus_time'),
     linkedEventId: uuid('linked_event_id'),
     linkedDocId: uuid('linked_doc_id'),
+    /** Self-referential FK for subtask hierarchy. NULL = root task. */
+    parentTaskId: uuid('parent_task_id'),
+    /** Nesting depth: 0 = root, 1 = subtask, 2 = sub-subtask. Max 2. */
+    depth: integer('depth').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -56,6 +61,11 @@ export const tasks = pgTable(
     index('tasks_user_id_idx').on(table.userId),
     index('tasks_status_idx').on(table.status),
     index('tasks_linked_event_id_idx').on(table.linkedEventId),
+    index('tasks_parent_task_id_idx').on(table.parentTaskId),
+    foreignKey({
+      columns: [table.parentTaskId],
+      foreignColumns: [table.id],
+    }).onDelete('cascade'),
     check('tasks_estimated_minutes_check', sql`${table.estimatedMinutes} > 0`),
   ]
 );

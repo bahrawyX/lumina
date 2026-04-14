@@ -20,13 +20,13 @@ export const GuestBanner: React.FC = () => {
       {isGuest && !bannerDismissed && (
         <motion.div
           key="guest-banner"
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2, ease: 'easeInOut' }}
-          className="overflow-hidden flex-shrink-0"
+          className="absolute top-0 left-0 right-0 z-30"
         >
-          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-200/70 dark:border-amber-800/35 bg-amber-50/90 dark:bg-amber-950/25">
+          <div className="flex items-center gap-3 px-4 py-2 border-b border-amber-200/70 dark:border-amber-800/35 bg-amber-50/95 dark:bg-amber-950/90 backdrop-blur-sm">
             {/* Icon */}
             <svg
               width="13"

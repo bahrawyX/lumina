@@ -11,6 +11,8 @@ interface PlannedTaskCardProps {
   onMarkDone?: (taskId: string) => void;
   onDragHandlePointerDown: (e: React.PointerEvent) => void;
   isDragging?: boolean;
+  /** Number of subtasks (shown as badge) */
+  subtaskCount?: number;
 }
 
 const DIFF_STYLE: Record<TaskDifficulty, string> = {
@@ -33,7 +35,7 @@ const XIcon: React.FC = () => (
   </svg>
 );
 
-export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ planItem, task, onRemove, onMarkDone, onDragHandlePointerDown, isDragging }) => {
+export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ planItem, task, onRemove, onMarkDone, onDragHandlePointerDown, isDragging, subtaskCount }) => {
   const durmins = durationMinutes(planItem.startTime, planItem.endTime);
   const timeLabel = formatTimeRange(planItem.startTime, planItem.endTime);
   const isDone = task?.status === 'done';
@@ -101,6 +103,14 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
                   <span className="text-[8px] text-muted-foreground/50">·</span>
                   <span className={`text-[8px] font-semibold px-1 rounded ${DIFF_STYLE[task.difficulty]}`}>
                     {DIFF_LABEL[task.difficulty]}
+                  </span>
+                </>
+              )}
+              {subtaskCount != null && subtaskCount > 0 && (
+                <>
+                  <span className="text-[8px] text-muted-foreground/50">·</span>
+                  <span className="text-[8px] text-muted-foreground/60 bg-muted/40 px-1 rounded">
+                    {subtaskCount} sub
                   </span>
                 </>
               )}

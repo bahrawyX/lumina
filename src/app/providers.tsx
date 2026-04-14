@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { LuminaAuthProvider } from "@/components/AuthProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CosmeticsProvider } from "@/components/CosmeticsProvider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -21,7 +22,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       storageKey="lumina-theme"
     >
       <LuminaAuthProvider>
-        <TooltipProvider delayDuration={400}>{children}</TooltipProvider>
+        <CosmeticsProvider>
+          <TooltipProvider delayDuration={400}>{children}</TooltipProvider>
+        </CosmeticsProvider>
       </LuminaAuthProvider>
     </ThemeProvider>
   );

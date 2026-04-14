@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { docs } from '@/db/schema';
 import { eq, and, asc, desc, sql } from 'drizzle-orm';
+import { awardCoins } from '@/lib/coins/awardCoins';
 
 /** GET /api/docs — return flat list of DocTreeNode[] for sidebar (no content field). */
 export async function GET(req: NextRequest) {
@@ -145,6 +146,17 @@ export async function POST(req: NextRequest) {
         linkedEventId: typeof linkedEventId === 'string' && linkedEventId.trim() ? linkedEventId : null,
       })
       .returning();
+
+    // Award coins for first doc ever (fire-and-forget)
+    void (async () => {
+      try {
+        const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(docs)
+          .where(eq(docs.userId, userId));
+        if ((countResult?.count ?? 0) === 1) {
+          await awardCoins(userId, 15, 'first_doc', 'Created your first doc');
+        }
+      } catch (e) { console.error('[docs first-doc award]', e); }
+    })();
 
     return NextResponse.json(
       {

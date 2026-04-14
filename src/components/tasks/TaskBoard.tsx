@@ -27,7 +27,7 @@ import { EVENT_COLORS } from '../../constants';
 import { addMinutesToTime } from '../../utils/taskBoard';
 import { scheduleTask, DEFAULT_DURATION_MINS } from '../../utils/scheduling/scheduleTask';
 import { useDailyPlanStore } from '../../store/useDailyPlanStore';
-import { useToastStore } from '../../store/useToastStore';
+import { toast as sonnerToast } from 'sonner';
 import { expandRecurrences } from '../../utils/dateUtils';
 import { TIMELINE_START_HOUR, TIMELINE_END_HOUR } from '../../utils/dailyPlanUtils';
 import { format } from 'date-fns';
@@ -38,15 +38,35 @@ import { TaskColumn } from './TaskColumn';
 import { TaskCard } from './TaskCard';
 import { TaskDialog, TaskDialogPayload } from './TaskDialog';
 import { TaskScheduleDialog, TaskSchedulePayload } from './TaskScheduleDialog';
+import { TaskListView } from './TaskListView';
+import { AnimatePresence } from 'framer-motion';
+import { useFocusStore } from '../../store/useFocusStore';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
-import { useFocusStore } from '../../store/useFocusStore';
+import { useCoinsStore, selectActiveCosmetics } from '../../store/useCoinsStore';
+import { triggerConfetti } from '../ui/ConfettiEffect';
+import { showCoinToast } from '../../lib/coins/showCoinToast';
+import { TaskFilterBar } from './TaskFilterBar';
+import { filterTasks, hasActiveFilters } from '../../utils/taskFilters';
 
 // ── Plus icon ─────────────────────────────────────────────────────────────────
 
 const PlusIcon: React.FC = () => (
   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const KanbanIcon: React.FC = () => (
+  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="18" rx="1.5" /><rect x="14" y="3" width="7" height="12" rx="1.5" />
+  </svg>
+);
+
+const ListIcon: React.FC = () => (
+  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
   </svg>
 );
 
@@ -78,6 +98,20 @@ export const TaskBoard: React.FC = () => {
 
   const addPlanItem   = useDailyPlanStore(s => s.addPlanItem);
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
+
+  // ── View mode ──────────────────────────────────────────────────────────────
+  const viewMode = useTaskBoardStore(s => s.viewMode);
+  const setViewMode = useTaskBoardStore(s => s.setViewMode);
+
+  // ── Focus time map (taskId → total seconds) ────────────────────────────────
+  const focusSessions = useFocusStore(s => s.sessionHistory);
+  const focusTimeMap = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    focusSessions.forEach(s => {
+      map[s.taskId] = (map[s.taskId] ?? 0) + s.duration;
+    });
+    return map;
+  }, [focusSessions]);
 
   // ── Hydration guard — prevents SSR mismatch flash ─────────────────────────
   const [mounted, setMounted] = useState(false);
@@ -111,12 +145,39 @@ export const TaskBoard: React.FC = () => {
   );
 
   // ── Per-column stable sorted id arrays (for SortableContext) ─────────────
+  // Filter state
+  const searchQuery = useTaskBoardStore(s => s.searchQuery);
+  const priorityFilter = useTaskBoardStore(s => s.priorityFilter);
+  const difficultyFilter = useTaskBoardStore(s => s.difficultyFilter);
+  const dueDateFilter = useTaskBoardStore(s => s.dueDateFilter);
+  const filtersActive = hasActiveFilters(searchQuery, priorityFilter, difficultyFilter, dueDateFilter);
+
+  // Only root tasks (no parent) appear in kanban columns, with filters applied
   const columnTasks = useMemo<Record<TaskStatus, Task[]>>(() => {
     const map: Record<TaskStatus, Task[]> = { todo: [], doing: [], done: [] };
-    tasks.forEach(t => { map[t.status].push(t); });
+    const rootTasks = tasks.filter(t => !t.parentTaskId);
+    const filtered = filtersActive
+      ? filterTasks(rootTasks, tasks, searchQuery, priorityFilter, difficultyFilter, dueDateFilter)
+      : rootTasks;
+    filtered.forEach(t => { map[t.status].push(t); });
     map.todo  = map.todo.sort((a, b) => a.order - b.order);
     map.doing = map.doing.sort((a, b) => a.order - b.order);
     map.done  = map.done.sort((a, b) => a.order - b.order);
+    return map;
+  }, [tasks, filtersActive, searchQuery, priorityFilter, difficultyFilter, dueDateFilter]);
+
+  // Totals for results count line
+  const totalRootTasks = useMemo(() => tasks.filter(t => !t.parentTaskId).length, [tasks]);
+  const totalFiltered = columnTasks.todo.length + columnTasks.doing.length + columnTasks.done.length;
+
+  // Pre-compute subtask lookup map (parentId → children)
+  const subtaskMap = useMemo<Record<string, Task[]>>(() => {
+    const map: Record<string, Task[]> = {};
+    tasks.forEach(t => {
+      if (t.parentTaskId) {
+        (map[t.parentTaskId] ??= []).push(t);
+      }
+    });
     return map;
   }, [tasks]);
 
@@ -277,8 +338,58 @@ export const TaskBoard: React.FC = () => {
   }, [editingTask, linkedEvents, updateEvent, addEventOptimistic, timezone, updateTask, addTask, closeDialog, addPlanItem]);
 
   const handleDelete = useCallback((id: string) => {
+    // Warn if task has descendants
+    const descendantCount = tasks.filter(t => {
+      const collect = (pid: string): boolean => {
+        if (t.parentTaskId === pid) return true;
+        return tasks.some(c => c.parentTaskId === pid && collect(c.id));
+      };
+      return collect(id);
+    }).length;
+    // TODO: Could add a confirmation dialog for descendantCount > 0
     deleteTask(id);
-  }, [deleteTask]);
+  }, [deleteTask, tasks]);
+
+  const addSubtask = useTaskBoardStore(s => s.addSubtask);
+
+  const handleAddSubtask = useCallback((parentId: string, title: string) => {
+    addSubtask(parentId, { title });
+  }, [addSubtask]);
+
+  // ── Confetti + coin toast on task completion ─────────────────────────────
+  const activeCosmetics = useCoinsStore(selectActiveCosmetics);
+  const addEarnedCoins = useCoinsStore(s => s.addEarnedCoins);
+
+  const onTaskCompleted = useCallback((task: Task) => {
+    // Confetti if owned + active
+    if (activeCosmetics.confetti) triggerConfetti();
+    // Estimated coin toast (exact amount computed server-side)
+    const base = task.difficulty === 'hard' ? 10 : 5;
+    showCoinToast(base, task.difficulty === 'hard' ? 'Hard task completed' : 'Task completed');
+    addEarnedCoins(base);
+  }, [activeCosmetics.confetti, addEarnedCoins]);
+
+  const handleToggleSubtaskDone = useCallback((taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newStatus = task.status === 'done' ? 'todo' : 'done';
+    updateTask(taskId, { status: newStatus });
+    if (newStatus === 'done') onTaskCompleted(task);
+  }, [tasks, updateTask, onTaskCompleted]);
+
+  const handleMarkParentDone = useCallback((taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    updateTask(taskId, { status: 'done' });
+    if (task) onTaskCompleted(task);
+  }, [tasks, updateTask, onTaskCompleted]);
+
+  const handleStatusChange = useCallback((taskId: string, status: TaskStatus) => {
+    updateTask(taskId, { status });
+    if (status === 'done') {
+      const task = tasks.find(t => t.id === taskId);
+      if (task) onTaskCompleted(task);
+    }
+  }, [tasks, updateTask, onTaskCompleted]);
 
   const handlePriorityChange = useCallback((task: Task, priority: TaskPriority) => {
     if (task.priority === priority) return;
@@ -300,8 +411,6 @@ export const TaskBoard: React.FC = () => {
   }, [startFocusSession, router, updateTask]);
 
   const handleAutoSchedule = useCallback((task: Task) => {
-    const { addToast, removeToast } = useToastStore.getState();
-
     const today = format(new Date(), 'yyyy-MM-dd');
 
     // Guard: already on today's timeline
@@ -312,7 +421,7 @@ export const TaskBoard: React.FC = () => {
     }
 
     // Show "Scheduling…" indicator
-    const loadingId = addToast({ message: `Scheduling "${task.title}"…`, duration: 30000 });
+    const loadingId = sonnerToast.loading(`Scheduling "${task.title}"…`);
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
     const durationMins = task.durationMinutes ?? DEFAULT_DURATION_MINS;
@@ -331,7 +440,7 @@ export const TaskBoard: React.FC = () => {
     const dayEnd = TIMELINE_END_HOUR * 60;
     const result = scheduleTask(durationMins, todayCalItems, todayPlanItems, nowMins, dayStart, dayEnd);
 
-    removeToast(loadingId);
+    sonnerToast.dismiss(loadingId);
 
     if (!result.ok) {
       if ('reason' in result && result.reason === 'task_too_long') {
@@ -583,25 +692,84 @@ export const TaskBoard: React.FC = () => {
       <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0" data-tutorial="task-board-header">
         <div>
           <h1 className="font-display text-lg md:text-xl font-semibold text-foreground tracking-[-0.02em]">
-            Task Board
+            {viewMode === 'kanban' ? 'Task Board' : 'Tasks'}
           </h1>
           <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5 hidden sm:block">
-            {tasks.length === 0 ? 'No tasks yet' : `${tasks.length} task${tasks.length !== 1 ? 's' : ''}`}
+            {tasks.length === 0 ? 'No tasks yet' : `${tasks.filter(t => !t.parentTaskId).length} task${tasks.filter(t => !t.parentTaskId).length !== 1 ? 's' : ''}`}
           </p>
         </div>
 
-        <Button
-          size="sm"
-          onClick={() => openCreateDialog('todo')}
-          className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
-          aria-label="Create new task"
-        >
-          <PlusIcon />
-          New Task
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center rounded-lg border border-border/50 p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('kanban')}
+              className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+                viewMode === 'kanban' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              aria-label="Kanban view"
+              title="Board view"
+            >
+              <KanbanIcon />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+                viewMode === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              aria-label="List view"
+              title="List view"
+            >
+              <ListIcon />
+            </button>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => openCreateDialog('todo')}
+            className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
+            aria-label="Create new task"
+          >
+            <PlusIcon />
+            New Task
+          </Button>
+        </div>
       </div>
 
-      {/* Board columns */}
+      {/* Filter bar — visible in both kanban and list modes */}
+      <TaskFilterBar />
+
+      {/* Results count line */}
+      <AnimatePresence initial={false}>
+        {filtersActive && (
+          <motion.div
+            key="results-count"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="overflow-hidden flex-shrink-0"
+          >
+            <p className="text-xs text-muted-foreground mb-3">
+              Showing {totalFiltered} of {totalRootTasks} task{totalRootTasks === 1 ? '' : 's'}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Board content — Kanban or List */}
+      <AnimatePresence mode="wait" initial={false}>
+      {viewMode === 'kanban' ? (
+        <motion.div
+          key="kanban"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="flex-1 flex flex-col min-h-0"
+        >
       {!mounted && (
         <div className="flex gap-3 h-full overflow-hidden pb-4 items-start px-1 md:px-0">
           {COLUMNS.map(col => (
@@ -658,6 +826,11 @@ export const TaskBoard: React.FC = () => {
                 onAutoScheduleTask={handleAutoSchedule}
                 onDeleteTask={handleDelete}
                 onFocusTask={handleFocus}
+                subtaskMap={subtaskMap}
+                allTasks={tasks}
+                onAddSubtask={handleAddSubtask}
+                onToggleSubtaskDone={handleToggleSubtaskDone}
+                onMarkParentDone={handleMarkParentDone}
               />
             </motion.div>
           ))}
@@ -680,6 +853,51 @@ export const TaskBoard: React.FC = () => {
           ) : null}
         </DragOverlay>
       </DndContext>}
+        </motion.div>
+      ) : (
+        <motion.div
+          key="list"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="flex-1 flex flex-col min-h-0"
+        >
+          {!mounted && (
+            <div className="flex-1 rounded-xl border border-border/50 overflow-hidden">
+              <div className="flex items-center h-8 bg-background border-b border-border px-2 gap-2">
+                <Skeleton className="h-3 w-8" /><Skeleton className="h-3 w-8" /><Skeleton className="h-3 flex-1" /><Skeleton className="h-3 w-14" /><Skeleton className="h-3 w-14 hidden md:block" /><Skeleton className="h-3 w-16" /><Skeleton className="h-3 w-16" />
+              </div>
+              {[1,2,3,4,5,6,7,8].map(i => (
+                <div key={i} className="flex items-center h-11 border-b border-border/50 px-2 gap-3">
+                  <Skeleton className="w-4 h-4 rounded flex-shrink-0" />
+                  <Skeleton className="w-4 h-4 rounded flex-shrink-0" />
+                  <Skeleton className="h-3.5 flex-1 rounded" />
+                  <Skeleton className="h-4 w-12 rounded-md flex-shrink-0" />
+                  <Skeleton className="h-4 w-12 rounded-md flex-shrink-0 hidden md:block" />
+                  <Skeleton className="h-3 w-14 rounded flex-shrink-0" />
+                  <Skeleton className="h-5 w-16 rounded-md flex-shrink-0" />
+                </div>
+              ))}
+            </div>
+          )}
+          {mounted && (
+            <TaskListView
+              tasks={tasks}
+              subtaskMap={subtaskMap}
+              linkedEvents={linkedEvents}
+              focusTimeMap={focusTimeMap}
+              onEdit={openEditDialog}
+              onDelete={handleDelete}
+              onPriorityChange={handlePriorityChange}
+              onToggleSubtaskDone={handleToggleSubtaskDone}
+              onStatusChange={handleStatusChange}
+              onAddTask={openCreateDialog}
+            />
+          )}
+        </motion.div>
+      )}
+      </AnimatePresence>
 
       {/* Task dialog (create / edit) */}
       <TaskDialog
@@ -689,6 +907,15 @@ export const TaskBoard: React.FC = () => {
         defaultStatus={defaultStatus}
         onSave={handleSave}
         onClose={closeDialog}
+        subtasks={editingTask ? (subtaskMap[editingTask.id] ?? []) : []}
+        onAddSubtask={handleAddSubtask}
+        onToggleSubtaskDone={handleToggleSubtaskDone}
+        onDeleteSubtask={handleDelete}
+        onOpenSubtask={(sub) => {
+          // Close current dialog, open subtask dialog
+          closeDialog();
+          setTimeout(() => openEditDialog(sub), 150);
+        }}
       />
 
       <TaskScheduleDialog

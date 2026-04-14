@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { plannerItems } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { plannerItems, coinTransactions } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+import { awardCoins } from '@/lib/coins/awardCoins';
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
@@ -89,6 +90,40 @@ export async function POST(req: NextRequest) {
         isAutoScheduled,
       })
       .returning({ id: plannerItems.id });
+
+    // Award coins when user plans 3 tasks for today (fire-and-forget)
+    void (async () => {
+      try {
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const todayEnd = new Date(todayStart);
+        todayEnd.setDate(todayEnd.getDate() + 1);
+
+        // Count today's planner items
+        const items = await db.select({ id: plannerItems.id }).from(plannerItems)
+          .where(and(
+            eq(plannerItems.userId, userId),
+            sql`${plannerItems.startTime} >= ${todayStart}`,
+            sql`${plannerItems.startTime} < ${todayEnd}`
+          ));
+
+        if (items.length === 3) {
+          // Check if already awarded today
+          const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
+            .where(and(
+              eq(coinTransactions.userId, userId),
+              eq(coinTransactions.reason, 'planner_day'),
+              sql`${coinTransactions.createdAt} >= ${todayStart}`
+            )).limit(1);
+
+          if (!existing) {
+            await awardCoins(userId, 15, 'planner_day', 'Planned your day');
+          }
+        }
+      } catch (e) {
+        console.error('[planner coin award]', e);
+      }
+    })();
 
     return NextResponse.json({ id: row.id }, { status: 201 });
   } catch (err) {

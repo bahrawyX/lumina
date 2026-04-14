@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { tasks } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { tasks, goalTargets, users } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+import { awardCoinsBatch } from '@/lib/coins/awardCoins';
+import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -24,7 +26,9 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-/** PATCH /api/tasks/[id] — update a task (ownership enforced) */
+/** PATCH /api/tasks/[id] — update a task (ownership enforced).
+ *  Note: parentTaskId and depth are immutable — not included in the patch builder.
+ *  Reparenting is not supported. */
 export async function PATCH(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const session = await auth.api.getSession({ headers: req.headers });
@@ -85,6 +89,90 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       .update(tasks)
       .set(patch)
       .where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+
+    // Fire-and-forget: goal target updates + coin awards on status change.
+    if (patch.status !== undefined) {
+      void (async () => {
+        try {
+          // ── Goal target auto-update ────────────────────────────────
+          const allTargets = await db.select().from(goalTargets)
+            .where(eq(goalTargets.type, 'task_completion'));
+
+          for (const target of allTargets) {
+            if (!target.linkedTaskIds) continue;
+            let taskIds: string[];
+            try { taskIds = JSON.parse(target.linkedTaskIds); } catch { continue; }
+            if (!Array.isArray(taskIds) || !taskIds.includes(id)) continue;
+            if (taskIds.length === 0) continue;
+            const linkedTasks = await db.select({ id: tasks.id, status: tasks.status })
+              .from(tasks)
+              .where(sql`${tasks.id} = ANY(ARRAY[${sql.join(taskIds.map(tid => sql`${tid}::uuid`), sql`, `)}])`);
+            const doneCount = linkedTasks.filter(t => t.status === 'done').length;
+            await db.update(goalTargets)
+              .set({ currentValue: String(doneCount), updatedAt: new Date() })
+              .where(eq(goalTargets.id, target.id));
+          }
+
+          // ── Coin awards on task completion ─────────────────────────
+          if (patch.status === 'done') {
+            // Get task data for earn calculation
+            const [taskData] = await db.select({
+              difficulty: tasks.difficulty,
+              dueDate: tasks.dueDate,
+              parentTaskId: tasks.parentTaskId,
+            }).from(tasks).where(eq(tasks.id, id));
+
+            if (taskData) {
+              // Check consumable multiplier
+              const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
+              const consumables = (u?.consumables as Record<string, number>) ?? {};
+              const hasTaskMultiplier = (consumables.taskMultiplier ?? 0) > 0;
+
+              const awards = taskCompleteAwards(
+                taskData.difficulty ?? 'medium',
+                taskData.dueDate?.toISOString().slice(0, 10) ?? null,
+                hasTaskMultiplier,
+              );
+
+              // First task of the day bonus
+              const today = new Date();
+              const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+              const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(tasks)
+                .where(and(eq(tasks.userId, userId), eq(tasks.status, 'done'), sql`${tasks.updatedAt} >= ${todayStart}`));
+              const completedToday = countResult?.count ?? 0;
+
+              if (completedToday === 1) {
+                awards.push(firstTaskOfDayAward());
+              }
+
+              // Burst bonuses
+              awards.push(...dailyTaskBurstAwards(completedToday));
+
+              // Subtask completion bonus
+              if (taskData.parentTaskId) {
+                const siblings = await db.select({ status: tasks.status }).from(tasks)
+                  .where(eq(tasks.parentTaskId, taskData.parentTaskId));
+                if (siblings.length > 0 && siblings.every(s => s.status === 'done')) {
+                  awards.push(allSubtasksCompleteAward());
+                }
+              }
+
+              if (awards.length > 0) {
+                await awardCoinsBatch(userId, awards);
+                // Decrement task multiplier if used
+                if (hasTaskMultiplier) {
+                  const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
+                  updated.taskMultiplier = Math.max(0, (consumables.taskMultiplier ?? 0) - 1);
+                  await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[task PATCH fire-and-forget]', e);
+        }
+      })();
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

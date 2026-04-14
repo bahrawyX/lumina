@@ -15,6 +15,12 @@ import { useOnboardingStore } from '@/store/useOnboardingStore';
 import * as moodPersistence from '@/lib/persistence/moodPersistence';
 import { toast } from 'sonner';
 import type { MoodValue, MoodLog, FocusSessionResult } from '@/types';
+import { showCoinToast } from '@/lib/coins/showCoinToast';
+import { useCoinsStore } from '@/store/useCoinsStore';
+import { LottieOverlay } from '@/components/ui/LottieOverlay';
+
+const STREAK_MILESTONES = new Set([3, 7, 14, 30]);
+const SESSION_MILESTONES = new Set([5, 10]);
 
 export interface PomodoroSessionData {
   startTime: string;
@@ -30,6 +36,7 @@ const FocusPage: React.FC = () => {
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
   const [moodLogsLoaded, setMoodLogsLoaded] = useState(false);
   const [achievementOpen, setAchievementOpen] = useState(false);
+  const [showStreakFire, setShowStreakFire] = useState(false);
   const [currentAchievement, setCurrentAchievement] = useState<string | null>(null);
   const achievementQueueRef = useRef<string[]>([]);
 
@@ -65,6 +72,17 @@ const FocusPage: React.FC = () => {
         const result: FocusSessionResult = await res.json();
         setLastSessionId(result.id);
         applySessionResult(result);
+
+        // Show coin earn toast
+        if (result.coinsEarned > 0) {
+          showCoinToast(result.coinsEarned, 'Focus session completed');
+          useCoinsStore.getState().addEarnedCoins(result.coinsEarned);
+        }
+
+        // Streak milestone celebration overlay
+        if (STREAK_MILESTONES.has(result.dailyStreak) || SESSION_MILESTONES.has(result.sessionStreak)) {
+          setShowStreakFire(true);
+        }
 
         // Queue achievement modals
         if (result.newAchievements.length > 0) {
@@ -154,6 +172,15 @@ const FocusPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Streak milestone celebration */}
+      <LottieOverlay
+        show={showStreakFire}
+        path="/animations/streak-fire.json"
+        duration={1500}
+        size={180}
+        onDone={() => setShowStreakFire(false)}
+      />
+
       <Tabs defaultValue="focus" className="flex flex-col h-full" data-tutorial="focus-tabs">
         <div className="px-2 lg:px-4 pt-1 pb-3">
           <TabsList className="bg-muted/30 border border-border/60 p-0.5 rounded-lg h-auto">

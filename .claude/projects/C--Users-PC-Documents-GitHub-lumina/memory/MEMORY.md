@@ -1,0 +1,5 @@
+- [User Profile](user_profile.md) — Lumina solo dev, full-stack Next.js/TypeScript
+- [BlockNote Gotchas](feedback_blocknote.md) — Shadcn renderer, theme prop, keyboard handler guard
+- [Tailwind Primary Fix](feedback_tailwind_primary.md) — primary.foreground must use CSS var
+- [Unused SidebarDocsTree](project_sidebar_tree.md) — standalone component replaced by inline version
+- [Codebase Reference](reference_codebase.md) — CODEBASE_REFERENCE_Lumina_Next.md is the single source of truth

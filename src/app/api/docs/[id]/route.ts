@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { docs } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { docs, coinTransactions } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+import { awardCoins } from '@/lib/coins/awardCoins';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -124,6 +125,23 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       .update(docs)
       .set(patch)
       .where(and(eq(docs.id, id), eq(docs.userId, userId)));
+
+    // Award coins for 500+ word doc (fire-and-forget, dedupe by docId)
+    if (typeof body.wordCount === 'number' && body.wordCount >= 500) {
+      void (async () => {
+        try {
+          const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
+            .where(and(
+              eq(coinTransactions.userId, userId),
+              eq(coinTransactions.reason, 'doc_500_words'),
+              sql`${coinTransactions.metadata}->>'docId' = ${id}`
+            )).limit(1);
+          if (!existing) {
+            await awardCoins(userId, 10, 'doc_500_words', 'Wrote a 500+ word doc', { docId: id });
+          }
+        } catch (e) { console.error('[doc 500-word award]', e); }
+      })();
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

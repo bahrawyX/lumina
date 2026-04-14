@@ -1,21 +1,31 @@
 /**
- * notify — lightweight notifier utility.
+ * notify — lightweight notifier utility backed by Sonner.
  *
  * Call this anywhere (components, store actions, services).
- * It accesses the Zustand store directly — no React hook required.
+ * Uses Sonner's module-level `toast` function — no React hook required.
  *
  * Examples:
  *   notify('Event created: Design Review (3:00–4:00)');
  *   notify('Event deleted.', () => useCalendarStore.getState().undo());
  */
-import { useToastStore } from '../store/useToastStore';
+import { toast } from 'sonner';
 
 const notify = (
   message: string,
   undoFn?: () => void,
   duration = 3500
 ): void => {
-  useToastStore.getState().addToast({ message, undoFn, duration });
+  if (undoFn) {
+    toast(message, {
+      duration,
+      action: {
+        label: 'Undo',
+        onClick: undoFn,
+      },
+    });
+  } else {
+    toast(message, { duration });
+  }
 };
 
 export default notify;

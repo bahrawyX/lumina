@@ -14,6 +14,9 @@ import { plannerItems } from './plannerItems';
 import { pushSubscriptions } from './pushSubscriptions';
 import { sessions } from './sessions';
 import { tasks } from './tasks';
+import { goals } from './goals';
+import { goalTargets } from './goalTargets';
+import { coinTransactions } from './coinTransactions';
 import { users } from './users';
 import { verifications } from './verifications';
 
@@ -34,6 +37,9 @@ export * from './contactSubmissions';
 export * from './dailyBriefCache';
 export * from './pushSubscriptions';
 export * from './docs';
+export * from './goals';
+export * from './goalTargets';
+export * from './coinTransactions';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),
@@ -51,6 +57,8 @@ export const usersRelations = relations(users, ({ many }) => ({
 	dailyBriefCache: many(dailyBriefCache),
 	pushSubscriptions: many(pushSubscriptions),
 	docs: many(docs),
+	goals: many(goals),
+	coinTransactions: many(coinTransactions),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -107,6 +115,12 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
 		fields: [tasks.userId],
 		references: [users.id],
 	}),
+	parent: one(tasks, {
+		fields: [tasks.parentTaskId],
+		references: [tasks.id],
+		relationName: 'taskChildren',
+	}),
+	children: many(tasks, { relationName: 'taskChildren' }),
 	events: many(events),
 	plannerItems: many(plannerItems),
 	focusSessions: many(focusSessions),
@@ -200,5 +214,27 @@ export const docsRelations = relations(docs, ({ one, many }) => ({
 	linkedEvent: one(events, {
 		fields: [docs.linkedEventId],
 		references: [events.id],
+	}),
+}));
+
+export const goalsRelations = relations(goals, ({ one, many }) => ({
+	user: one(users, {
+		fields: [goals.userId],
+		references: [users.id],
+	}),
+	targets: many(goalTargets),
+}));
+
+export const goalTargetsRelations = relations(goalTargets, ({ one }) => ({
+	goal: one(goals, {
+		fields: [goalTargets.goalId],
+		references: [goals.id],
+	}),
+}));
+
+export const coinTransactionsRelations = relations(coinTransactions, ({ one }) => ({
+	user: one(users, {
+		fields: [coinTransactions.userId],
+		references: [users.id],
 	}),
 }));

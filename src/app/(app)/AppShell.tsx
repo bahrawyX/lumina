@@ -6,12 +6,12 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
 import EventModal from "@/components/EventModal";
-import Toaster from "@/components/ui/Toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { PageTransition } from "@/components/ui/PageTransition";
 import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
 import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
 import PomodoroFloatingWidget from "@/components/focus/PomodoroFloatingWidget";
 import { motion, AnimatePresence } from "framer-motion";
-import { Toaster as SonnerToaster } from "sonner";
 import { useCalendarStore } from "@/store/useCalendarStore";
 import { ViewType } from "@/types";
 import { useCalendarEventsStore } from "@/store/useCalendarEventsStore";
@@ -332,22 +332,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 flex flex-col min-w-0 transition-all duration-500 overflow-hidden relative">
           <GuestBanner />
           <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 relative">
-            {children}
+            <PageTransition>{children}</PageTransition>
           </div>
         </main>
         <EventModal />
-        <Toaster />
-        <SonnerToaster
-          position="bottom-right"
-          offset={20}
-          gap={8}
-          toastOptions={{
-            unstyled: false,
-            classNames: {
-              toast: 'font-sans text-[13px]',
-            },
-          }}
-        />
+        <SonnerToaster />
         {/* OAuthRedirectToast must be in Suspense — useSearchParams requirement */}
         <Suspense fallback={null}>
           <OAuthRedirectToast />

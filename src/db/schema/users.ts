@@ -18,6 +18,21 @@ export const users = pgTable(
     lastFocusDate: date('last_focus_date'),
     lastSessionAt: timestamp('last_session_at', { withTimezone: true }),
     timezone: text('timezone').notNull().default('UTC'),
+    /** Active cosmetics: { accentColor?: string, confetti?: boolean } */
+    activeCosmetics: jsonb('active_cosmetics').$type<{
+      accentColor?: string;
+      confetti?: boolean;
+    }>().default({}),
+    /** Permanently owned item IDs */
+    ownedItems: jsonb('owned_items').$type<string[]>().default([]),
+    /** Consumable power-up counts */
+    consumables: jsonb('consumables').$type<{
+      focusBoost: number;
+      streakShield: number;
+      taskMultiplier: number;
+      autoPlan: number;
+      goalAccelerator: number;
+    }>().default({ focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0 }),
     notificationPreferences: jsonb('notification_preferences').$type<{
       dailyBrief: boolean;
       eventReminders: boolean;

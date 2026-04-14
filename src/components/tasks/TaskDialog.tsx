@@ -16,6 +16,7 @@ import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { formatDateOnly, normalizeDueDateString, parseDateOnly } from '../../utils/taskBoard';
 import { titleSchema, getFieldError } from '../../lib/validation';
 import { useDocsStore } from '../../store/useDocsStore';
+import { useGoalsStore } from '../../store/useGoalsStore';
 import * as docsPersistence from '../../lib/persistence/docsPersistence';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -70,12 +71,23 @@ interface TaskDialogProps {
   defaultStatus?: TaskStatus;
   onSave: (payload: TaskDialogPayload) => void;
   onClose: () => void;
+  /** Subtasks of the current task (edit mode only) */
+  subtasks?: Task[];
+  /** Callback to add a new subtask */
+  onAddSubtask?: (parentId: string, title: string) => void;
+  /** Toggle subtask done/todo */
+  onToggleSubtaskDone?: (taskId: string) => void;
+  /** Delete a subtask */
+  onDeleteSubtask?: (taskId: string) => void;
+  /** Open a subtask for editing (closes this dialog, opens subtask dialog) */
+  onOpenSubtask?: (task: Task) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const TaskDialog: React.FC<TaskDialogProps> = ({
   open, task, linkedEvent, defaultStatus = 'todo', onSave, onClose,
+  subtasks = [], onAddSubtask, onToggleSubtaskDone, onDeleteSubtask, onOpenSubtask,
 }) => {
   const isEdit = Boolean(task);
 
@@ -317,6 +329,21 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                 </div>
               </div>
 
+              {/* Subtasks (edit mode only) */}
+              {isEdit && task && (task.depth ?? 0) < 2 && (
+                <DialogSubtaskSection
+                  task={task}
+                  subtasks={subtasks}
+                  onAddSubtask={onAddSubtask}
+                  onToggleSubtaskDone={onToggleSubtaskDone}
+                  onDeleteSubtask={onDeleteSubtask}
+                  onOpenSubtask={onOpenSubtask}
+                />
+              )}
+
+              {/* Linked Goals */}
+              {isEdit && task && <LinkedGoalsSection taskId={task.id} />}
+
               {/* Linked Doc */}
               {isEdit && task && <LinkedDocSection taskId={task.id} taskTitle={task.title} />}
 
@@ -451,6 +478,221 @@ function LinkedDocSection({ taskId, taskTitle }: { taskId: string; taskTitle: st
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Dialog Subtask Section ──────────────────────────────────────────────────
+
+function DialogSubtaskSection({
+  task,
+  subtasks,
+  onAddSubtask,
+  onToggleSubtaskDone,
+  onDeleteSubtask,
+  onOpenSubtask,
+}: {
+  task: Task;
+  subtasks: Task[];
+  onAddSubtask?: (parentId: string, title: string) => void;
+  onToggleSubtaskDone?: (taskId: string) => void;
+  onDeleteSubtask?: (taskId: string) => void;
+  onOpenSubtask?: (task: Task) => void;
+}) {
+  const [newTitle, setNewTitle] = useState('');
+  const doneCount = subtasks.filter(s => s.status === 'done').length;
+  const total = subtasks.length;
+  const progress = total > 0 ? (doneCount / total) * 100 : 0;
+
+  const handleAdd = () => {
+    const trimmed = newTitle.trim();
+    if (trimmed && trimmed.length <= 255) {
+      onAddSubtask?.(task.id, trimmed);
+      setNewTitle('');
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs font-medium text-muted-foreground">
+        Subtasks {total > 0 && <span className="text-foreground">({doneCount}/{total})</span>}
+      </Label>
+
+      {/* Progress bar */}
+      {total > 0 && (
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
+
+      {/* Subtask list */}
+      {subtasks.length > 0 && (
+        <div className="space-y-0.5">
+          {subtasks.map(sub => {
+            const isDone = sub.status === 'done';
+            return (
+              <div key={sub.id} className="flex items-center gap-2 py-1 group/dlg-sub rounded-md hover:bg-muted/40 px-1 -mx-1">
+                {/* Checkbox */}
+                <button
+                  type="button"
+                  onClick={() => onToggleSubtaskDone?.(sub.id)}
+                  className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                    isDone
+                      ? 'bg-primary border-primary text-primary-foreground'
+                      : 'border-border hover:border-primary/50'
+                  }`}
+                >
+                  {isDone && (
+                    <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  )}
+                </button>
+
+                {/* Clickable title */}
+                <button
+                  type="button"
+                  className={`flex-1 text-left text-xs min-w-0 truncate transition-colors ${
+                    isDone ? 'line-through text-muted-foreground' : 'text-foreground hover:text-primary'
+                  }`}
+                  onClick={() => onOpenSubtask?.(sub)}
+                >
+                  {sub.title}
+                </button>
+
+                {/* Delete button */}
+                <button
+                  type="button"
+                  onClick={() => onDeleteSubtask?.(sub.id)}
+                  className="flex-shrink-0 opacity-0 group-hover/dlg-sub:opacity-100 text-muted-foreground hover:text-destructive transition-all p-0.5"
+                  aria-label="Delete subtask"
+                >
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Inline add input */}
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          maxLength={255}
+          value={newTitle}
+          onChange={e => setNewTitle(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+          placeholder="+ Add subtask..."
+          className="flex-1 text-xs bg-transparent border-b border-border/60 focus:border-primary outline-none py-1.5 text-foreground placeholder:text-muted-foreground/50"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Linked Goals Section ────────────────────────────────────────────────────
+
+function LinkedGoalsSection({ taskId }: { taskId: string }) {
+  const goals = useGoalsStore((s) => s.goals);
+  const updateTarget = useGoalsStore((s) => s.updateTarget);
+  const [showPicker, setShowPicker] = useState(false);
+
+  // Find all targets this task is linked to
+  const linkedTargets = goals
+    .filter(g => g.status === 'active')
+    .flatMap(g =>
+      g.targets
+        .filter(t => t.type === 'task_completion' && t.linkedTaskIds.includes(taskId))
+        .map(t => ({ goal: g, target: t }))
+    );
+
+  // Available targets to link to (task_completion targets that DON'T already include this task)
+  const availableTargets = goals
+    .filter(g => g.status === 'active')
+    .flatMap(g =>
+      g.targets
+        .filter(t => t.type === 'task_completion' && !t.linkedTaskIds.includes(taskId))
+        .map(t => ({ goal: g, target: t }))
+    );
+
+  const handleLink = (goalId: string, targetId: string, currentLinkedIds: string[]) => {
+    updateTarget(goalId, targetId, {
+      linkedTaskIds: [...currentLinkedIds, taskId],
+    });
+    setShowPicker(false);
+  };
+
+  const handleUnlink = (goalId: string, targetId: string, currentLinkedIds: string[]) => {
+    updateTarget(goalId, targetId, {
+      linkedTaskIds: currentLinkedIds.filter(id => id !== taskId),
+    });
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs font-medium text-muted-foreground">Goals</Label>
+
+      {/* Linked targets */}
+      {linkedTargets.length > 0 && (
+        <div className="space-y-1">
+          {linkedTargets.map(({ goal, target }) => (
+            <div key={target.id} className="flex items-center gap-2 text-xs py-1 px-1 rounded-md bg-muted/30">
+              {goal.emoji && <span className="text-sm">{goal.emoji}</span>}
+              <span className="text-foreground truncate flex-1">{goal.title} / {target.title}</span>
+              <button
+                type="button"
+                onClick={() => handleUnlink(goal.id, target.id, target.linkedTaskIds)}
+                className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+              >
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Link button / picker */}
+      {availableTargets.length > 0 && (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowPicker(prev => !prev)}
+            className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+          >
+            + Link to goal target
+          </button>
+          {showPicker && (
+            <div className="absolute top-full left-0 z-50 mt-1 w-64 bg-popover border border-border rounded-xl shadow-lg max-h-[200px] overflow-y-auto">
+              {availableTargets.map(({ goal, target }) => (
+                <button
+                  key={target.id}
+                  type="button"
+                  className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-muted/60 transition-colors"
+                  onClick={() => handleLink(goal.id, target.id, target.linkedTaskIds)}
+                >
+                  {goal.emoji && <span className="text-sm flex-shrink-0">{goal.emoji}</span>}
+                  <div className="min-w-0">
+                    <span className="text-xs text-foreground block truncate">{goal.title}</span>
+                    <span className="text-[10px] text-muted-foreground block truncate">{target.title}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {linkedTargets.length === 0 && availableTargets.length === 0 && (
+        <p className="text-[11px] text-muted-foreground/50">No goal targets to link to</p>
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-11 (v10 — standalone auth page, sidebar docs tree, light mode polish, selection colors removed)
+> Last updated: 2026-04-14 (v20 — Duplicate task action: POST /api/tasks/[id]/duplicate, optimistic store action with rollback, "Duplicate" item in both Kanban + List view 3-dot menus, brief bg-primary/10 highlight flash on the new card)
 
 ---
 
@@ -209,9 +209,19 @@ src/
 │   ├── tasks/
 │   │   ├── TaskBoard.tsx           ← data-tutorial="task-board-header" on board header
 │   │   ├── TaskColumn.tsx
-│   │   ├── TaskCard.tsx
-│   │   ├── TaskDialog.tsx
+│   │   ├── TaskCard.tsx            ← search highlight in title
+│   │   ├── TaskDialog.tsx          ← LinkedGoalsSection + DialogSubtaskSection
+│   │   ├── TaskListView.tsx        ← table view: sortable cols, group by, status popover
+│   │   ├── TaskFilterBar.tsx       ← search + priority/difficulty/duedate filters + mobile sheet
+│   │   ├── TaskCompletionPrompt.tsx
 │   │   └── TaskScheduleDialog.tsx
+│   ├── goals/
+│   │   ├── GoalDialog.tsx          ← create/edit goal (emoji, color, timeframe, targets)
+│   │   └── GoalDetailSheet.tsx     ← right-side sheet with progress ring + targets
+│   ├── dashboard/
+│   │   ├── GoalsWidget.tsx         ← top 3 active goals
+│   │   ├── CoinsWidget.tsx         ← balance + 3 recent transactions
+│   │   └── TodaySummaryWidget.tsx  ← 2x2 stat grid (due/done/focus/streak)
 │   ├── tutorial/
 │   │   └── TutorialOverlay.tsx    ← Full tutorial system (see §10)
 │   ├── ui/
@@ -529,9 +539,14 @@ All stores in `src/store/`. Stores with `persist` write to `localStorage`.
 - Undo/redo: `undo`, `redo`
 
 ### `useTaskBoardStore`
-- `tasks: Task[]`, `dbHydrated: boolean`
-- CRUD: `addTask`, `updateTask`, `deleteTask`, `hydrateFromDB`
-- Filtering: `filter`, `sort`, `searchQuery`
+- `tasks: Task[]` (flat array — subtasks included, distinguished by `parentTaskId`/`depth`), `dbHydrated: boolean`
+- CRUD: `addTask` (accepts optional `parentTaskId`, `depth`), `addSubtask(parentId, {title, ...})`, `updateTask`, `deleteTask` (cascade-removes all descendants from local state), `duplicateTask(id)` (optimistic copy at top of todo column, POST /api/tasks/[id]/duplicate, rollback + sonner error on failure)
+- Duplicate flash: `recentlyDuplicatedId: string | null` + `clearRecentlyDuplicated()` — TaskCard / TaskListRow apply `bg-primary/10` for ~600ms when their id matches
+- Selectors: `selectTasksByStatus`, `selectAllTasks`, `selectRootTasksByStatus` (root only), `selectSubtasks(parentId)`, `selectSubtaskProgress(parentId)` → `{done, total}`, `selectDescendantCount(taskId)`
+- List view state (persisted to `lumina_task_view_prefs` localStorage key): `viewMode: 'kanban'|'list'`, `listSortColumn`, `listSortDirection`, `listGroupBy: 'status'|'priority'|'difficulty'|'dueDate'|'none'`, `listCollapsedGroups: string[]`
+- List view actions: `setViewMode`, `setListSort`, `setListGroupBy`, `toggleListGroupCollapse`
+- Filter state (persisted in same `lumina_task_view_prefs` key): `searchQuery: string`, `priorityFilter: TaskPriority[]`, `difficultyFilter: TaskDifficulty[]`, `dueDateFilter: 'all'|'overdue'|'today'|'this_week'|'next_week'|'no_date'|'has_date'`
+- Filter actions: `setSearchQuery`, `setPriorityFilter`, `setDifficultyFilter`, `setDueDateFilter`, `clearAllFilters`
 
 ### `useFocusStore`
 - `activeSession: ActiveSession | null` — ephemeral timer state (persisted to localStorage for page-reload resume)
@@ -559,6 +574,21 @@ All stores in `src/store/`. Stores with `persist` write to `localStorage`.
 ### `useDragStore`
 - `isDragging: boolean`, `activeId: string | null`
 - `dragOverId: string | null`, `overlaps: string[]`
+
+### `useCoinsStore`
+- `balance: number`, `transactions: CoinTransaction[]`, `consumables: Record<ConsumableKey, number>`, `ownedItems: string[]`, `activeCosmetics: { accentColor?: string, confetti?: boolean }`, `dbHydrated: boolean`
+- Actions: `purchaseItem(itemId)` (optimistic + rollback), `activateCosmetic(patch)`, `addEarnedCoins(amount, tx?)`
+- Selectors: `selectCoinBalance`, `selectActiveCosmetics`, `selectOwnedItems`, `selectConsumables`
+- Instance methods: `ownsItem(id)`, `getConsumable(key)`
+- Hydrated via PersistenceBootstrap from GET /api/coins
+
+### `useGoalsStore`
+- `goals: Goal[]` (each goal has nested `targets: GoalTarget[]`), `dbHydrated: boolean`, `isLoading: boolean`, `selectedGoalId: string | null`
+- CRUD: `addGoal(input)` (creates goal + targets optimistically, persists via goalsPersistence), `updateGoal(id, patch)`, `archiveGoal(id)`, `deleteGoal(id)`
+- Target CRUD: `addTarget(goalId, input)`, `updateTarget(goalId, targetId, patch)`, `deleteTarget(goalId, targetId)`, `updateTargetProgress(goalId, targetId, value)`
+- Selectors: `selectActiveGoals` (sorted by endDate), `selectGoalsByStatus(status)`, `selectGoalProgress(goalId)`, `selectActiveGoalCount`
+- Progress: `computeGoalProgress(goal)` = average of target progress. Per-target: number (current/target), percentage (0-100), boolean (0 or 100), task_completion (done tasks / total tasks).
+- Auto-progress: PATCH /api/tasks/[id] auto-updates task_completion targets when a task's status changes.
 
 ### `useSettingsStore`
 - `theme: 'light' | 'dark' | 'system'`
@@ -761,19 +791,25 @@ Returns array:
   "remainingFocusTime": 600,
   "order": 0,
   "context": null,
-  "linkedEventId": "uuid|null"
+  "linkedEventId": "uuid|null",
+  "parentTaskId": "uuid|null",
+  "depth": 0
 }
 ```
 
 #### `POST /api/tasks`
 Required: `title`
-Optional: `description`, `status`, `priority`, `dueDate`, `durationMinutes`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`, `linkedEventId`
+Optional: `description`, `status`, `priority`, `dueDate`, `durationMinutes`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`, `linkedEventId`, `parentTaskId`
+- If `parentTaskId` provided: validates parent exists and belongs to user, rejects with 400 if parent depth ≥ 2 ("Maximum nesting depth reached"), sets `depth = parent.depth + 1`
+- If `parentTaskId` not provided: `depth = 0` (root task)
 
 #### `PATCH /api/tasks/[id]`
 Patchable: `title`, `description`, `status` (todo|doing|in_progress|done|archived), `priority`, `durationMinutes`, `dueDate`, `scheduledStart`, `scheduledEnd`, `remainingFocusTime`, `linkedEventId`
+Note: `parentTaskId` and `depth` are **immutable** — not patchable. No reparenting.
 
 #### `DELETE /api/tasks/[id]`
 Response: `{ "ok": true }`
+Children are cascade-deleted via FK constraint at the DB level.
 
 ---
 
@@ -1235,6 +1271,9 @@ Inactive item: `text-muted-foreground`
 | 18 | ~~Low~~ Resolved | ~~Pomodoro page scrollbar visible~~ — Fixed: Right settings panel `overflow-y-auto` → `overflow-hidden`. Page container gets `no-scrollbar` utility. |
 | 19 | ~~Low~~ Resolved | ~~BlockNote dropdown menus show scrollbar on open~~ — Fixed: All dropdown menus, color picker, sub-content panels have `overflow: hidden`, `scrollbar-width: none`, `::-webkit-scrollbar { display: none }`. |
 | 20 | ~~Low~~ Resolved | ~~BlockNote tooltips not light-mode friendly~~ — Fixed: Override `[data-slot="tooltip-content"]` to use `--popover`/`--popover-foreground` instead of `bg-primary`. |
+| 21 | ~~Medium~~ Resolved | ~~Sonner toasts look generic (over-rounded, left accent border, heavy shadows)~~ — Fixed: Created shadcn `Toaster` wrapper at `src/components/ui/sonner.tsx` using `unstyled: true` (Sonner strips visual defaults, keeps animations/positioning). All styling is plain Tailwind with semantic tokens — zero `!important`, zero hardcoded colors. `theme={resolvedTheme}` syncs with next-themes. Deleted custom `Toaster.tsx`, `useToastStore.ts`, and `sonnerConfig.ts`. `notify()` utility migrated from Zustand store to Sonner `toast()`. One unified toast system now — no more dual-toaster overlap. |
+| 22 | ~~Medium~~ Resolved | ~~GuestBanner pushes calendar height down~~ — Fixed: Changed from `flex-shrink-0` in-flow element to `absolute top-0 left-0 right-0 z-30` overlay with `backdrop-blur-sm`. No longer affects layout of content below. Animation changed from height expand to y-slide + opacity. |
+| 23 | ~~Medium~~ Resolved | ~~GuestBanner persists after signing in~~ — Fixed: `PersistenceBootstrap` now checks `session?.user?.id` on mount — if a valid auth session exists and `isGuest` is still true, calls `clearGuestSession()` to wipe the stale localStorage flag. Previously `clearGuestSession()` was never called from any auth flow. |
 
 ---
 
@@ -1321,6 +1360,101 @@ Inactive item: `text-muted-foreground`
 - Profile.tsx Commitments section rewritten: parse → confirm → add flow
 - `created_via_nl` boolean column on events table for analytics
 - Gemini API key server-side only — never in client bundle
+
+### 20.11 Subtasks (3-Level Hierarchy) — COMPLETE
+- DB: `parent_task_id` UUID nullable self-ref FK (CASCADE delete), `depth` integer (0/1/2), index on parent_task_id
+- API: POST validates depth (rejects depth ≥ 2 parents), GET returns flat with `parentTaskId`/`depth` fields. PATCH: parentTaskId immutable.
+- Store: flat `tasks[]` array. New actions: `addSubtask(parentId, {title, ...})`, modified `deleteTask` (recursive descendant removal). New selectors: `selectRootTasksByStatus`, `selectSubtasks`, `selectSubtaskProgress`, `selectDescendantCount`.
+- TaskCard: subtask progress pill ("2/5 subtasks" + chevron), Framer Motion expand/collapse, SubtaskRow with checkbox/title/priority badge, InlineAddSubtask input, auto-prompt toast when all subtasks complete.
+- TaskBoard: `columnTasks` filters to root only (`!t.parentTaskId`), `subtaskMap` precomputed for O(1) lookup, handlers for add/toggle/delete subtasks.
+- TaskDialog: "Subtasks" section in edit mode with progress bar, checkbox list, inline add input, click-to-open subtask editing.
+- DailyPlanView: pool filters to root tasks only. PlannedTaskCard: optional `subtaskCount` badge.
+- Files: `src/db/schema/tasks.ts`, `src/db/schema/index.ts`, `src/types/task.ts`, `src/app/api/tasks/route.ts`, `src/store/useTaskBoardStore.ts`, `src/utils/taskBoard.ts`, `src/components/tasks/TaskCard.tsx`, `src/components/tasks/TaskBoard.tsx`, `src/components/tasks/TaskColumn.tsx`, `src/components/tasks/TaskDialog.tsx`, `src/components/planner/DailyPlanView.tsx`, `src/components/planner/PlannedTaskCard.tsx`
+
+### 20.12 Task List View — COMPLETE
+- View toggle in TaskBoard header: kanban grid / list icons, active has `bg-muted` background. Persisted via `lumina_task_view_prefs` localStorage key.
+- `TaskListView.tsx`: full-width table with 9 columns (expand chevron, checkbox, title, priority, difficulty, due date, status popover, focus time, actions dropdown).
+- Sorting: click column headers to sort (toggle asc/desc). Sort by title (alpha), priority/difficulty/status (rank order), due date (earliest first, nulls last), focus time (highest first).
+- Grouping: "Group by" dropdown (Status/Priority/Difficulty/Due Date/None). Each group is collapsible with Framer Motion height animation. Group collapse state persisted.
+- Inline status change: Radix Popover on status pill, optimistic update.
+- Subtask expansion: chevron on parent rows, subtask rows slide in with AnimatePresence height animation. Sub-subtasks not shown in list (simplicity).
+- Mobile responsive: difficulty + focus time columns hidden on `< md`.
+- Focus time: computed from `useFocusStore.sessionHistory`, memoized as `Record<taskId, totalSeconds>` in TaskBoard.
+- Shared badge config: `src/utils/taskBadges.ts` exports `PRIORITY_META`, `DIFFICULTY_META`, `PRIORITY_ORDER`, `DIFFICULTY_ORDER`, `STATUS_ORDER`. Used by both TaskCard and TaskListView.
+- AnimatePresence `mode="wait"` wraps kanban ↔ list transition (150ms fade).
+- Files: `src/components/tasks/TaskListView.tsx` (NEW), `src/utils/taskBadges.ts` (NEW), `src/components/tasks/TaskBoard.tsx`, `src/components/tasks/TaskCard.tsx`, `src/store/useTaskBoardStore.ts`
+
+### 20.13 Goals / OKR System — COMPLETE
+- **Database**: `goals` table (status enum: active/completed/archived, timeframe enum: weekly/monthly/quarterly/yearly/custom, semantic color names) + `goal_targets` table (type enum: number/percentage/boolean/task_completion, linked_task_ids as JSON text).
+- **API**: `GET/POST /api/goals` (list with targets + create atomically), `PATCH/DELETE /api/goals/[id]` (soft archive default, ?hard=true for delete), `POST /api/goals/[id]/targets`, `PATCH/DELETE /api/goals/[id]/targets/[targetId]`.
+- **Task auto-progress**: PATCH /api/tasks/[id] fires fire-and-forget update to all task_completion targets referencing the changed task, recounting done tasks.
+- **Store**: `useGoalsStore` with goals[], dbHydrated, CRUD for goals + targets, optimistic updates, progress selectors. Hydrated via PersistenceBootstrap.
+- **Persistence**: `src/lib/persistence/goalsPersistence.ts` — fetchAllForCurrentUser, createOne, updateOne, deleteOne, addTarget, updateTarget, deleteTarget.
+- **GoalsPage**: `/goals` route, 2-column card grid, status filter (active/completed/archived), timeframe filter tabs, staggered card entrance animation, skeleton loading, empty state.
+- **GoalCard**: emoji + colored left border (5 semantic colors), title, timeframe badge, date range, animated progress bar, compact targets list (3 max + overflow), days remaining.
+- **GoalDetailSheet**: right-side sheet (480px), SVG progress ring (reused Pomodoro pattern), time-elapsed bar, targets with type-specific controls (number stepper, percentage stepper, boolean toggle, task completion list), add target inline form.
+- **GoalDialog**: MobileBottomSheet, emoji grid picker (20 presets), color swatches, timeframe auto-fill (weekly/monthly/quarterly/yearly), date range, description, inline targets builder.
+- **Task dialog integration**: "Goals" section in TaskDialog (edit mode) showing linked targets, "Link to goal target" picker popover for task_completion targets.
+- **Sidebar**: "Goals" nav item with target icon between Tasks and Plan Day.
+- Files: `src/db/schema/goals.ts`, `src/db/schema/goalTargets.ts`, `src/db/schema/index.ts`, `src/types/goal.ts`, `src/app/api/goals/route.ts`, `src/app/api/goals/[id]/route.ts`, `src/app/api/goals/[id]/targets/route.ts`, `src/app/api/goals/[id]/targets/[targetId]/route.ts`, `src/app/api/tasks/[id]/route.ts`, `src/lib/persistence/goalsPersistence.ts`, `src/store/useGoalsStore.ts`, `src/components/PersistenceBootstrap.tsx`, `src/components/Sidebar.tsx`, `src/app/(app)/goals/page.tsx`, `src/components/pages/GoalsPage.tsx`, `src/components/goals/GoalDetailSheet.tsx`, `src/components/goals/GoalDialog.tsx`, `src/components/tasks/TaskDialog.tsx`
+
+### 20.14 Coins Economy System — COMPLETE
+- **Database**: `coin_transactions` table (amount, reason, label, metadata). `users` table extended with `active_cosmetics` (JSONB), `owned_items` (JSONB string[]), `consumables` (JSONB).
+- **awardCoins engine**: `src/lib/coins/awardCoins.ts` — atomic DB transaction: insert coin_transaction + update user balance. Batch variant `awardCoinsBatch()` for multi-award.
+- **Earn rules**: `src/lib/coins/earnRules.ts` — functions return Award[] arrays for: focus sessions (+5 base, +2 per 10min, priority bonus, Pomodoro cycle +20), task completion (+5/+10 hard, early/on-time bonus, all-subtasks +10, daily bursts +25/+50), goals (+10 create, +30 at 50%, +100-300 complete), streaks (milestones at 3/7/14/30 days, 5/10 sessions), daily actions (brief +10, plan day +15, first task +5), docs (+15 first, +10 long, +5 AI).
+- **Earn triggers wired into**: POST /api/focus-sessions (focus + streak awards, focus boost consumable), PATCH /api/tasks/[id] (task completion + burst + subtask + multiplier consumable), POST /api/goals (creation award), PATCH /api/goals/[id] (completion awards).
+- **Shop**: 16 items across 3 categories: power-ups (focus boost, task multiplier, streak shield, goal accelerator, auto-plan), cosmetics (4 accent themes, confetti, 3 badges), feature unlocks (extended history, custom categories, extra templates). Config in `src/config/shopItems.ts`.
+- **API**: GET /api/coins (full economy data), POST /api/shop/purchase (atomic buy), POST /api/shop/activate-cosmetic (equip).
+- **Store**: `useCoinsStore` — balance, transactions, consumables, ownedItems, activeCosmetics. Actions: purchaseItem (optimistic), activateCosmetic, addEarnedCoins. Hydrated via PersistenceBootstrap.
+- **CosmeticsProvider**: Wraps app layout, injects `--primary` CSS variable override when accent color cosmetic active. Supports purple/rose/cyan/amber themes.
+- **ShopPage**: `/shop` route, category filter tabs, item cards with emoji/cost/buy/equip, active consumable display, coin balance header.
+- **Sidebar**: "Shop" nav item with coin balance badge.
+- Files: `src/db/schema/coinTransactions.ts`, `src/db/schema/users.ts` (modified), `src/db/schema/index.ts` (modified), `src/types/coins.ts`, `src/config/shopItems.ts`, `src/lib/coins/awardCoins.ts`, `src/lib/coins/earnRules.ts`, `src/lib/persistence/coinsPersistence.ts`, `src/store/useCoinsStore.ts`, `src/app/api/coins/route.ts`, `src/app/api/shop/purchase/route.ts`, `src/app/api/shop/activate-cosmetic/route.ts`, `src/app/api/focus-sessions/route.ts` (modified), `src/app/api/tasks/[id]/route.ts` (modified), `src/app/api/goals/route.ts` (modified), `src/app/api/goals/[id]/route.ts` (modified), `src/components/PersistenceBootstrap.tsx` (modified), `src/components/CosmeticsProvider.tsx`, `src/app/providers.tsx` (modified), `src/app/(app)/shop/page.tsx`, `src/components/pages/ShopPage.tsx`, `src/components/Sidebar.tsx` (modified)
+
+---
+
+### 20.15 Coins Economy Wiring — COMPLETE
+- **ConfettiEffect**: `src/components/ui/ConfettiEffect.tsx` — `triggerConfetti()` using canvas-confetti, respects prefers-reduced-motion. Fires on task completion when user owns confetti_unlock + activeCosmetics.confetti=true.
+- **showCoinToast**: `src/lib/coins/showCoinToast.ts` — sonner toast for coin earn/spend. Called from TaskBoard (on task complete), FocusPage (on session complete).
+- **Client wiring**: TaskBoard.tsx — `onTaskCompleted()` fires confetti + coin toast + updates useCoinsStore balance. FocusPage.tsx — reads coinsEarned from API response, calls showCoinToast + addEarnedCoins.
+- **Daily brief trigger**: POST /api/coins/award-brief — awards 10 coins once per day on brief dismiss. Called from useDailyBriefStore.dismiss().
+- **Planner trigger**: POST /api/planner-items — awards 15 coins when 3rd task planned today (deduped per day).
+- **Docs triggers**: POST /api/docs — awards 15 coins for first doc ever. PATCH /api/docs/[id] — awards 10 coins for 500+ word doc (deduped per doc).
+- **Streak shield**: POST /api/streaks/recover — checks consumables.streakShield > 0, decrements shield, restores streak, sets lastFocusDate to today. Returns { shieldUsed: true, restoredStreak, remainingShields }. Falls back to 402 if no shields.
+- **LottieOverlay**: `src/components/ui/LottieOverlay.tsx` — fixed z-50 centered overlay, auto-dismiss after duration, AnimatePresence fade. For streak milestones and goal completion celebrations.
+- Files: `src/components/ui/ConfettiEffect.tsx` (NEW), `src/lib/coins/showCoinToast.ts` (NEW), `src/components/ui/LottieOverlay.tsx` (NEW), `src/app/api/coins/award-brief/route.ts` (NEW), `src/components/tasks/TaskBoard.tsx` (modified), `src/components/pages/FocusPage.tsx` (modified), `src/store/useDailyBriefStore.ts` (modified), `src/app/api/planner-items/route.ts` (modified), `src/app/api/docs/route.ts` (modified), `src/app/api/docs/[id]/route.ts` (modified), `src/app/api/streaks/recover/route.ts` (rewritten)
+
+### 20.16 Full App Polish Pass — COMPLETE
+- **Loading skeletons**: ShopPage (6-card grid skeleton during `!dbHydrated`), TaskBoard list mode (8-row table skeleton during `!mounted`). GoalsPage already had skeleton.
+- **PageTransition**: `src/components/ui/PageTransition.tsx` — wraps page content in AppShell with AnimatePresence `mode="wait"`. Fade+slide animation (opacity 0→1, y: 6→0, 150ms easeOut) on route changes keyed by pathname.
+- **Cmd+K extended**: QuickSwitcher now searches Goals (active goals by title, shows progress % + timeframe badge, max 3) and Shop items (by name, shows cost, max 3). Results grouped: DOCS → TASKS → EVENTS → GOALS → SHOP → ACTIONS.
+- **Accessibility**: TaskCard subtask chevron (aria-expanded, aria-label). TaskListView sort headers (aria-sort). TaskListView rows (role=row, keyboard Enter to open, tabIndex). GoalCard (role=button, keyboard Enter/Space, aria-label with progress %). Progress bars (role=progressbar, aria-valuenow/min/max). Focus rings (focus-visible:ring-2 on GoalCard, ShopItemCard, sort headers, subtask chevron).
+- **Micro-interactions**: ShopItemCard hover:scale-[1.01] (150ms). GoalCard progress bar animates from 0 on mount (600ms, existing).
+- **Consistency**: All new cards use p-4, bg-card, border border-border, rounded-xl. Same pattern as TaskCard.
+- Files: `src/components/ui/PageTransition.tsx` (NEW), `src/app/(app)/AppShell.tsx` (modified), `src/components/pages/ShopPage.tsx` (modified: skeleton, hover, focus ring), `src/components/tasks/TaskBoard.tsx` (modified: list skeleton), `src/components/docs/QuickSwitcher.tsx` (modified: goals+shop search), `src/components/tasks/TaskCard.tsx` (modified: a11y), `src/components/tasks/TaskListView.tsx` (modified: a11y), `src/components/pages/GoalsPage.tsx` (modified: a11y)
+
+### 20.17 Task Filter & Search Bar — COMPLETE
+- **Store state (useTaskBoardStore)**: new fields `searchQuery`, `priorityFilter: TaskPriority[]`, `difficultyFilter: TaskDifficulty[]`, `dueDateFilter: DueDateFilter` ('all' | 'overdue' | 'today' | 'this_week' | 'next_week' | 'no_date' | 'has_date'). Actions: `setSearchQuery`, `setPriorityFilter`, `setDifficultyFilter`, `setDueDateFilter`, `clearAllFilters`. Persisted in the same `lumina_task_view_prefs` localStorage key as view prefs.
+- **Filter engine**: `src/utils/taskFilters.ts` — pure `filterTasks()` (AND-composes all filters, search matches title/description/subtask titles), `hasActiveFilters()`, `activeFilterCount()` helpers. Uses date-fns (`startOfToday`, `isToday`, `isThisWeek`, `addDays`, `isWithinInterval`, `isBefore`) for due date logic.
+- **Highlight utility**: `src/utils/highlightText.tsx` — wraps matching substrings in `<mark className="bg-primary/20 text-foreground rounded px-0.5 not-italic">`. Case-insensitive. Used in TaskCard + TaskListView title rendering.
+- **TaskFilterBar** (`src/components/tasks/TaskFilterBar.tsx`): search input (debounced 250ms), Priority/Difficulty multi-select Radix Popovers (checkbox pattern, with Select All/Clear), Due date single-select Popover, Clear button (only when active). Desktop layout uses inline dropdowns. Mobile (< md): Priority/Difficulty popovers hidden, replaced with a single "Filters" button that opens a `MobileBottomSheet` containing all three filter sections + Clear/Done actions. Active count badge on mobile button when filters applied.
+- **Integration**: TaskBoard memoizes `columnTasks` after filter (kanban shows filtered results), TaskListView filters root tasks before sort+group. Both show "Showing X of Y tasks" count line when filters active (AnimatePresence height animation). TaskListView shows "No tasks match your filters" empty state with Clear button when filtered result is 0 and raw count > 0.
+- Files: `src/components/tasks/TaskFilterBar.tsx` (NEW), `src/utils/taskFilters.ts` (NEW), `src/utils/highlightText.tsx` (NEW), `src/store/useTaskBoardStore.ts` (modified), `src/components/tasks/TaskBoard.tsx` (modified), `src/components/tasks/TaskListView.tsx` (modified), `src/components/tasks/TaskCard.tsx` (modified)
+
+### 20.18 Dashboard Widgets — COMPLETE
+- **GoalsWidget** (`src/components/dashboard/GoalsWidget.tsx`): shows top 3 active goals sorted by end_date asc. Each row: emoji + title + progress % + days left badge (Overdue in destructive, Due today in amber, otherwise muted). Animated progress bar on mount. Empty state: "No active goals" with Create link. Skeleton while `!dbHydrated`.
+- **CoinsWidget** (`src/components/dashboard/CoinsWidget.tsx`): large 🪙 balance (text-3xl bold tabular-nums) + last 3 transactions with label, signed amount (emerald for earn), and relative time (`formatDistanceToNow`). Empty state: encouraging copy. Skeleton while `!dbHydrated`.
+- **TodaySummaryWidget** (`src/components/dashboard/TodaySummaryWidget.tsx`): 2x2 grid stat cells: Due today (calendar icon), Completed today (check icon), Focus time (clock icon, "Xh Ym"), Day streak (flame icon, amber). Data from `useTaskBoardStore`, `useFocusStore.sessionHistory`, `useStreakStore`. Skeleton while any store not hydrated.
+- **Integration**: Added to `CalendarPage` between `DailyBriefCard` and the calendar grid, as a 3-col responsive grid (1 col mobile, 3 cols md+). Widgets use staggered Framer Motion mount animation.
+- **Critical fix**: Changed GoalsWidget from `useGoalsStore(selectActiveGoals)` to `useGoalsStore(s => s.goals)` + `useMemo` — the selector returned a new array every render causing "getSnapshot should be cached" infinite loop. Pattern note: Zustand selectors that transform state (filter/sort/slice) must be wrapped in useMemo on the consumer side, or the selector must return stable references.
+- Files: `src/components/dashboard/GoalsWidget.tsx` (NEW), `src/components/dashboard/CoinsWidget.tsx` (NEW), `src/components/dashboard/TodaySummaryWidget.tsx` (NEW), `src/components/pages/CalendarPage.tsx` (modified)
+
+### 20.19 Duplicate Task Action — COMPLETE
+- **API**: `POST /api/tasks/[id]/duplicate` — fetches original (ownership check), inserts new task with `title = "{title} (copy)"`, `status = 'todo'`, fresh `id/createdAt/updatedAt`, and clears `linkedEventId`/`linkedDocId`/`scheduledStart`/`scheduledEnd`/`remainingFocusTime`/`parentTaskId`. Returns the new task object. Subtasks are NOT duplicated. Coins are NOT awarded.
+- **Store action**: `duplicateTask(taskId)` in `useTaskBoardStore` — optimistically inserts a copy at `order: 0` of the todo column (bumps siblings by +1), then POSTs. On success, swaps optimistic id for real id. On failure, removes the optimistic row + fires `toast.error("Couldn't duplicate task")`. Sets `recentlyDuplicatedId` for highlight flash.
+- **UI**: New "Duplicate" item in the 3-dot dropdown menu on `TaskCard` (with `CopyIcon`) and `TaskListRow`. Both fire `toast.success('Task duplicated')`. No confirmation dialog — duplication is reversible.
+- **Highlight flash**: When a card / row id matches `recentlyDuplicatedId`, applies `bg-primary/10` with a 600ms `transition-[background-color]`. Auto-cleared via `clearRecentlyDuplicated()` after 700ms timeout from inside the matching component.
+- Files: `src/app/api/tasks/[id]/duplicate/route.ts` (NEW), `src/store/useTaskBoardStore.ts` (modified — added `duplicateTask`, `recentlyDuplicatedId`, `clearRecentlyDuplicated`), `src/components/tasks/TaskCard.tsx` (modified — `CopyIcon`, menu item, highlight class + auto-clear effect), `src/components/tasks/TaskListView.tsx` (modified — menu item, highlight class)
 
 ---
 
@@ -1465,7 +1599,15 @@ Indexes: user_id, parent_id, (user_id, parent_id), linked_task_id, linked_event_
 
 #### Additional columns
 - `tasks.linked_doc_id` (uuid, nullable)
+- `tasks.parent_task_id` (uuid, nullable, self-ref FK → tasks.id ON DELETE CASCADE) — subtask hierarchy, NULL = root task
+- `tasks.depth` (integer, NOT NULL, default 0) — 0=root, 1=subtask, 2=sub-subtask. Max 3 levels.
+- Index: `tasks_parent_task_id_idx` on parent_task_id
 - `events.linked_doc_id` (uuid, nullable)
+
+#### Goals tables
+- `goals` table: id(UUID PK), user_id(FK→users CASCADE), title(varchar 255), description(text), emoji(varchar 10), color(varchar 20 — semantic name: blue/green/purple/orange/red), status(enum: active/completed/archived), timeframe(enum: weekly/monthly/quarterly/yearly/custom), start_date(timestamptz), end_date(timestamptz), created_at, updated_at. Indexes: user_id, status.
+- `goal_targets` table: id(UUID PK), goal_id(FK→goals CASCADE), title(varchar 255), description(text), type(enum: number/percentage/boolean/task_completion), current_value(numeric 10,2), target_value(numeric 10,2), unit(varchar 50), linked_task_ids(text — JSON array), order(int), created_at, updated_at. Index: goal_id.
+- Relations: goals.user → users, goals.targets → many(goalTargets), goalTargets.goal → one(goals)
 
 ### API Routes
 | Route | Method | Description |
