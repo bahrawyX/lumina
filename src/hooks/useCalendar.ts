@@ -36,7 +36,11 @@ function dedupeExternalInstances(instances: EventInstance[]): EventInstance[] {
 }
 
 export const useCalendar = () => {
-  const { searchQuery, activeFilters, view, currentDate, isFocusMode } = useCalendarStore();
+  const searchQuery   = useCalendarStore((s) => s.searchQuery);
+  const activeFilters = useCalendarStore((s) => s.activeFilters);
+  const view          = useCalendarStore((s) => s.view);
+  const currentDate   = useCalendarStore((s) => s.currentDate);
+  const isFocusMode   = useCalendarStore((s) => s.isFocusMode);
   const events        = useCalendarEventsStore((s) => s.events);
   const outlookEvents = usePlannerStore((s) => s.outlookEvents);
   const googleEvents  = usePlannerStore((s) => s.googleEvents);

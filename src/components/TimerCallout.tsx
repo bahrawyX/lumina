@@ -30,16 +30,18 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // ─────────────────────────────────────────────────────────────────────────────
 const TimerCallout: React.FC = () => {
-  const {
-    activeFocusSession,
-    startFocusSession,
-    completeFocusSession,
-    cancelFocusSession,
-    isTimerExpanded,
-    setTimerExpanded,
-    timerPosition,
-    setTimerPosition,
-  } = useCalendarStore();
+  // Per-field selectors — the whole-store destructure re-rendered this
+  // floating widget on every unrelated state change (tab switch, view
+  // change, etc.) and contributed to route-change lag since it's always
+  // mounted.
+  const activeFocusSession  = useCalendarStore((s) => s.activeFocusSession);
+  const startFocusSession   = useCalendarStore((s) => s.startFocusSession);
+  const completeFocusSession = useCalendarStore((s) => s.completeFocusSession);
+  const cancelFocusSession  = useCalendarStore((s) => s.cancelFocusSession);
+  const isTimerExpanded     = useCalendarStore((s) => s.isTimerExpanded);
+  const setTimerExpanded    = useCalendarStore((s) => s.setTimerExpanded);
+  const timerPosition       = useCalendarStore((s) => s.timerPosition);
+  const setTimerPosition    = useCalendarStore((s) => s.setTimerPosition);
 
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const [timeLeft, setTimeLeft] = useState(0);

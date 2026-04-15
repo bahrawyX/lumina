@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
+import EventModal from "@/components/EventModal";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { PageTransition } from "@/components/ui/PageTransition";
+import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
 import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
 import PomodoroFloatingWidget from "@/components/focus/PomodoroFloatingWidget";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,22 +20,21 @@ import { useTaskBoardStore } from "@/store/useTaskBoardStore";
 import { useFocusStore } from "@/store/useFocusStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
+import InstallPrompt from "@/components/pwa/InstallPrompt";
 import OfflineIndicator from "@/components/pwa/OfflineIndicator";
+import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
 
-// Heavy optional surfaces — lazy-load so the app shell stays lean.
-// These only mount when the user opens them or when specific conditions
-// fire (event selected, cmd+K pressed, tutorial triggered, first install
-// prompt, ambient sound panel opened).
-const EventModal        = lazy(() => import("@/components/EventModal"));
-const QuickSwitcher     = lazy(() => import("@/components/docs/QuickSwitcher"));
-const AmbientSoundDrawer = lazy(() => import("@/components/ambient/AmbientSoundDrawer"));
-const TutorialOverlay   = lazy(() => import("@/components/tutorial/TutorialOverlay"));
-const InstallPrompt     = lazy(() => import("@/components/pwa/InstallPrompt"));
+// Genuinely gated — QuickSwitcher only mounts once Cmd+K fires. The
+// other global surfaces (EventModal, TutorialOverlay, AmbientSoundDrawer,
+// InstallPrompt) are eagerly imported above because wrapping them in a
+// Suspense boundary at the layout level caused a perceived lag on every
+// route change (the boundary re-evaluates even after chunks are cached).
+const QuickSwitcher = lazy(() => import("@/components/docs/QuickSwitcher"));
 
 
 const MOBILE_NAV_ITEMS = [
@@ -147,16 +148,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const {
-    openModal,
-    calculateIntelligence,
-    isFocusMode,
-    setFocusMode,
-    setCurrentDate,
-    setView,
-    setTab,
-  } = useCalendarStore();
-  const { undo, redo } = useCalendarEventsStore();
+  // Per-field selectors — subscribing to the whole store via `useStore()`
+  // causes a re-render on every state change (current date, view, tab,
+  // focus mode, etc.) which cascades into every child and shows up as
+  // perceived route-change lag. Individual selectors stay stable.
+  const openModal            = useCalendarStore((s) => s.openModal);
+  const calculateIntelligence = useCalendarStore((s) => s.calculateIntelligence);
+  const isFocusMode          = useCalendarStore((s) => s.isFocusMode);
+  const setFocusMode         = useCalendarStore((s) => s.setFocusMode);
+  const setCurrentDate       = useCalendarStore((s) => s.setCurrentDate);
+  const setView              = useCalendarStore((s) => s.setView);
+  const setTab               = useCalendarStore((s) => s.setTab);
+  const undo = useCalendarEventsStore((s) => s.undo);
+  const redo = useCalendarEventsStore((s) => s.redo);
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
 
@@ -346,7 +350,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <PageTransition>{children}</PageTransition>
           </div>
         </main>
-        <Suspense fallback={null}><EventModal /></Suspense>
+        <EventModal />
         <SonnerToaster />
         {/* OAuthRedirectToast must be in Suspense — useSearchParams requirement */}
         <Suspense fallback={null}>
@@ -354,11 +358,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
-        <Suspense fallback={null}><TutorialOverlay /></Suspense>
-        <Suspense fallback={null}><AmbientSoundDrawer /></Suspense>
+        <TutorialOverlay />
+        <AmbientSoundDrawer />
         <FloatingAmbientPlayer />
         <PomodoroFloatingWidget />
-        <Suspense fallback={null}><InstallPrompt /></Suspense>
+        <InstallPrompt />
         <OfflineIndicator />
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">

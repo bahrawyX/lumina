@@ -26,11 +26,17 @@ import {
 } from '@/components/icons';
 
 const CalendarPage: React.FC = () => {
-  const {
-    view, setView, currentDate, setCurrentDate,
-    isFocusMode, setFocusMode, searchQuery, setSearchQuery
-  } = useCalendarStore();
-  const { undo, redo } = useCalendarEventsStore();
+  // Per-field selectors to avoid re-rendering on every store update.
+  const view            = useCalendarStore((s) => s.view);
+  const setView         = useCalendarStore((s) => s.setView);
+  const currentDate     = useCalendarStore((s) => s.currentDate);
+  const setCurrentDate  = useCalendarStore((s) => s.setCurrentDate);
+  const isFocusMode     = useCalendarStore((s) => s.isFocusMode);
+  const setFocusMode    = useCalendarStore((s) => s.setFocusMode);
+  const searchQuery     = useCalendarStore((s) => s.searchQuery);
+  const setSearchQuery  = useCalendarStore((s) => s.setSearchQuery);
+  const undo = useCalendarEventsStore((s) => s.undo);
+  const redo = useCalendarEventsStore((s) => s.redo);
 
   const { filteredInstances } = useCalendar();
   const [navDirection, setNavDirection] = useState<number>(0);

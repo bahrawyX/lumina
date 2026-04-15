@@ -173,31 +173,30 @@ const AppSidebar: React.FC = () => {
   const startTutorial = useTutorialStore((s) => s.startTutorial);
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const tasks = useTaskBoardStore((s) => s.tasks);
-  const {
-    openModal,
-    activeFilters,
-    toggleFilter,
-    profile,
-    insights,
-    activeFocusSession,
-    startFocusSession,
-    cancelFocusSession,
-    isSidebarCollapsed,
-    setSidebarCollapsed,
-    customCategories,
-    addCustomCategory,
-    updateContext,
-    deleteContext,
-  } = useCalendarStore();
-  const {
-    outlookConnected,
-    outlookSyncing,
-    setOutlookConnected,
-    setOutlookEvents,
-    setGoogleEvents,
-    clearExternalEvents,
-  } = usePlannerStore();
-  const googleEvents = usePlannerStore((s) => s.googleEvents);
+  // Per-field selectors — a full-store destructure would re-render the
+  // sidebar on every state change (pathname, date, view, etc.) and show
+  // up as perceived lag when the user navigates routes.
+  const openModal           = useCalendarStore((s) => s.openModal);
+  const activeFilters       = useCalendarStore((s) => s.activeFilters);
+  const toggleFilter        = useCalendarStore((s) => s.toggleFilter);
+  const profile             = useCalendarStore((s) => s.profile);
+  const insights            = useCalendarStore((s) => s.insights);
+  const activeFocusSession  = useCalendarStore((s) => s.activeFocusSession);
+  const startFocusSession   = useCalendarStore((s) => s.startFocusSession);
+  const cancelFocusSession  = useCalendarStore((s) => s.cancelFocusSession);
+  const isSidebarCollapsed  = useCalendarStore((s) => s.isSidebarCollapsed);
+  const setSidebarCollapsed = useCalendarStore((s) => s.setSidebarCollapsed);
+  const customCategories    = useCalendarStore((s) => s.customCategories);
+  const addCustomCategory   = useCalendarStore((s) => s.addCustomCategory);
+  const updateContext       = useCalendarStore((s) => s.updateContext);
+  const deleteContext       = useCalendarStore((s) => s.deleteContext);
+  const outlookConnected    = usePlannerStore((s) => s.outlookConnected);
+  const outlookSyncing      = usePlannerStore((s) => s.outlookSyncing);
+  const setOutlookConnected = usePlannerStore((s) => s.setOutlookConnected);
+  const setOutlookEvents    = usePlannerStore((s) => s.setOutlookEvents);
+  const setGoogleEvents     = usePlannerStore((s) => s.setGoogleEvents);
+  const clearExternalEvents = usePlannerStore((s) => s.clearExternalEvents);
+  const googleEvents        = usePlannerStore((s) => s.googleEvents);
 
   const [outlookLoading, setOutlookLoading] = React.useState(false);
   const [customContextDialogOpen, setCustomContextDialogOpen] = useState(false);
