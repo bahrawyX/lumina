@@ -4,7 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoalsStore, selectActiveGoals } from '@/store/useGoalsStore';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
+import { Skeleton } from 'boneyard-js/react';
 import type { Goal, GoalStatus, GoalTimeframe, GoalColor } from '@/types/goal';
 import { computeGoalProgress, computeTargetProgress, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
 import { GoalDetailSheet } from '@/components/goals/GoalDetailSheet';
@@ -264,18 +265,22 @@ export default function GoalsPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {!dbHydrated ? (
-          /* Skeleton loading */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
-                <Skeleton className="h-4 w-3/4 rounded" />
-                <Skeleton className="h-1.5 w-full rounded-full" />
-                <Skeleton className="h-3 w-1/2 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
+        <Skeleton
+          name="page.GoalsPage.grid"
+          loading={!dbHydrated}
+          fallback={
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+                  <SkeletonPrimitive className="h-4 w-3/4 rounded" />
+                  <SkeletonPrimitive className="h-1.5 w-full rounded-full" />
+                  <SkeletonPrimitive className="h-3 w-1/2 rounded" />
+                </div>
+              ))}
+            </div>
+          }
+        >
+        {filtered.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="text-4xl">🎯</div>
@@ -316,6 +321,7 @@ export default function GoalsPage() {
             </AnimatePresence>
           </div>
         )}
+        </Skeleton>
       </div>
 
       {/* Dialogs */}

@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { LuminaAuthProvider } from "@/components/AuthProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CosmeticsProvider } from "@/components/CosmeticsProvider";
+import "@/bones/registry";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {

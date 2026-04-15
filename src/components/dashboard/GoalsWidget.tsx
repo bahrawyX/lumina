@@ -8,7 +8,8 @@ import { useGoalsStore } from '@/store/useGoalsStore';
 import { computeGoalProgress, GOAL_COLOR_MAP } from '@/types/goal';
 import type { GoalColor } from '@/types/goal';
 import { differenceInDays, isPast } from 'date-fns';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
+import { Skeleton } from 'boneyard-js/react';
 
 export const GoalsWidget: React.FC = () => {
   const router = useRouter();
@@ -38,19 +39,24 @@ export const GoalsWidget: React.FC = () => {
         </Link>
       </div>
 
-      {!dbHydrated ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-3.5 w-32 rounded" />
-                <Skeleton className="h-3 w-10 rounded" />
+      <Skeleton
+        name="dashboard.GoalsWidget"
+        loading={!dbHydrated}
+        fallback={
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <SkeletonPrimitive className="h-3.5 w-32 rounded" />
+                  <SkeletonPrimitive className="h-3 w-10 rounded" />
+                </div>
+                <SkeletonPrimitive className="h-1.5 w-full rounded-full" />
               </div>
-              <Skeleton className="h-1.5 w-full rounded-full" />
-            </div>
-          ))}
-        </div>
-      ) : topThree.length === 0 ? (
+            ))}
+          </div>
+        }
+      >
+      {topThree.length === 0 ? (
         <div className="flex flex-col items-center py-4 gap-1.5">
           <p className="text-xs text-muted-foreground">No active goals</p>
           <Link href="/goals" className="text-xs font-medium text-primary hover:text-primary/80 transition-colors">
@@ -105,6 +111,7 @@ export const GoalsWidget: React.FC = () => {
           })}
         </div>
       )}
+      </Skeleton>
     </motion.div>
   );
 };

@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCoinsStore, selectCoinBalance, selectOwnedItems, selectActiveCosmetics } from '@/store/useCoinsStore';
 import { SHOP_ITEMS, type ShopItem, ACCENT_COLORS } from '@/config/shopItems';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
+import { Skeleton } from 'boneyard-js/react';
 import { toast } from 'sonner';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
@@ -189,25 +190,29 @@ export default function ShopPage() {
 
       {/* Items grid */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {!dbHydrated ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <Skeleton className="w-8 h-8 rounded-lg flex-shrink-0" />
-                  <div className="flex-1 space-y-1.5">
-                    <Skeleton className="h-3.5 w-2/3 rounded" />
-                    <Skeleton className="h-2.5 w-full rounded" />
+        <Skeleton
+          name="page.ShopPage.grid"
+          loading={!dbHydrated}
+          fallback={
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <SkeletonPrimitive className="w-8 h-8 rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <SkeletonPrimitive className="h-3.5 w-2/3 rounded" />
+                      <SkeletonPrimitive className="h-2.5 w-full rounded" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <SkeletonPrimitive className="h-4 w-16 rounded" />
+                    <SkeletonPrimitive className="h-7 w-16 rounded-lg" />
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <Skeleton className="h-4 w-16 rounded" />
-                  <Skeleton className="h-7 w-16 rounded-lg" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
+              ))}
+            </div>
+          }
+        >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
           <AnimatePresence mode="popLayout">
             {filtered.map(item => {
@@ -233,7 +238,7 @@ export default function ShopPage() {
             })}
           </AnimatePresence>
         </div>
-        )}
+        </Skeleton>
       </div>
     </div>
   );

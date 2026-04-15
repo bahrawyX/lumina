@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useStreakStore } from '@/store/useStreakStore';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
+import { Skeleton } from 'boneyard-js/react';
 import { isToday } from 'date-fns';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
@@ -75,16 +76,20 @@ export const TodaySummaryWidget: React.FC = () => {
     >
       <h3 className="text-sm font-semibold text-foreground mb-3">Today</h3>
 
-      {isLoading ? (
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="space-y-1.5">
-              <Skeleton className="h-3 w-16 rounded" />
-              <Skeleton className="h-6 w-12 rounded" />
-            </div>
-          ))}
-        </div>
-      ) : (
+      <Skeleton
+        name="dashboard.TodaySummaryWidget"
+        loading={isLoading}
+        fallback={
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="space-y-1.5">
+                <SkeletonPrimitive className="h-3 w-16 rounded" />
+                <SkeletonPrimitive className="h-6 w-12 rounded" />
+              </div>
+            ))}
+          </div>
+        }
+      >
         <div className="grid grid-cols-2 gap-3 divide-x divide-y divide-border -m-1">
           <div className="p-3 flex flex-col items-start gap-1">
             <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -115,7 +120,7 @@ export const TodaySummaryWidget: React.FC = () => {
             <span className="text-2xl font-bold tabular-nums text-foreground">{dailyStreak}</span>
           </div>
         </div>
-      )}
+      </Skeleton>
     </motion.div>
   );
 };

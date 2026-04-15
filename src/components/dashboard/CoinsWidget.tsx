@@ -4,7 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useCoinsStore } from '@/store/useCoinsStore';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
+import { Skeleton } from 'boneyard-js/react';
 import { formatDistanceToNow } from 'date-fns';
 
 export const CoinsWidget: React.FC = () => {
@@ -27,17 +28,21 @@ export const CoinsWidget: React.FC = () => {
         </Link>
       </div>
 
-      {!dbHydrated ? (
-        <div className="space-y-3">
-          <Skeleton className="h-9 w-28 rounded" />
-          {[1, 2, 3].map(i => (
-            <div key={i} className="flex items-center justify-between">
-              <Skeleton className="h-3 w-24 rounded" />
-              <Skeleton className="h-3 w-10 rounded" />
-            </div>
-          ))}
-        </div>
-      ) : (
+      <Skeleton
+        name="dashboard.CoinsWidget"
+        loading={!dbHydrated}
+        fallback={
+          <div className="space-y-3">
+            <SkeletonPrimitive className="h-9 w-28 rounded" />
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center justify-between">
+                <SkeletonPrimitive className="h-3 w-24 rounded" />
+                <SkeletonPrimitive className="h-3 w-10 rounded" />
+              </div>
+            ))}
+          </div>
+        }
+      >
         <>
           <div className="flex items-baseline gap-2 mb-4">
             <span className="text-3xl">🪙</span>
@@ -65,7 +70,7 @@ export const CoinsWidget: React.FC = () => {
             </div>
           )}
         </>
-      )}
+      </Skeleton>
     </motion.div>
   );
 };

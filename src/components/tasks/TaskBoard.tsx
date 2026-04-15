@@ -42,7 +42,8 @@ import { TaskListView } from './TaskListView';
 import { AnimatePresence } from 'framer-motion';
 import { useFocusStore } from '../../store/useFocusStore';
 import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
+import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
+import { Skeleton } from 'boneyard-js/react';
 import { useCoinsStore, selectActiveCosmetics } from '../../store/useCoinsStore';
 import { triggerConfetti } from '../ui/ConfettiEffect';
 import { showCoinToast } from '../../lib/coins/showCoinToast';
@@ -770,34 +771,36 @@ export const TaskBoard: React.FC = () => {
           transition={{ duration: 0.15 }}
           className="flex-1 flex flex-col min-h-0"
         >
-      {!mounted && (
-        <div className="flex gap-3 h-full overflow-hidden pb-4 items-start px-1 md:px-0">
-          {COLUMNS.map(col => (
-            <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full">
-              {/* column header skeleton */}
-              <div className="mb-3 px-1 flex items-center gap-2.5 py-1">
-                <Skeleton className="w-2 h-2 rounded-full flex-shrink-0" />
-                <Skeleton className="h-4 w-16 rounded-md" />
-                <Skeleton className="ml-auto h-4 w-6 rounded-full" />
-              </div>
-              {/* column body skeleton */}
-              <div className="flex-1 rounded-2xl border border-border/50 bg-muted/20 p-1.5 flex flex-col gap-2">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="rounded-xl border border-border/50 bg-card p-3 flex flex-col gap-2">
-                    <div className="flex items-start gap-2">
-                      <Skeleton className="flex-1 h-4 rounded" />
-                      <Skeleton className="h-6 w-6 rounded-lg flex-shrink-0" />
+      <Skeleton
+        name="tasks.TaskBoard.kanban"
+        loading={!mounted}
+        fallback={
+          <div className="flex gap-3 h-full overflow-hidden pb-4 items-start px-1 md:px-0">
+            {COLUMNS.map(col => (
+              <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full">
+                <div className="mb-3 px-1 flex items-center gap-2.5 py-1">
+                  <SkeletonPrimitive className="w-2 h-2 rounded-full flex-shrink-0" />
+                  <SkeletonPrimitive className="h-4 w-16 rounded-md" />
+                  <SkeletonPrimitive className="ml-auto h-4 w-6 rounded-full" />
+                </div>
+                <div className="flex-1 rounded-2xl border border-border/50 bg-muted/20 p-1.5 flex flex-col gap-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="rounded-xl border border-border/50 bg-card p-3 flex flex-col gap-2">
+                      <div className="flex items-start gap-2">
+                        <SkeletonPrimitive className="flex-1 h-4 rounded" />
+                        <SkeletonPrimitive className="h-6 w-6 rounded-lg flex-shrink-0" />
+                      </div>
+                      <div className="flex gap-1.5 pl-[14px]">
+                        <SkeletonPrimitive className="h-4 w-14 rounded-md" />
+                      </div>
                     </div>
-                    <div className="flex gap-1.5 pl-[14px]">
-                      <Skeleton className="h-4 w-14 rounded-md" />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        }
+      >
       {mounted && <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -853,6 +856,7 @@ export const TaskBoard: React.FC = () => {
           ) : null}
         </DragOverlay>
       </DndContext>}
+      </Skeleton>
         </motion.div>
       ) : (
         <motion.div
@@ -863,24 +867,28 @@ export const TaskBoard: React.FC = () => {
           transition={{ duration: 0.15 }}
           className="flex-1 flex flex-col min-h-0"
         >
-          {!mounted && (
-            <div className="flex-1 rounded-xl border border-border/50 overflow-hidden">
-              <div className="flex items-center h-8 bg-background border-b border-border px-2 gap-2">
-                <Skeleton className="h-3 w-8" /><Skeleton className="h-3 w-8" /><Skeleton className="h-3 flex-1" /><Skeleton className="h-3 w-14" /><Skeleton className="h-3 w-14 hidden md:block" /><Skeleton className="h-3 w-16" /><Skeleton className="h-3 w-16" />
-              </div>
-              {[1,2,3,4,5,6,7,8].map(i => (
-                <div key={i} className="flex items-center h-11 border-b border-border/50 px-2 gap-3">
-                  <Skeleton className="w-4 h-4 rounded flex-shrink-0" />
-                  <Skeleton className="w-4 h-4 rounded flex-shrink-0" />
-                  <Skeleton className="h-3.5 flex-1 rounded" />
-                  <Skeleton className="h-4 w-12 rounded-md flex-shrink-0" />
-                  <Skeleton className="h-4 w-12 rounded-md flex-shrink-0 hidden md:block" />
-                  <Skeleton className="h-3 w-14 rounded flex-shrink-0" />
-                  <Skeleton className="h-5 w-16 rounded-md flex-shrink-0" />
+          <Skeleton
+            name="tasks.TaskBoard.list"
+            loading={!mounted}
+            fallback={
+              <div className="flex-1 rounded-xl border border-border/50 overflow-hidden">
+                <div className="flex items-center h-8 bg-background border-b border-border px-2 gap-2">
+                  <SkeletonPrimitive className="h-3 w-8" /><SkeletonPrimitive className="h-3 w-8" /><SkeletonPrimitive className="h-3 flex-1" /><SkeletonPrimitive className="h-3 w-14" /><SkeletonPrimitive className="h-3 w-14 hidden md:block" /><SkeletonPrimitive className="h-3 w-16" /><SkeletonPrimitive className="h-3 w-16" />
                 </div>
-              ))}
-            </div>
-          )}
+                {[1,2,3,4,5,6,7,8].map(i => (
+                  <div key={i} className="flex items-center h-11 border-b border-border/50 px-2 gap-3">
+                    <SkeletonPrimitive className="w-4 h-4 rounded flex-shrink-0" />
+                    <SkeletonPrimitive className="w-4 h-4 rounded flex-shrink-0" />
+                    <SkeletonPrimitive className="h-3.5 flex-1 rounded" />
+                    <SkeletonPrimitive className="h-4 w-12 rounded-md flex-shrink-0" />
+                    <SkeletonPrimitive className="h-4 w-12 rounded-md flex-shrink-0 hidden md:block" />
+                    <SkeletonPrimitive className="h-3 w-14 rounded flex-shrink-0" />
+                    <SkeletonPrimitive className="h-5 w-16 rounded-md flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            }
+          >
           {mounted && (
             <TaskListView
               tasks={tasks}
@@ -895,6 +903,7 @@ export const TaskBoard: React.FC = () => {
               onAddTask={openCreateDialog}
             />
           )}
+          </Skeleton>
         </motion.div>
       )}
       </AnimatePresence>
