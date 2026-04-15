@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -31,22 +33,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
-      className="dark"
+      className={`dark ${GeistSans.variable} ${GeistMono.variable}`}
       data-mantine-color-scheme="dark"
       style={{ colorScheme: 'dark' }}
       suppressHydrationWarning
     >
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
         {/* Preload frequently-used Lottie animations */}
         <link rel="preload" href="/animations/pomodoro-complete.json" as="fetch" crossOrigin="anonymous" />
         <link rel="preload" href="/animations/streak-fire.json" as="fetch" crossOrigin="anonymous" />

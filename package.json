@@ -43,6 +43,7 @@
     "drizzle-orm": "^0.45.1",
     "emoji-picker-react": "^4.18.0",
     "framer-motion": "^12.36.0",
+    "geist": "^1.7.0",
     "lottie-react": "^2.4.1",
     "lottie-web": "^5.13.0",
     "next": "^16.2.1",

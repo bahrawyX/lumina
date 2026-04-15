@@ -75,9 +75,10 @@ export default {
         layered:  '0 10px 30px -5px rgba(0,0,0,0.1), 0 5px 15px -5px rgba(0,0,0,0.04)',
       },
       fontFamily: {
-        display: ['ClashGrotesk-Variable', 'sans-serif'],
+        display: ['ClashDisplay-Variable', 'ClashGrotesk-Variable', 'sans-serif'],
         logo:    ['ClashDisplay-Variable', 'sans-serif'],
-        sans:    ['Inter', 'sans-serif'],
+        sans:    ['var(--font-geist-sans)', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+        mono:    ['var(--font-geist-mono)', '"JetBrains Mono"', '"Fira Code"', 'monospace'],
       },
       keyframes: {
         'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },
