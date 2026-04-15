@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-14 (v21 — Boneyard migration: all skeleton loading states now use `Skeleton` from `boneyard-js/react` wrapping real content with hand-crafted markup as `fallback`. Bones generated: 8 skeletons captured via `npx boneyard-js build`. Registry at `src/bones/registry.js` imported in providers.)
+> Last updated: 2026-04-15 (v22 — Focused Craft polish pass + Vitest testing layer + Shop SVG icons. Typography migrated to Geist + Clash Display, warm paper palette, grain overlay, `.card-lift` shared motion, editorial page-header rhythm across every workspace page. 84 Vitest tests covering design tokens, Button, editorial headers, goal math, shop config, coins store, and the new `ShopItemIcon` registry. 12 custom line-icons replace emoji in the shop with dynamic accent swatches pulling HSL from `ACCENT_COLORS`.)
 
 ---
 
@@ -54,6 +54,11 @@ This is the single source of truth for the Lumina codebase. It covers:
 - **shadcn/ui** conventions — components in `src/components/ui/`
 - **class-variance-authority + clsx + tailwind-merge** — class composition
 
+### Typography (Focused Craft aesthetic)
+- **Geist Sans + Geist Mono** via `geist` npm package — body text and numerals. Wired in `src/app/layout.tsx` through `GeistSans.variable` + `GeistMono.variable` applied to `<html>`. CSS variables `--font-geist-sans`, `--font-geist-mono` read by Tailwind `font-sans` / `font-mono`.
+- **Clash Display** + **Clash Grotesk** — self-hosted variable fonts under `public/ClashDisplay_Complete/` and `public/ClashGrotesk_Complete/`, declared as `@font-face` in `globals.css`, exposed as Tailwind `font-display` and `font-logo`. Reserved for hero titles, large numerals, and the Lumina wordmark. Weight range 200–700, `font-display: swap`.
+- **No Inter, Roboto, or Space Grotesk** — enforced by `tests/design-system.test.ts`.
+
 ### Drag & drop
 - **@dnd-kit/core + @dnd-kit/sortable** — both planner and task board
 
@@ -83,6 +88,14 @@ This is the single source of truth for the Lumina codebase. It covers:
 
 ### Package management
 - **`.npmrc`** — `legacy-peer-deps=true` for Vercel deploy. Required because `@blocknote/shadcn@0.47.3` declares peer dep `tailwindcss@^4.1.12` but project uses v3.4.19. Pre-compiled CSS works fine — only the peer declaration is overly strict.
+
+### Testing
+- **Vitest 4** — test runner, configured at `vitest.config.ts` (jsdom environment, `@` alias, setup at `tests/setup.ts`).
+- **@testing-library/react + @testing-library/jest-dom + @testing-library/user-event** — render + assertions + simulated user events.
+- **jsdom** — DOM implementation for node.
+- `tests/setup.ts` stubs `matchMedia`, `ResizeObserver`, and `scrollTo` for Radix components and auto-cleans mounted trees between tests.
+- Scripts: `npm test` (run once, CI mode), `npm run test:watch`, `npm run test:ui`.
+- Current suite: **84 tests across 7 files** — `design-system`, `button`, `editorial-headers`, `goal-progress`, `shop-config`, `useCoinsStore`, `shop-item-icon`. See Section 27.
 
 ---
 
@@ -329,6 +342,66 @@ bg-white/[0.0x]     → bg-muted/[x]
 - `MobileBottomSheet.tsx` — `bg-card/95 border-border`; handle `bg-muted-foreground/25`
 - `IntelligencePanel.tsx` — fully rewritten with semantic tokens
 - `CompactEmojiPicker.tsx` — `bg-popover/95 border-border/60`
+
+### Warm paper palette (Focused Craft v22)
+
+The light palette migrated from generic neutral grey to a warm "paper/ink" metaphor:
+
+| Token (light) | HSL | Role |
+|---|---|---|
+| `--background` | `36 28% 97%` | Warm paper |
+| `--foreground` | `222 30% 12%` | Warm ink |
+| `--card` | `40 30% 99%` | Softer than pure white |
+| `--muted-foreground` | `222 12% 42%` | Warmer grey |
+| `--border` | `30 15% 84%` | Warm-tinted border |
+| `--primary` | `249 66% 61%` | Brand purple preserved |
+
+Dark palette stays warm too: `--background: 240 8% 8%` with `--foreground: 36 20% 96%` warm off-white ink.
+
+### Shadow tiers (tailwind.config.js)
+
+| Token | Use |
+|---|---|
+| `shadow-card` | Rest state on every card surface |
+| `shadow-card-hover` | Mid-tier (not currently used, reserved) |
+| `shadow-card-lift` | Elevated hover — used via the `.card-lift` utility |
+| `shadow-soft / elevated / layered` | Legacy tiers (still in tailwind config, used sparingly) |
+
+### Signature motion: `.card-lift` utility (globals.css)
+
+Shared hover treatment applied across every card surface (GoalCard, ShopItemCard, TaskCard non-drag state, CoinsWidget, GoalsWidget, TodaySummaryWidget, auth card):
+
+- Rest: `shadow-card` (1px ambient shadow in warm ink color `rgba(17,17,28,...)` instead of pure black)
+- Hover: `translateY(-1px)` + `shadow-card-hover` + border warms to `hsl(var(--foreground) / 0.14)`
+- Focus-visible: same lift so keyboard users get the same depth cue
+- Easing: `cubic-bezier(0.16, 1, 0.3, 1)` (also exposed as Tailwind `ease-signature`)
+- `prefers-reduced-motion`: falls back to instant shadow-only transition
+
+### Editorial page-header rhythm
+
+Every workspace page uses the same 3-layer header treatment:
+
+```tsx
+<p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
+  Workspace · [Section]
+</p>
+<h1 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em] leading-none">
+  [Title]
+</h1>
+<p className="text-[11px] md:text-xs text-muted-foreground/80 mt-2 italic">
+  [Supporting line]
+</p>
+```
+
+Eyebrow labels by page: `Workspace · Board / List` (Tasks), `Workspace · Objectives` (Goals), `Workspace · Exchange` (Shop), `Workspace · Analytics` (Performance), `Workspace · Library` (Docs home), `Workspace · Account` (Insights), `Plan · Today` (Planner), `Begin / Return` (auth signin). Guarded by `tests/editorial-headers.test.ts`.
+
+### Grain overlay
+
+`body::before` pseudo-element lays a tiny SVG `feTurbulence` noise as a data-URI fixed-position overlay. `opacity: 0.035` in light mode with `mix-blend-mode: multiply`, `opacity: 0.045` in dark with `mix-blend-mode: screen`. Adds paper-like atmospheric depth without any HTTP request.
+
+### Button variants (src/components/ui/button.tsx)
+
+Unified 200ms `ease-signature` transition across background / border / color / transform / shadow. All buttons scale to `0.98` on `:active`. The `outline` variant warms its border to `hsl(foreground / 20%)` on hover. Guarded by `tests/button.test.tsx`.
 
 ---
 
@@ -1456,6 +1529,46 @@ Inactive item: `text-muted-foreground`
 - **Highlight flash**: When a card / row id matches `recentlyDuplicatedId`, applies `bg-primary/10` with a 600ms `transition-[background-color]`. Auto-cleared via `clearRecentlyDuplicated()` after 700ms timeout from inside the matching component.
 - Files: `src/app/api/tasks/[id]/duplicate/route.ts` (NEW), `src/store/useTaskBoardStore.ts` (modified — added `duplicateTask`, `recentlyDuplicatedId`, `clearRecentlyDuplicated`), `src/components/tasks/TaskCard.tsx` (modified — `CopyIcon`, menu item, highlight class + auto-clear effect), `src/components/tasks/TaskListView.tsx` (modified — menu item, highlight class)
 
+### 20.21 Focused Craft UI Polish Pass — COMPLETE (v22)
+- **Aesthetic direction**: applied Anthropic's frontend-design skill principles — distinctive fonts, warm/cold palette, intentional hierarchy, subtle texture, editorial typography. Rebranded the app's visual language from "generic SaaS dashboard" to "well-crafted focused tool."
+- **Typography migration**: dropped Google Fonts Inter entirely. Switched to **Geist Sans + Geist Mono** (via `geist` npm package, wired in `src/app/layout.tsx`) for body/numerals, and **Clash Display + Clash Grotesk** (self-hosted variable fonts under `/public/`) for display headings and the Lumina wordmark. Letter-spacing tightened to `-0.011em` body / `-0.025em` display. Stylistic sets `ss01`, `cv11` enabled on Geist.
+- **Warm paper palette**: rewrote every CSS variable in `globals.css` to shift light-mode neutrals into the warm hue family (H 30–40°, low saturation). Dark mode got `--foreground: 36 20% 96%` warm off-white ink. See Section 4 table.
+- **Grain overlay**: `body::before` pseudo-element renders an inline SVG `feTurbulence` noise as a data-URI — 0.035 opacity light / 0.045 opacity dark, `mix-blend-mode` flipped between modes. Zero HTTP requests, pure atmospheric depth.
+- **Shadow system** (`tailwind.config.js`): added `shadow-card` / `card-hover` / `card-lift` tiers using warm ink `rgba(17,17,28,...)` instead of pure black. Legacy `shadow-soft / elevated / layered` preserved.
+- **.card-lift utility** (`globals.css`): shared hover treatment — rest shadow → 1px lift + shadow bloom + border warming. Applied to GoalCard, ShopItemCard, TaskCard (non-drag), CoinsWidget, GoalsWidget, TodaySummaryWidget. Signature easing `cubic-bezier(0.16, 1, 0.3, 1)` exposed as Tailwind `ease-signature`. Includes `:focus-visible` parity and `prefers-reduced-motion` fallback.
+- **Editorial page headers**: unified 3-layer treatment across TaskBoard, GoalsPage, ShopPage, PerformancePage, DocsHomePage, IntelligencePage, DailyPlanHeader, auth signin. Small-caps mono eyebrow (10px, 0.2em tracking) + font-display title (2xl→3xl, `-0.035em` tracking, medium weight) + italic supporting line. Hairline `border-b border-border/60` beneath.
+- **Sidebar editorial refinement**: Clash Display 24px wordmark + "Focused Craft" tagline. Active nav item uses two shared `motion.div layoutId`s — `sidebar-active-nav-bg` (subtle wash) + `sidebar-active-nav-rail` (2px primary left rail). Streak displayed as `{value}` + `font-mono d · streak`. Workspace section label uses `text-[10px] font-medium uppercase tracking-[0.18em]`. Badges are mono numerals, no pill chips.
+- **Empty states**: Goals page empty state rewritten as editorial moment — floating emoji + `font-display` headline ("A quiet slate.") + italic caption + outline button with PlusIcon. Replaces the old ghost-link text.
+- **Button refinement**: unified 200ms signature easing across all color/transform/shadow transitions. `active:scale-[0.98]` press feedback. `outline` variant warms its border on hover (`hover:border-foreground/20`). Uses the new `transition-[background-color,border-color,color,transform,box-shadow]` split for clean interaction.
+- **Commits**: `3eec6c6` typography + palette + grain (Phase 1), `1205394` sidebar editorial (Phase 2B), `e7f46dd` page headers (Phase 2A), `badbe76` cards (Phase 2C), `9cc22b5` empty states + buttons (Phase 3), `8f9b712` auth page (Phase 4), `c31eb2a` Insights + skeleton depth (Phase 5), `2d92c57` planner header (Phase 6).
+- **Files touched**: `src/app/layout.tsx`, `src/app/globals.css`, `tailwind.config.js`, `src/components/ui/button.tsx`, `src/components/Sidebar.tsx`, `src/components/tasks/TaskBoard.tsx`, `src/components/tasks/TaskCard.tsx`, `src/components/pages/GoalsPage.tsx`, `src/components/pages/ShopPage.tsx`, `src/components/pages/PerformancePage.tsx`, `src/components/pages/DocsHomePage.tsx`, `src/components/pages/IntelligencePage.tsx`, `src/components/pages/CalendarPage.tsx`, `src/components/planner/DailyPlanHeader.tsx`, `src/components/dashboard/CoinsWidget.tsx`, `src/components/dashboard/GoalsWidget.tsx`, `src/components/dashboard/TodaySummaryWidget.tsx`, `src/app/auth/signin/page.tsx`.
+
+### 20.22 Vitest Testing Layer — COMPLETE (v22)
+- **Motivation**: before this pass the repo had zero tests. `tsc --noEmit` + `next build` only prove compile health, they don't verify behavior.
+- **Runner**: Vitest 4 with jsdom environment. Config at `vitest.config.ts` (@ alias to `./src`, setupFiles pointing at `tests/setup.ts`, css: false so tests don't need Tailwind compilation).
+- **Setup**: `tests/setup.ts` imports `@testing-library/jest-dom/vitest`, auto-cleans mounted React trees in `afterEach`, stubs `matchMedia` / `ResizeObserver` / `scrollTo` (Radix components crash in jsdom without them).
+- **Scripts**: `npm test` (CI mode, single run), `npm run test:watch`, `npm run test:ui` (Vitest UI dashboard).
+- **Current coverage — 84 tests across 7 files:**
+  - `tests/design-system.test.ts` (15 tests) — reads `globals.css` / `tailwind.config.js` / `layout.tsx` as strings and asserts crafted tokens present: `.card-lift` utility with hover + focus-visible + reduced-motion fallback, signature cubic-bezier easing, warm paper HSL (hue 30s-40s), grain overlay via `body::before` with `feTurbulence`, Clash Display + Clash Grotesk `@font-face`s, `-0.025em` display tracking, shadow-card tiers, Geist font variables wired in layout, no lingering Inter references.
+  - `tests/button.test.tsx` (8 tests) — renders default/outline/ghost/destructive/secondary/link variants, every size (default/sm/lg/icon), confirms signature easing + `active:scale-[0.98]` + outline warm hover, disabled state.
+  - `tests/editorial-headers.test.ts` (16 tests across 5 pages + 2 extras) — reads each page source string and asserts: exact `Workspace · [Section]` eyebrow, mono uppercase 0.2em tracking, font-display title with `-0.035em` tracking. Auth page: Begin/Return eyebrows + shadow-card. Sidebar: font-logo wordmark.
+  - `tests/goal-progress.test.ts` (15 tests) — pure function coverage of `computeTargetProgress` for every target type (`number` / `percentage` / `boolean` / `task_completion`) with clamping, divide-by-zero, and `computeGoalProgress` averaging + rounding.
+  - `tests/shop-config.test.ts` (9 tests) — unique ids, positive integer costs, powerups consumable with `consumableKey`, cosmetics/unlocks non-consumable, every `accent_*` has a matching `ACCENT_COLORS` HSL entry in correct format, every item has name/desc/emoji, `SHOP_ITEM_MAP` count matches and resolves by id.
+  - `tests/useCoinsStore.test.ts` (15 tests) — hydration populates state once (idempotent), `purchaseItem` rejects for unknown items / insufficient balance, consumable purchase increments counter, permanent purchase adds to `ownedItems`, server failure rolls back balance, `addEarnedCoins` caps transaction history at 50, selectors (`selectCoinBalance`, `selectOwnedItems`, `ownsItem`).
+  - `tests/shop-item-icon.test.tsx` (6 tests) — every non-accent SKU has a registry entry, every `accent_*` id renders a swatch filled with the correct `ACCENT_COLORS` HSL, currentColor stroke for parent tinting, size prop honored, unknown-id fallback to neutral circle.
+- **Mocking pattern**: `vi.mock('@/lib/persistence/coinsPersistence', …)` hoists mocks above store imports so Zustand stores can be tested in isolation without hitting the API.
+- **Files**: `vitest.config.ts`, `tests/setup.ts`, `tests/*.test.{ts,tsx}`. Commit `9efda0c` (layer + first 78 tests), `146c295` (+6 shop-item-icon tests).
+
+### 20.23 Shop SVG Icons — COMPLETE (v22)
+- **Motivation**: emoji glyphs render differently on macOS / Windows / Android / Linux (different color palettes, outlines, proportions) — breaks the Focused Craft aesthetic. Replaced every shop emoji with hand-tuned outline SVGs on a 1.5px stroke matching the rest of Lumina's iconography.
+- **Component**: `src/components/shop/ShopItemIcon.tsx` exports `<ShopItemIcon id={item.id} size={20} />` and a `SHOP_ICON_IDS` array. All icons use `stroke="currentColor"` so parent tiles can tint them (primary / violet / amber by category).
+- **Registry** (12 line-icons): `focus_boost` (lightning bolt), `task_multiplier` (4-point sparkle), `streak_shield` (shield with inner flame), `goal_accelerator` (rocket with dashes), `auto_plan` (calendar + spark), `confetti_unlock` (party popper), `badge_deep_worker` (head + headphones), `badge_streak_master` (flame), `badge_goal_crusher` (trophy), `extended_history` (bar chart), `custom_categories` (tag with dot), `extra_templates` (stacked documents).
+- **Accent swatches**: `accent_purple / rose / cyan / amber` are handled by a dedicated `<AccentSwatch>` variant that pulls the HSL from `ACCENT_COLORS` in `shopItems.ts` — the icon *is* the color you're buying. Outer ring in currentColor, filled inner circle at the accent HSL, white gloss highlight.
+- **Shop page integration**: `src/components/pages/ShopPage.tsx` wraps the icon in a 40×40px tinted rounded-xl tile (`bg-primary/10 text-primary` for powerups, `bg-violet-500/10 text-violet-600` for cosmetics, `bg-amber-500/10 text-amber-600` for unlocks). Active-consumables chips also use the SVG inline with the count badge.
+- **Data shape untouched**: `item.emoji` still lives in `shopItems.ts` as a fallback and for any consumer that needs a plain text representation. The SVG component is rendering-only.
+- **Test coverage**: `tests/shop-item-icon.test.tsx` asserts every non-accent SKU in `SHOP_ITEMS` has a registry entry, every accent renders with the correct HSL fill, currentColor stroke is present, size prop is honored, unknown ids fall back to a neutral circle.
+- **Files**: `src/components/shop/ShopItemIcon.tsx` (new), `src/components/pages/ShopPage.tsx` (icon tile integration), `tests/shop-item-icon.test.tsx` (new). Commit `146c295`.
+
 ### 20.20 Boneyard Skeleton Migration — COMPLETE
 - **Library**: `boneyard-js@^1.7.6` — auto-generates pixel-perfect skeletons from real DOM via a Playwright-powered CLI.
 - **Pattern**: `<Skeleton name="..." loading={flag} fallback={<handcraftedSkeleton />}>{real content}</Skeleton>`. Boneyard's `Skeleton` wraps the real component and uses `fallback` until captured bones exist in the registry.
@@ -1730,6 +1843,159 @@ Guest-to-account conversion page. Linked from GuestBanner ("Create an account to
 - OAuth popup pattern from `OnboardingFlow.tsx` (inlined as `useOAuthPopup` hook)
 - Validation schemas from `src/lib/validation.ts`
 - `GoogleProviderIcon` from `src/components/icons`
+
+---
+
+## 27. FOCUSED CRAFT DESIGN SYSTEM (v22)
+
+### Intent
+Make Lumina feel like a well-crafted tool rather than a generic SaaS dashboard. Applied the principles from Anthropic's frontend-design skill (`github.com/anthropics/skills/tree/main/skills/frontend-design`): distinctive fonts, warm vs cold palette, intentional hierarchy, subtle texture, editorial typography.
+
+### Font stack
+| Tailwind class | Family | Use |
+|---|---|---|
+| `font-sans` | Geist Sans (via `geist/font/sans`) | Body text, numerals in compact UI |
+| `font-mono` | Geist Mono (via `geist/font/mono`) | Eyebrow labels, tabular numerals, code |
+| `font-display` | Clash Display → Clash Grotesk fallback | Hero titles, large numerals |
+| `font-logo` | Clash Display | Lumina wordmark |
+
+**Important**: Inter / Roboto / Space Grotesk are explicitly banned. The test `tests/design-system.test.ts` asserts the config does not reference `'Inter'`.
+
+### Palette shift
+Light mode migrated to a **warm paper metaphor**. Hue values in the 30°–40° range (amber-tinted neutrals), low saturation. Dark mode also keeps a warm foreground (`36 20% 96%` off-white ink) instead of pure white. See Section 4 for the full HSL table.
+
+### Grain overlay
+```css
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.035;  /* 0.045 in dark */
+  background-image: url("data:image/svg+xml;utf8,<svg ...><filter id='n'><feTurbulence ... /></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;  /* screen in dark */
+}
+```
+
+### The `.card-lift` utility
+Single CSS class applied via `className="card-lift ..."` on any card surface. Handles rest shadow, hover lift, focus-visible parity, reduced-motion fallback, and dark-mode shadow intensity in one place. Replaces ad-hoc `hover:shadow-md transition-shadow` patterns across the app. The signature `cubic-bezier(0.16, 1, 0.3, 1)` easing is also exposed as Tailwind `ease-signature` for other transitions.
+
+### Editorial page-header rhythm
+Every workspace page uses the same header pattern (see Section 4 for code). The three layers — mono eyebrow, display-weight title, italic supporting line — give every page a consistent "you are here" signal without needing breadcrumbs.
+
+### Sidebar identity
+- 24px Clash Display wordmark "Lumina" with "Focused Craft" tagline
+- Active nav item uses two **shared Framer Motion `layoutId`s** (`sidebar-active-nav-bg` and `sidebar-active-nav-rail`) so the active indicator animates smoothly between items
+- Section labels: `text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50`
+- Profile footer: top border-t, mono role text, 6px avatar radius
+- Badges: mono small numerals (e.g. `3` for active goal count), no pill/chip backgrounds
+
+### Polish phase commit history
+| Commit | Phase |
+|---|---|
+| `3eec6c6` | 1 — typography + warm palette + grain |
+| `1205394` | 2B — sidebar editorial |
+| `e7f46dd` | 2A — page headers editorial |
+| `badbe76` | 2C — card depth + motion signature |
+| `9cc22b5` | 3 — empty states + button refinement |
+| `8f9b712` | 4 — auth page editorial |
+| `c31eb2a` | 5 — Insights + skeleton depth |
+| `2d92c57` | 6 — planner header |
+
+---
+
+## 28. TESTING LAYER
+
+### Runner
+Vitest 4 with jsdom — `vitest.config.ts` wires `@` → `./src`, points `setupFiles` at `tests/setup.ts`, and disables CSS processing (`css: false`) so tests don't need Tailwind.
+
+### Setup (`tests/setup.ts`)
+- Imports `@testing-library/jest-dom/vitest` for DOM assertions
+- `afterEach(cleanup)` — unmounts React trees between tests
+- Stubs for jsdom gaps: `matchMedia`, `ResizeObserver`, `scrollTo`
+
+### Scripts
+| Command | Use |
+|---|---|
+| `npm test` | Single run, CI-style |
+| `npm run test:watch` | Watch mode |
+| `npm run test:ui` | Vitest UI dashboard |
+
+### Test files (84 tests total)
+| File | Tests | Coverage |
+|---|---|---|
+| `tests/design-system.test.ts` | 15 | globals.css / tailwind.config / layout.tsx carry the crafted tokens (card-lift, signature easing, shadow-card, warm HSL, grain, Clash+Geist fonts) |
+| `tests/button.test.tsx` | 8 | Every variant + size renders, signature easing + active:scale present, outline hover border warms |
+| `tests/editorial-headers.test.ts` | 16 | Every page + auth + sidebar still ships the Workspace · [Section] eyebrow + -0.035em display title |
+| `tests/goal-progress.test.ts` | 15 | `computeTargetProgress` for all 4 target types with clamping + divide-by-zero; `computeGoalProgress` averaging + rounding |
+| `tests/shop-config.test.ts` | 9 | Unique ids, positive costs, powerup/consumable invariants, every `accent_*` maps to ACCENT_COLORS |
+| `tests/useCoinsStore.test.ts` | 15 | Hydration idempotency, purchase success/rollback, insufficient funds, transaction cap, selectors |
+| `tests/shop-item-icon.test.tsx` | 6 | Every SKU has icon, accent swatches use correct HSL, currentColor stroke, size prop, fallback |
+
+### Patterns
+- **String-level assertions** for design tokens: `readFileSync` → regex match. Fast, no render needed, catches accidental deletions.
+- **Pure function tests** for all math (`computeGoalProgress`, `computeTargetProgress`) — zero mocking.
+- **Zustand store testing**: `vi.mock('@/lib/persistence/…', …)` hoisted above store import, `useStore.setState({…})` to reset between tests in `beforeEach`.
+- **RTL render tests** for stateless presentational components (Button, ShopItemIcon).
+- **Config validation** for registries (shop items) to catch duplicate ids / missing fields.
+
+### What is NOT covered (yet)
+- Full page integration tests (GoalsPage, ShopPage, TaskBoard) — they import stores + persistence + boneyard with deeply nested children. Worth adding later with MSW or fetch stubs.
+- API route handler tests
+- E2E tests (Playwright is installed via boneyard but not used for app tests)
+- Visual regression
+
+### Adding a new test
+1. Drop a `*.test.ts` or `*.test.tsx` file under `tests/`.
+2. Use the `@/` alias for all project imports.
+3. For store tests, always mock the persistence module with `vi.mock` before importing the store.
+4. Run `npm test`.
+
+---
+
+## 29. SHOP SVG ICON SYSTEM
+
+### Component
+`src/components/shop/ShopItemIcon.tsx` exports `<ShopItemIcon id={item.id} size={20} className={...} />`.
+
+### Registry (12 line-icons)
+| SKU id | Icon |
+|---|---|
+| `focus_boost` | Lightning bolt |
+| `task_multiplier` | 4-point sparkle |
+| `streak_shield` | Shield with inner flame |
+| `goal_accelerator` | Rocket with motion dashes |
+| `auto_plan` | Calendar + spark |
+| `confetti_unlock` | Party popper |
+| `badge_deep_worker` | Head + headphones |
+| `badge_streak_master` | Flame |
+| `badge_goal_crusher` | Trophy |
+| `extended_history` | Bar chart |
+| `custom_categories` | Tag with dot |
+| `extra_templates` | Stacked documents |
+
+### Accent swatches
+`accent_*` ids use a dedicated `<AccentSwatch>` that:
+- Pulls HSL from `ACCENT_COLORS` in `src/config/shopItems.ts`
+- Renders an outer ring in `currentColor` at 0.35 opacity for contrast
+- Renders a filled inner circle at the accent HSL
+- Adds a white gloss highlight at `opacity 0.5`
+
+The icon **is** the color being purchased.
+
+### Integration
+- **Card tile** (`src/components/pages/ShopPage.tsx`): 40×40px rounded-xl, tinted by category:
+  - Powerup: `bg-primary/10 text-primary`
+  - Cosmetic: `bg-violet-500/10 text-violet-600 dark:text-violet-400`
+  - Unlock: `bg-amber-500/10 text-amber-600 dark:text-amber-400`
+- **Active consumables chip**: uses `<ShopItemIcon size={12} />` inline with the count label.
+
+### Fallback
+Unknown `id` → renders a neutral 18px circle. Never throws.
+
+### `item.emoji` still exists
+The `emoji` field on `SHOP_ITEMS` rows is preserved in `src/config/shopItems.ts` for any consumer (toasts, mobile share sheets, notifications) that needs a text representation. The SVG component is rendering-only.
 
 ---
 
