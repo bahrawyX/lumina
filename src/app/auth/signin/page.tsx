@@ -274,18 +274,21 @@ export default function SignInPage() {
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center px-4 py-12 bg-background">
       <div className="w-full max-w-[400px] space-y-8">
-        {/* Logo */}
-        <div className="text-center space-y-2">
-          <span className="font-logo text-3xl font-semibold tracking-tight text-primary select-none">
+        {/* Logo — editorial */}
+        <div className="text-center space-y-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">
+            {authMode === 'signup' ? 'Begin' : 'Return'}
+          </p>
+          <span className="font-logo text-4xl font-medium tracking-[-0.03em] text-foreground select-none block leading-none">
             Lumina
           </span>
-          <p className="text-sm text-muted-foreground">
-            {authMode === 'signup' ? 'Create your account' : 'Welcome back'}
+          <p className="text-[12px] text-muted-foreground/80 italic">
+            {authMode === 'signup' ? 'A quiet place to get focused work done.' : 'Welcome back.'}
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm space-y-5">
+        <div className="rounded-xl border border-border/60 bg-card p-6 shadow-card space-y-5">
           {/* Tab strip */}
           <div className="flex p-0.5 rounded-lg border border-border/60 bg-muted/30">
             <button
