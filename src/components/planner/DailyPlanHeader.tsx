@@ -42,10 +42,11 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
             <SunIcon />
           </div>
           <div>
-            <h1 className="font-display text-lg md:text-xl font-semibold tracking-tight text-foreground leading-none">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1">Plan · Today</p>
+            <h1 className="font-display text-lg md:text-xl font-medium tracking-[-0.025em] text-foreground leading-none">
               {dayLabel}
             </h1>
-            <p className="text-[12px] text-muted-foreground mt-0.5 font-sans">{dateLabel}</p>
+            <p className="text-[11px] text-muted-foreground/80 mt-1 italic">{dateLabel}</p>
           </div>
         </div>
 
