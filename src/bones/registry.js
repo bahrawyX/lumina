@@ -6,6 +6,7 @@ import _dashboard_TodaySummaryWidget from './dashboard.TodaySummaryWidget.bones.
 import _dashboard_GoalsWidget from './dashboard.GoalsWidget.bones.json'
 import _dashboard_CoinsWidget from './dashboard.CoinsWidget.bones.json'
 import _tasks_TaskBoard_kanban from './tasks.TaskBoard.kanban.bones.json'
+import _tasks_TaskBoard_list from './tasks.TaskBoard.list.bones.json'
 import _page_GoalsPage_grid from './page.GoalsPage.grid.bones.json'
 import _planner_DailyPlanView from './planner.DailyPlanView.bones.json'
 import _page_PerformancePage from './page.PerformancePage.bones.json'
@@ -16,6 +17,7 @@ registerBones({
   "dashboard.GoalsWidget": _dashboard_GoalsWidget,
   "dashboard.CoinsWidget": _dashboard_CoinsWidget,
   "tasks.TaskBoard.kanban": _tasks_TaskBoard_kanban,
+  "tasks.TaskBoard.list": _tasks_TaskBoard_list,
   "page.GoalsPage.grid": _page_GoalsPage_grid,
   "planner.DailyPlanView": _planner_DailyPlanView,
   "page.PerformancePage": _page_PerformancePage,
