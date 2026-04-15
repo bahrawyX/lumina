@@ -794,6 +794,7 @@ export const TaskBoard: React.FC = () => {
       <Skeleton
         name="tasks.TaskBoard.kanban"
         loading={!mounted}
+        className="flex-1 flex flex-col min-h-0"
         fallback={
           <div className="flex gap-3 h-full overflow-hidden pb-4 items-stretch px-1 md:px-0">
             {COLUMNS.map(col => (
@@ -829,7 +830,7 @@ export const TaskBoard: React.FC = () => {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex gap-3 h-full overflow-x-auto overflow-y-hidden pb-4 items-stretch no-scrollbar snap-x snap-mandatory px-1 md:px-0">
+        <div className="flex gap-3 flex-1 overflow-x-auto overflow-y-hidden pb-4 items-stretch no-scrollbar snap-x snap-mandatory px-1 md:px-0">
           {COLUMNS.map(col => (
             <motion.div
               key={col.id}

@@ -108,7 +108,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
             onAddTask(id);
           }
         }}
-        className={`flex-1 flex flex-col rounded-xl border p-1.5 min-h-[120px] transition-colors duration-300 cursor-pointer ${
+        className={`flex-1 flex flex-col rounded-xl border p-1.5 transition-colors duration-300 cursor-pointer ${
           isDragOver
             ? 'border-primary/30 bg-primary/10'
             : 'border-border/50 bg-muted/40 hover:bg-muted/50'
