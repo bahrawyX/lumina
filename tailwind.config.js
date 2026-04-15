@@ -73,6 +73,14 @@ export default {
         soft:     '0 4px 12px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.02)',
         elevated: '0 20px 48px -12px rgba(0,0,0,0.08), 0 8px 16px -8px rgba(0,0,0,0.04)',
         layered:  '0 10px 30px -5px rgba(0,0,0,0.1), 0 5px 15px -5px rgba(0,0,0,0.04)',
+        /* Signature card depth — graduated rest → hover tiers */
+        card:       '0 1px 2px rgba(17,17,28,0.03), 0 1px 3px -1px rgba(17,17,28,0.02)',
+        'card-hover': '0 6px 16px -4px rgba(17,17,28,0.07), 0 2px 6px -2px rgba(17,17,28,0.04)',
+        'card-lift':  '0 14px 32px -10px rgba(17,17,28,0.12), 0 4px 10px -4px rgba(17,17,28,0.06)',
+      },
+      transitionTimingFunction: {
+        /* Signature easing — used across all card hover / motion */
+        signature: 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       fontFamily: {
         display: ['ClashDisplay-Variable', 'ClashGrotesk-Variable', 'sans-serif'],

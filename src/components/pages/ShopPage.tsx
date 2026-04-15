@@ -41,7 +41,7 @@ const ShopItemCard: React.FC<{
     layout
     initial={{ opacity: 0, y: 8 }}
     animate={{ opacity: 1, y: 0 }}
-    className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 transition-transform duration-150 hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+    className="card-lift rounded-xl border border-border/70 bg-card p-4 flex flex-col gap-3 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none"
   >
     <div className="flex items-start gap-3">
       <span className="text-2xl">{item.emoji}</span>

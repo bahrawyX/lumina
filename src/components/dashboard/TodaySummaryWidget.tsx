@@ -72,7 +72,7 @@ export const TodaySummaryWidget: React.FC = () => {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="bg-card border border-border rounded-xl p-5"
+      className="card-lift bg-card border border-border/70 rounded-xl p-5"
     >
       <h3 className="text-sm font-semibold text-foreground mb-3">Today</h3>
 

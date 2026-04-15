@@ -59,7 +59,7 @@ const GoalCard: React.FC<{
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4, scale: 0.97 }}
       transition={{ duration: 0.2 }}
-      className={`group relative rounded-xl border bg-card p-4 cursor-pointer hover:shadow-md transition-shadow border-l-[3px] ${colors.border} focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`}
+      className={`card-lift group relative rounded-xl border border-border/70 bg-card p-4 cursor-pointer border-l-[3px] ${colors.border} focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none`}
       onClick={() => onSelect(goal)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(goal); } }}
       tabIndex={0}

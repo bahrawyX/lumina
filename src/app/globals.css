@@ -152,6 +152,47 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ─── Signature card motion ────────────────────────────────────────────────
+   Shared hover treatment across all "card" surfaces. Produces a subtle
+   lift: shadow deepens, border warms toward foreground, translate -1px.
+   Apply alongside base border/bg classes for consistent feel. */
+.card-lift {
+  box-shadow: 0 1px 2px rgba(17,17,28,0.03), 0 1px 3px -1px rgba(17,17,28,0.02);
+  transition:
+    transform     0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow    0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color  0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+.card-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -4px rgba(17,17,28,0.07), 0 2px 6px -2px rgba(17,17,28,0.04);
+  border-color: hsl(var(--foreground) / 0.14);
+}
+.dark .card-lift {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25), 0 1px 3px -1px rgba(0,0,0,0.18);
+}
+.dark .card-lift:hover {
+  box-shadow: 0 6px 16px -4px rgba(0,0,0,0.45), 0 2px 6px -2px rgba(0,0,0,0.28);
+  border-color: hsl(var(--foreground) / 0.22);
+}
+/* Focus-visible parity — keyboard users get the same depth cue */
+.card-lift:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -4px rgba(17,17,28,0.07), 0 2px 6px -2px rgba(17,17,28,0.04);
+  border-color: hsl(var(--foreground) / 0.18);
+}
+.dark .card-lift:focus-visible {
+  box-shadow: 0 6px 16px -4px rgba(0,0,0,0.45), 0 2px 6px -2px rgba(0,0,0,0.28);
+  border-color: hsl(var(--foreground) / 0.26);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-lift, .card-lift:hover, .card-lift:focus-visible {
+    transform: none;
+    transition: box-shadow 0.15s ease-out, border-color 0.15s ease-out;
+  }
+}
+
 /* ─── iOS/Android safe-area helpers ─────────────────────────────────────── */
 .pt-safe { padding-top: env(safe-area-inset-top); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }

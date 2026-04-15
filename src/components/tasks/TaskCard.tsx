@@ -323,10 +323,9 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
         className={`
           group relative rounded-xl border bg-card text-card-foreground
           select-none cursor-grab active:cursor-grabbing
-          transition-all duration-[120ms] ease-out
           ${isDragOverlay
             ? 'shadow-lg ring-1 ring-primary/20 border-border'
-            : 'shadow-sm hover:shadow-md border-border'
+            : 'card-lift border-border/70'
           }
           ${justDuplicated ? 'bg-primary/10 transition-[background-color] duration-[600ms]' : ''}
         `}
