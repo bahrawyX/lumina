@@ -208,14 +208,17 @@ export default function GoalsPage() {
         onDone={() => setShowGoalTrophy(false)}
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0">
-        <div>
-          <h1 className="font-display text-lg md:text-xl font-semibold text-foreground tracking-[-0.02em]">
+      {/* Header — editorial */}
+      <div className="flex items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
+            Workspace · Objectives
+          </p>
+          <h1 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em] leading-none">
             Goals
           </h1>
-          <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5 hidden sm:block">
-            {goals.filter(g => g.status === 'active').length} active goals
+          <p className="text-[11px] md:text-xs text-muted-foreground/80 mt-2 hidden sm:block tabular-nums">
+            {goals.filter(g => g.status === 'active').length} active · {goals.length} total
           </p>
         </div>
         <Button

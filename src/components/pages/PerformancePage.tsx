@@ -310,12 +310,15 @@ const PerformancePage: React.FC = () => {
         }
       >
     <>
-      <header className="flex items-center justify-between mb-6 lg:mb-10 px-2 lg:px-4">
-        <div>
-          <h2 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">
+      <header className="flex items-end justify-between mb-6 lg:mb-8 pb-5 lg:pb-6 px-2 lg:px-4 border-b border-border/60">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-2">
+            Workspace · Analytics
+          </p>
+          <h2 className="font-display text-3xl lg:text-4xl font-medium tracking-[-0.035em] leading-none">
             Weekly Review
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">{weekLabel}</p>
+          <p className="font-mono text-xs text-muted-foreground/80 mt-2.5">{weekLabel}</p>
         </div>
       </header>
 

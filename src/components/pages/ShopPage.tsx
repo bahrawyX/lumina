@@ -140,20 +140,23 @@ export default function ShopPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0">
-        <div>
-          <h1 className="font-display text-lg md:text-xl font-semibold text-foreground tracking-[-0.02em]">
+      {/* Header — editorial */}
+      <div className="flex items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
+            Workspace · Exchange
+          </p>
+          <h1 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em] leading-none">
             Shop
           </h1>
-          <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5">
+          <p className="text-[11px] md:text-xs text-muted-foreground/80 mt-2 italic">
             Spend your hard-earned coins
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card">
+        <div className="flex items-baseline gap-1.5 flex-shrink-0">
           <CoinIcon />
-          <span className="text-sm font-bold tabular-nums text-foreground">{balance}</span>
-          <span className="text-[11px] text-muted-foreground">coins</span>
+          <span className="font-display text-[26px] font-medium tabular-nums text-foreground leading-none">{balance}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">coins</span>
         </div>
       </div>
 
