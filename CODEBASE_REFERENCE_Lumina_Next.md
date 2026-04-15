@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-15 (v22 — Focused Craft polish pass + Vitest testing layer + Shop SVG icons. Typography migrated to Geist + Clash Display, warm paper palette, grain overlay, `.card-lift` shared motion, editorial page-header rhythm across every workspace page. 84 Vitest tests covering design tokens, Button, editorial headers, goal math, shop config, coins store, and the new `ShopItemIcon` registry. 12 custom line-icons replace emoji in the shop with dynamic accent swatches pulling HSL from `ACCENT_COLORS`.)
+> Last updated: 2026-04-16 (v23 — Performance pass: lazy-load heavy dialogs, `@next/bundle-analyzer`, dynamic canvas-confetti, removed emoji-picker-react. Palette hygiene: zero hard-coded grays remain, CalendarShared.tsx fully rewritten to semantic tokens, 4-test guard via git grep. Route-lag elimination: `*` transition scoped to `html.transitioning-theme`, per-field Zustand selectors across all stores (only OnboardingFlow exempt), PageTransition AnimatePresence removed. Dashboard consolidated from 3 widgets to single `DailyBriefStrip`. Focus outlines killed globally. 88 Vitest tests.)
 
 ---
 
@@ -73,6 +73,9 @@ This is the single source of truth for the Lumina codebase. It covers:
 
 ### Notifications
 - **sonner** — branded toast notifications
+
+### Build analysis
+- **@next/bundle-analyzer** — behind `ANALYZE=true` env var, wired in `next.config.mjs` via `withBundleAnalyzer`. Script: `npm run analyze`
 
 ### Auth
 - **better-auth 1.5** — sessions, email/password, Google OAuth, Microsoft OAuth
@@ -342,6 +345,12 @@ bg-white/[0.0x]     → bg-muted/[x]
 - `MobileBottomSheet.tsx` — `bg-card/95 border-border`; handle `bg-muted-foreground/25`
 - `IntelligencePanel.tsx` — fully rewritten with semantic tokens
 - `CompactEmojiPicker.tsx` — `bg-popover/95 border-border/60`
+
+### Focus outlines (v23)
+All elements have `outline: none; box-shadow: none` on both `:focus` and `:focus-visible` in `globals.css`. This is a deliberate design choice — Lumina uses its own focus indicators (primary rail, motion wash) rather than browser defaults.
+
+### Scoped theme transitions (v23)
+The global `* { transition: background-color 400ms ... }` rule was causing 400ms lag on every route change because it applied to every element on mount. Now scoped to `html.transitioning-theme *` so the transition only fires during actual theme switches. Root cause of route-change lag.
 
 ### Warm paper palette (Focused Craft v22)
 
@@ -1569,6 +1578,33 @@ Inactive item: `text-muted-foreground`
 - **Test coverage**: `tests/shop-item-icon.test.tsx` asserts every non-accent SKU in `SHOP_ITEMS` has a registry entry, every accent renders with the correct HSL fill, currentColor stroke is present, size prop is honored, unknown ids fall back to a neutral circle.
 - **Files**: `src/components/shop/ShopItemIcon.tsx` (new), `src/components/pages/ShopPage.tsx` (icon tile integration), `tests/shop-item-icon.test.tsx` (new). Commit `146c295`.
 
+### 20.24 Performance + Route Lag Fixes — COMPLETE (v23)
+- **Lazy-loading**: GoalsPage dialogs (`GoalDialog`, `GoalDetailSheet`), TaskBoard dialogs (`TaskDialog`, `TaskScheduleDialog`) wrapped in `React.lazy` + conditional render. QuickSwitcher lazy in AppShell. Other AppShell modals (EventModal, TutorialOverlay, AmbientSoundDrawer, InstallPrompt) tried lazy but reverted to eager — Suspense on always-rendered modals caused route-change stalls.
+- **canvas-confetti**: `triggerConfetti` in `ConfettiEffect` is now `async` — dynamic-imports `canvas-confetti` at call time instead of top-level import.
+- **Removed dep**: `emoji-picker-react` removed from package.json (unused).
+- **Bundle analyzer**: `@next/bundle-analyzer` added, `next.config.mjs` wraps config with `withBundleAnalyzer` when `ANALYZE=true`. npm script `"analyze"`.
+- **Per-field Zustand selectors**: full-store destructures (`const { a, b } = useStore()`) replaced with individual `useStore(s => s.field)` selectors across AppShell, Sidebar, CalendarPage, TimerCallout, useCalendar, EventModal, MonthView, DayView, WeekView, Profile. Only `OnboardingFlow` still uses bare `useCalendarStore()`.
+- **Scoped theme transition**: global `* { transition: background-color 400ms }` moved to `html.transitioning-theme *` in `globals.css` — was the root cause of route-change lag (every element transitioned on mount).
+- **PageTransition gutted**: `AnimatePresence mode="wait"` removed entirely, component is now a plain `<div>`. Eliminates exit-animation delay between routes.
+- **Focus outlines killed**: `*:focus` and `*:focus-visible` set to `outline: none; box-shadow: none` globally in `globals.css`.
+- **Task columns full height**: kanban flex wrapper changed from `items-start` to `items-stretch`. Skeleton wrapper accepts `className` for flex passthrough. Drop zone removed `min-h-[120px]`.
+- **Calendar/planner scroll**: CalendarPage calendar container gets `overflow-y-auto`. DailyPlanView timeline wrapper gets `overflow-hidden`.
+- **Sidebar wash**: active wash opacity softened from 4%/6% to 2.5%/4%. SidebarMenuButton stripped shadcn `bg-accent/70` fill on active — now relies on `font-medium` + foreground color + motion wash + 2px primary rail.
+- Commits: `e20d007`, `879f8e8`, `c310af9`, `d0e0d9f`, `9a7a3bd`, `d80d630`, `22523ad`.
+
+### 20.25 Dashboard Consolidation (DailyBriefStrip) — COMPLETE (v23)
+- **Removed**: `TodaySummaryWidget`, `GoalsWidget`, `CoinsWidget` from CalendarPage. Earlier intermediate commits (`ea0f1f6` unify goals+coins into stat grid, `9561330` fold daily brief into Today widget header) were superseded.
+- **New component**: `src/components/dashboard/DailyBriefStrip.tsx` — single horizontal strip replacing all three widgets. Contains greeting + date + chip row: meetings count, focus window time, due today, coins (links to `/shop`), goals (links to `/goals`), streak, completed today. Each chip: 12px icon + bold value + muted label. Scrolls horizontally on mobile.
+- **Card treatment**: `rounded-2xl border bg-card shadow-card` wrapper (commit `1eae32a`).
+- **MonthView**: `MAX_EVENTS_PER_CELL` tried bumping to 2, reverted to 1 (commit `1eae32a`).
+- Commits: `ea0f1f6`, `9561330`, `3f16704`, `1eae32a`.
+
+### 20.26 Palette Hygiene Pass — COMPLETE (v23)
+- **Scope**: every remaining `text-gray-*`, `bg-gray-*`, `border-gray-*`, `bg-white` converted to semantic tokens across MomentumCircle, DayCalendarTimeline, TimeGridEvent, TimeSlotCell, DailyPlanView, TimerCallout, CalendarShared, AppShell, NotificationSettings.
+- **CalendarShared.tsx rewrite**: extracted semantic class constants — `SURFACE_CLS`, `CELL_CLS`, `CELL_HOVER_CLS`, `HEADER_CLS`, `TIME_LABEL_CLS`, `WEEKDAY_LABEL_CLS`, `DATE_NUMBER_CLS`, `HOUR_LINE_CLS`, `QUARTER_LINE_CLS`, `TIME_SIDEBAR_CLS`, `GRID_CANVAS_CLS` — all using semantic tokens + `shadow-card` + `ease-signature`.
+- **Guard test**: `tests/no-hardcoded-colors.test.ts` (4 tests) — uses `git grep` to assert zero matches of banned patterns (`text-gray-`, `bg-gray-`, `border-gray-`, `bg-white`) in `src/` files. Prevents regression.
+- Commit: `9113be1`.
+
 ### 20.20 Boneyard Skeleton Migration — COMPLETE
 - **Library**: `boneyard-js@^1.7.6` — auto-generates pixel-perfect skeletons from real DOM via a Playwright-powered CLI.
 - **Pattern**: `<Skeleton name="..." loading={flag} fallback={<handcraftedSkeleton />}>{real content}</Skeleton>`. Boneyard's `Skeleton` wraps the real component and uses `fallback` until captured bones exist in the registry.
@@ -1891,6 +1927,12 @@ Every workspace page uses the same header pattern (see Section 4 for code). The 
 - Profile footer: top border-t, mono role text, 6px avatar radius
 - Badges: mono small numerals (e.g. `3` for active goal count), no pill/chip backgrounds
 
+### CalendarShared semantic rewrite (v23)
+`CalendarShared.tsx` fully rewritten: all inline Tailwind classes extracted into named constants (`SURFACE_CLS`, `CELL_CLS`, `CELL_HOVER_CLS`, `HEADER_CLS`, `TIME_LABEL_CLS`, `WEEKDAY_LABEL_CLS`, `DATE_NUMBER_CLS`, `HOUR_LINE_CLS`, `QUARTER_LINE_CLS`, `TIME_SIDEBAR_CLS`, `GRID_CANVAS_CLS`) — each uses only semantic tokens, `shadow-card`, and `ease-signature`. Zero hard-coded grays remain anywhere in `src/`.
+
+### Scoped theme transition (v23)
+The global `* { transition: background-color 400ms }` was the root cause of route-change lag — every element animated on mount. Now scoped to `html.transitioning-theme *` so the transition only fires during theme switches. This single fix eliminated the perceived lag.
+
 ### Polish phase commit history
 | Commit | Phase |
 |---|---|
@@ -1922,7 +1964,7 @@ Vitest 4 with jsdom — `vitest.config.ts` wires `@` → `./src`, points `setupF
 | `npm run test:watch` | Watch mode |
 | `npm run test:ui` | Vitest UI dashboard |
 
-### Test files (84 tests total)
+### Test files (88 tests total)
 | File | Tests | Coverage |
 |---|---|---|
 | `tests/design-system.test.ts` | 15 | globals.css / tailwind.config / layout.tsx carry the crafted tokens (card-lift, signature easing, shadow-card, warm HSL, grain, Clash+Geist fonts) |
@@ -1932,6 +1974,7 @@ Vitest 4 with jsdom — `vitest.config.ts` wires `@` → `./src`, points `setupF
 | `tests/shop-config.test.ts` | 9 | Unique ids, positive costs, powerup/consumable invariants, every `accent_*` maps to ACCENT_COLORS |
 | `tests/useCoinsStore.test.ts` | 15 | Hydration idempotency, purchase success/rollback, insufficient funds, transaction cap, selectors |
 | `tests/shop-item-icon.test.tsx` | 6 | Every SKU has icon, accent swatches use correct HSL, currentColor stroke, size prop, fallback |
+| `tests/no-hardcoded-colors.test.ts` | 4 | Palette hygiene guard — `git grep` asserts zero `text-gray-*`, `bg-gray-*`, `border-gray-*`, `bg-white` in `src/` |
 
 ### Patterns
 - **String-level assertions** for design tokens: `readFileSync` → regex match. Fast, no render needed, catches accidental deletions.
