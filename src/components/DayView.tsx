@@ -49,12 +49,12 @@ interface PendingDrag {
 }
 
 const DayView: React.FC<DayViewProps> = ({ events }) => {
-  const {
-    currentDate,
-    openModal,
-  } = useCalendarStore();
-  const { moveEvent, deleteEvent, addEvent } = useCalendarEventsStore();
-  const timezone = useCalendarStore(s => s.timezone);
+  const currentDate = useCalendarStore(s => s.currentDate);
+  const openModal   = useCalendarStore(s => s.openModal);
+  const timezone    = useCalendarStore(s => s.timezone);
+  const moveEvent   = useCalendarEventsStore(s => s.moveEvent);
+  const deleteEvent = useCalendarEventsStore(s => s.deleteEvent);
+  const addEvent    = useCalendarEventsStore(s => s.addEvent);
 
   const { dragState, startDrag, updateDragPreview, commitDrag, cancelDrag } = useDragStore();
 

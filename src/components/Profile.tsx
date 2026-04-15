@@ -56,12 +56,14 @@ const Metric: React.FC<{
 );
 
 const Profile: React.FC = () => {
-  const {
-    profile, updateProfile,
-    addGoal, toggleGoal, deleteGoal,
-    calculateIntelligence,
-  } = useCalendarStore();
-  const { events, addEvent } = useCalendarEventsStore();
+  const profile               = useCalendarStore(s => s.profile);
+  const updateProfile         = useCalendarStore(s => s.updateProfile);
+  const addGoal               = useCalendarStore(s => s.addGoal);
+  const toggleGoal            = useCalendarStore(s => s.toggleGoal);
+  const deleteGoal            = useCalendarStore(s => s.deleteGoal);
+  const calculateIntelligence = useCalendarStore(s => s.calculateIntelligence);
+  const events   = useCalendarEventsStore(s => s.events);
+  const addEvent = useCalendarEventsStore(s => s.addEvent);
 
   const intel = profile.intelligence;
   const goals = Array.isArray(profile.goals) ? profile.goals : [];
