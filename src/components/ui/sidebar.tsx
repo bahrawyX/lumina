@@ -171,11 +171,14 @@ const SidebarMenuButton = React.forwardRef<HTMLButtonElement, SidebarMenuButtonP
       data-active={isActive}
       title={tooltip}
       className={cn(
-        'peer/menu-button flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm text-left outline-none transition-all duration-150 whitespace-nowrap',
-        'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+        // Minimal shell. The WorkspaceItem wraps this and draws its own
+        // active wash + 2px left rail via motion.div layoutIds, so the
+        // button itself must stay background-less when active — otherwise
+        // you get a double-fill (shadcn pill + our wash on top).
+        'peer/menu-button flex w-full items-center gap-3 overflow-hidden rounded-lg px-3 py-2 text-sm text-left outline-none transition-colors duration-150 whitespace-nowrap',
+        'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.04]',
         'focus-visible:ring-2 focus-visible:ring-ring',
-        isActive &&
-          'bg-accent/70 text-foreground font-medium hover:bg-accent/80',
+        isActive && 'text-foreground font-medium',
         className
       )}
       {...props}

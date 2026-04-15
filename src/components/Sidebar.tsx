@@ -1386,7 +1386,7 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
               <>
                 <motion.div
                   layoutId="sidebar-active-nav-bg"
-                  className="absolute inset-0 rounded-lg bg-foreground/[0.04] dark:bg-foreground/[0.06]"
+                  className="absolute inset-0 rounded-lg bg-foreground/[0.025] dark:bg-foreground/[0.04]"
                   transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
                 />
                 <motion.div

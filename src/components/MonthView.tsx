@@ -21,7 +21,7 @@ import {
   GRID_CANVAS_CLS,
 } from './ui/CalendarShared';
 
-const MAX_EVENTS_PER_CELL = 1;
+const MAX_EVENTS_PER_CELL = 2;
 
 /* ... types ... */
 interface MonthGridDay {
@@ -72,9 +72,9 @@ const OverflowPopover = memo<{
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onOpenChange(true); }}
-        className="text-[9px] font-semibold text-primary/70 hover:text-primary pl-2 mt-0.5 text-left cursor-pointer transition-colors duration-100 leading-tight"
+        className="inline-flex items-center gap-1 self-start px-1.5 py-[2px] rounded-md text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-100 leading-none tabular-nums"
       >
-        +{overflowCount} more event{overflowCount === 1 ? '' : 's'}
+        +{overflowCount} more
       </button>
     </PopoverTrigger>
     <PopoverContent
@@ -127,8 +127,8 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
   if (!isCurrentMonth) {
     return (
       <div
-        className="h-full flex flex-col p-1 sm:p-1.5 rounded-xl bg-white/20 dark:bg-neutral-panel/20"
-        style={{ opacity: 0.4, pointerEvents: 'none' }}
+        className="h-full flex flex-col p-1 sm:p-1.5 rounded-xl bg-muted/30 border border-border/30"
+        style={{ opacity: 0.45, pointerEvents: 'none' }}
         role="gridcell"
         aria-disabled="true"
       >
@@ -267,7 +267,7 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
 
       <div className="flex-1 min-h-0 h-full overflow-hidden">
         <div
-          className={`h-full min-h-[560px] overflow-hidden grid grid-cols-7 grid-rows-6 p-1.5 sm:p-2 gap-1.5 sm:gap-2 ${GRID_CANVAS_CLS}`}
+          className={`h-full min-h-[660px] overflow-hidden grid grid-cols-7 grid-rows-6 p-1.5 sm:p-2 gap-1.5 sm:gap-2 ${GRID_CANVAS_CLS}`}
           style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}
         >
           {gridDays.map((day, idx) => (
