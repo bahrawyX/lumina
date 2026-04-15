@@ -797,7 +797,7 @@ export const TaskBoard: React.FC = () => {
                 </div>
                 <div className="flex-1 rounded-2xl border border-border/50 bg-muted/20 p-1.5 flex flex-col gap-2">
                   {[1, 2, 3].map(i => (
-                    <div key={i} className="rounded-xl border border-border/50 bg-card p-3 flex flex-col gap-2">
+                    <div key={i} className="rounded-xl border border-border/60 bg-card p-3 flex flex-col gap-2 shadow-card">
                       <div className="flex items-start gap-2">
                         <SkeletonPrimitive className="flex-1 h-4 rounded" />
                         <SkeletonPrimitive className="h-6 w-6 rounded-lg flex-shrink-0" />
