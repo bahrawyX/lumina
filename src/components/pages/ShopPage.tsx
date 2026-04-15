@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
 import { toast } from 'sonner';
+import { ShopItemIcon } from '@/components/shop/ShopItemIcon';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,13 @@ const ShopItemCard: React.FC<{
     className="card-lift rounded-xl border border-border/70 bg-card p-4 flex flex-col gap-3 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none"
   >
     <div className="flex items-start gap-3">
-      <span className="text-2xl">{item.emoji}</span>
+      <div className={`flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 ${
+        item.category === 'powerup' ? 'bg-primary/10 text-primary' :
+        item.category === 'cosmetic' ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400' :
+        'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+      }`}>
+        <ShopItemIcon id={item.id} size={20} />
+      </div>
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-semibold text-foreground">{item.name}</h3>
         <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{item.description}</p>
@@ -167,8 +174,9 @@ export default function ShopPage() {
             if (count <= 0) return null;
             const item = SHOP_ITEMS.find(i => i.consumableKey === key);
             return (
-              <span key={key} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-primary/20 bg-primary/5 text-primary">
-                {item?.emoji} {item?.name} x{count}
+              <span key={key} className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-lg border border-primary/20 bg-primary/5 text-primary">
+                {item && <ShopItemIcon id={item.id} size={12} />}
+                {item?.name} x{count}
               </span>
             );
           })}
