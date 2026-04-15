@@ -43,12 +43,18 @@ const eventSchema = z.object({
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 const EventModal: React.FC = () => {
-  const {
-    isModalOpen, closeModal, selectedEventId,
-    initialDateForNewEvent, initialTimeForNewEvent,
-    timezone,
-  } = useCalendarStore();
-  const { events, addEvent, updateEvent, deleteEvent } = useCalendarEventsStore();
+  // Per-field selectors — EventModal is always mounted in AppShell.
+  // A full-store sub re-renders it on every unrelated state change.
+  const isModalOpen           = useCalendarStore(s => s.isModalOpen);
+  const closeModal            = useCalendarStore(s => s.closeModal);
+  const selectedEventId       = useCalendarStore(s => s.selectedEventId);
+  const initialDateForNewEvent = useCalendarStore(s => s.initialDateForNewEvent);
+  const initialTimeForNewEvent = useCalendarStore(s => s.initialTimeForNewEvent);
+  const timezone              = useCalendarStore(s => s.timezone);
+  const events     = useCalendarEventsStore(s => s.events);
+  const addEvent   = useCalendarEventsStore(s => s.addEvent);
+  const updateEvent = useCalendarEventsStore(s => s.updateEvent);
+  const deleteEvent = useCalendarEventsStore(s => s.deleteEvent);
   const localEvent = events.find((e) => e.id === selectedEventId);
   const outlookEvents = usePlannerStore((s) => s.outlookEvents);
   const googleEvents = usePlannerStore((s) => s.googleEvents);

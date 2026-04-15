@@ -205,8 +205,9 @@ interface MonthViewProps {
 }
 
 const MonthView: React.FC<MonthViewProps> = ({ events }) => {
-  const { currentDate, openModal } = useCalendarStore();
-  const { moveEvent } = useCalendarEventsStore();
+  const currentDate = useCalendarStore(s => s.currentDate);
+  const openModal   = useCalendarStore(s => s.openModal);
+  const moveEvent   = useCalendarEventsStore(s => s.moveEvent);
   const today = new Date();
 
   const gridDays = useMemo<MonthGridDay[]>(() => {
