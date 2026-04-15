@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { format, isToday } from 'date-fns';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useStreakStore } from '@/store/useStreakStore';
+import { useDailyBriefStore } from '@/store/useDailyBriefStore';
+import { useCalendarStore } from '@/store/useCalendarStore';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
-import { isToday } from 'date-fns';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -46,6 +48,13 @@ function formatFocusMinutes(minutes: number): string {
   return `${m}m`;
 }
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 // ── Widget ──────────────────────────────────────────────────────────────────
 
 export const TodaySummaryWidget: React.FC = () => {
@@ -54,6 +63,28 @@ export const TodaySummaryWidget: React.FC = () => {
   const focusSessions = useFocusStore(s => s.sessionHistory);
   const focusHydrated = useFocusStore(s => s.dbHydrated);
   const dailyStreak = useStreakStore(s => s.dailyStreak);
+
+  // Daily brief — consolidated into this widget so the top-of-page banner
+  // can be removed. We only consume eventCount + bestFocusWindow here;
+  // the rest (overdue count, streak-at-risk flag) is surfaced via tasks +
+  // the Day streak stat cell, not via a separate card.
+  const brief      = useDailyBriefStore(s => s.brief);
+  const fetchBrief = useDailyBriefStore(s => s.fetchBrief);
+  const timezone   = useCalendarStore(s => s.timezone);
+
+  // Hydration guard — time-based greeting must not render server-side.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // Fetch brief once per day
+  useEffect(() => {
+    const lastFetched = useDailyBriefStore.getState().lastFetched;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const needsFetch = !lastFetched || !lastFetched.startsWith(today);
+    if (needsFetch && !useDailyBriefStore.getState().isLoading) {
+      fetchBrief(timezone);
+    }
+  }, [timezone, fetchBrief]);
 
   const stats = useMemo(() => {
     const todayTasks = tasks.filter(t => !t.parentTaskId);
@@ -67,6 +98,15 @@ export const TodaySummaryWidget: React.FC = () => {
 
   const isLoading = !tasksHydrated || !focusHydrated;
 
+  const dateLabel = mounted ? format(new Date(), 'EEE, MMM d') : '';
+  const greeting  = mounted ? getGreeting() : 'Today';
+  const meetingText = brief
+    ? (brief.eventCount === 0 ? 'No meetings' : `${brief.eventCount} meeting${brief.eventCount !== 1 ? 's' : ''}`)
+    : null;
+  const focusText = brief?.bestFocusWindow
+    ? `${brief.bestFocusWindow.startTime}–${brief.bestFocusWindow.endTime}`
+    : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -74,7 +114,32 @@ export const TodaySummaryWidget: React.FC = () => {
       transition={{ duration: 0.25 }}
       className="card-lift bg-card border border-border/70 rounded-xl p-5"
     >
-      <h3 className="text-sm font-semibold text-foreground mb-3">Today</h3>
+      {/* Header — greeting + date + compact meta line */}
+      <div className="mb-3">
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          <h3 className="text-sm font-semibold text-foreground">{greeting}</h3>
+          {mounted && (
+            <span className="text-[11px] text-muted-foreground">· {dateLabel}</span>
+          )}
+        </div>
+        {mounted && (meetingText || focusText) && (
+          <div className="flex items-center gap-2.5 mt-1 text-[11px] text-muted-foreground/80">
+            {meetingText && (
+              <span className="inline-flex items-center gap-1">
+                <CalendarIcon />
+                <span>{meetingText}</span>
+              </span>
+            )}
+            {meetingText && focusText && <span className="text-border">·</span>}
+            {focusText && (
+              <span className="inline-flex items-center gap-1 text-primary/80">
+                <ClockIcon />
+                <span>Focus {focusText}</span>
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       <Skeleton
         name="dashboard.TodaySummaryWidget"
