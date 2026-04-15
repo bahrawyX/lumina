@@ -711,24 +711,22 @@ const AppSidebar: React.FC = () => {
             >
               {/* Wordmark */}
               <div className="flex flex-col leading-none">
-                <span className="font-logo text-[22px] font-semibold tracking-[-0.03em] text-primary dark:text-foreground leading-none">
+                <span className="font-logo text-[24px] font-medium tracking-[-0.035em] text-foreground leading-none">
                   Lumina
+                </span>
+                <span className="font-sans text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 leading-none mt-1.5">
+                  Focused Craft
                 </span>
               </div>
 
-              {/* Streak badge */}
-              <div className="flex flex-col items-end pb-0.5">
-                <span className="font-sans text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50 leading-none mb-1">
-                  Streak
+              {/* Streak badge — editorial treatment with measured type */}
+              <div className="flex items-baseline gap-1 pb-0.5">
+                <span className="font-display text-[26px] font-medium text-foreground leading-none tabular-nums">
+                  {profile.intelligence.focusStreak}
                 </span>
-                <div className="flex items-baseline gap-0.5">
-                  <span className="font-display text-2xl font-semibold text-primary dark:text-foreground leading-none tabular-nums">
-                    {profile.intelligence.focusStreak}
-                  </span>
-                  <span className="font-sans text-[11px] font-medium text-muted-foreground leading-none mb-0.5">
-                    d
-                  </span>
-                </div>
+                <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground leading-none">
+                  d · streak
+                </span>
               </div>
             </motion.div>
           )}
@@ -808,7 +806,7 @@ const AppSidebar: React.FC = () => {
           {/* Insights */}
           {!isSidebarCollapsed && insights.length > 0 && (
             <SidebarGroup className="px-2 mb-2">
-              <SidebarGroupLabel className="flex items-center gap-2 px-1">
+              <SidebarGroupLabel className="flex items-center gap-2 px-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50">
                 <InsightsIcon size={10} className="text-primary/50" />
                 Insights
               </SidebarGroupLabel>
@@ -829,6 +827,11 @@ const AppSidebar: React.FC = () => {
 
           {/* Workspace nav */}
           <SidebarGroup className="px-2">
+            {!isSidebarCollapsed && (
+              <SidebarGroupLabel className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50 px-3 mb-1">
+                Workspace
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
               <SidebarMenu>
                 <WorkspaceItem
@@ -970,7 +973,7 @@ const AppSidebar: React.FC = () => {
           <SidebarGroup className="px-2 mt-1" data-tutorial="contexts">
             {!isSidebarCollapsed && (
               <div className="flex items-center justify-between px-2 mb-2">
-                <SidebarGroupLabel>Contexts</SidebarGroupLabel>
+                <SidebarGroupLabel className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50">Contexts</SidebarGroupLabel>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -995,14 +998,14 @@ const AppSidebar: React.FC = () => {
                           <SidebarMenuButton
                             onClick={() => toggleFilter(cat.name)}
                             isActive={activeFilters.includes(cat.name)}
-                            className={`${isSidebarCollapsed ? 'justify-center' : 'pr-9'}`}
+                            className={`h-7 ${isSidebarCollapsed ? 'justify-center' : 'pr-9'}`}
                           >
                             <div
-                              className="flex-shrink-0 w-[7px] h-[7px] rounded-full"
-                              style={{ backgroundColor: cat.color, opacity: 0.75 }}
+                              className={`flex-shrink-0 w-1.5 h-1.5 rounded-full transition-transform ${activeFilters.includes(cat.name) ? 'scale-150 ring-2 ring-current/10' : ''}`}
+                              style={{ backgroundColor: cat.color, opacity: activeFilters.includes(cat.name) ? 1 : 0.7 }}
                             />
                             {!isSidebarCollapsed && (
-                              <span className="font-sans text-sm truncate">{cat.name}</span>
+                              <span className={`font-sans text-[13px] truncate ${activeFilters.includes(cat.name) ? 'text-foreground' : 'text-muted-foreground/80'}`}>{cat.name}</span>
                             )}
                           </SidebarMenuButton>
                         </TooltipTrigger>
@@ -1089,33 +1092,33 @@ const AppSidebar: React.FC = () => {
 
         {/* ── Footer: profile dropdown ─────────────────────────── */}
         <SidebarSeparator />
-        <SidebarFooter className="p-2">
+        <SidebarFooter className="p-2 border-t border-border/40">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
-                className={`h-auto py-2.5 rounded-xl hover:bg-accent/50 ${isSidebarCollapsed ? 'justify-center' : ''
+                className={`h-auto py-2 rounded-lg hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06] transition-colors ${isSidebarCollapsed ? 'justify-center' : ''
                   }`}
               >
                 <div className="relative flex-shrink-0">
-                  <Avatar className="h-7 w-7 rounded-[8px]">
+                  <Avatar className="h-7 w-7 rounded-[6px]">
                     <AvatarImage
                       src={profile.avatarUrl}
                       alt={profile.name}
-                      className="rounded-[8px]"
+                      className="rounded-[6px]"
                     />
-                    <AvatarFallback className="rounded-[8px] text-[10px] font-bold" style={{ backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}>
+                    <AvatarFallback className="rounded-[6px] text-[10px] font-medium" style={{ backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}>
                       {profile.name.charAt(0)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 border-[1.5px] border-background rounded-full" />
+                  <div className="absolute -top-px -right-px w-2 h-2 bg-emerald-500 border-[1.5px] border-background rounded-full" />
                 </div>
                 {!isSidebarCollapsed && (
                   <div className="min-w-0 flex-1">
-                    <p className="font-sans text-xs font-medium text-foreground truncate">
+                    <p className="font-sans text-[12px] font-medium text-foreground truncate leading-tight">
                       {profile.name}
                     </p>
-                    <p className="font-sans text-[10px] text-muted-foreground truncate leading-tight">
-                      {profile.role || ''}
+                    <p className="font-mono text-[10px] text-muted-foreground/70 truncate leading-tight mt-0.5">
+                      {profile.role || 'member'}
                     </p>
                   </div>
                 )}
@@ -1374,29 +1377,36 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             isActive={isActive}
             onClick={onClick}
             aria-label={label}
-            className={`relative ${collapsed ? 'justify-center' : ''}`}
+            className={`group/workspace relative h-8 ${collapsed ? 'justify-center' : ''}`}
             {...(dataTutorial ? { 'data-tutorial': dataTutorial } : {})}
           >
             {/* Invisible Link for prefetching — pointer-events-none so button click wins */}
             <Link href={href} prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
             {isActive && (
-              <motion.div
-                layoutId="sidebar-active-nav"
-                className="absolute inset-0 rounded-xl bg-accent/70"
-                transition={{ duration: 0.15, ease: 'easeOut' }}
-              />
+              <>
+                <motion.div
+                  layoutId="sidebar-active-nav-bg"
+                  className="absolute inset-0 rounded-lg bg-foreground/[0.04] dark:bg-foreground/[0.06]"
+                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                />
+                <motion.div
+                  layoutId="sidebar-active-nav-rail"
+                  className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r-full bg-primary"
+                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                />
+              </>
             )}
             <Icon
-              size={16}
-              strokeWidth={1.5}
-              className={`relative z-10 flex-shrink-0 transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'
+              size={15}
+              strokeWidth={1.75}
+              className={`relative z-10 flex-shrink-0 transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground/80 group-hover/workspace:text-foreground'
                 }`}
             />
             {!collapsed && (
-              <span className="relative z-10 font-sans text-sm truncate">{label}</span>
+              <span className={`relative z-10 font-sans text-[13px] truncate transition-colors ${isActive ? 'text-foreground font-medium' : 'text-muted-foreground/90'}`}>{label}</span>
             )}
             {!collapsed && badge != null && badge > 0 && (
-              <span className="relative z-10 ml-auto text-[10px] font-semibold tabular-nums text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 border border-border/50">
+              <span className={`relative z-10 ml-auto text-[10px] font-mono font-medium tabular-nums transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground/60'}`}>
                 {badge}
               </span>
             )}
