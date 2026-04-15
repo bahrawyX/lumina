@@ -743,7 +743,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                 </span>
               </div>
             </div>
-            <div className="flex-1 min-h-0 flex flex-col px-2 md:px-3 py-2">
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-2 md:px-3 py-2">
               <TodayTimeline
                 todayEvents={todayEvents}
                 planItems={visiblePlanItems}

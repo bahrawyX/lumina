@@ -190,7 +190,7 @@ const CalendarPage: React.FC = () => {
       {/* Daily brief — one-line glanceable strip */}
       <DailyBriefStrip />
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative overflow-y-auto no-scrollbar">
         <AnimatePresence mode="wait" custom={navDirection}>
           <motion.div 
             key={`${view}-${currentDate.toISOString()}`}
