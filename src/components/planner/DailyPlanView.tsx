@@ -591,7 +591,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
             {/* Inline quick-add form */}
             {quickAddOpen && (
               <div className="flex-shrink-0 mb-2">
-                <div className="flex flex-col gap-1.5 p-2 rounded-xl border border-gray-300 dark:border-primary/30 bg-white dark:bg-primary/10 shadow-sm">
+                <div className="flex flex-col gap-1.5 p-2 rounded-xl border border-primary/30 bg-primary/5 shadow-card">
                   {/* Row 1: emoji + title input */}
                   <div className="flex items-center gap-1.5">
                     <Popover open={quickAddEmojiOpen} onOpenChange={setQuickAddEmojiOpen}>

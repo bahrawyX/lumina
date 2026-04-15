@@ -118,7 +118,7 @@ const TimerCallout: React.FC = () => {
                 startFocusSession(focusModeFromMinutes(focusSessionLength), focusSessionLength);
                 setJustCompleted(false);
               }}
-              className="absolute -top-16 right-0 whitespace-nowrap px-5 py-2.5 bg-white dark:bg-neutral-panel border border-gray-100 dark:border-neutral-border shadow-soft rounded-2xl text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:text-primary transition-colors"
+              className="absolute -top-16 right-0 whitespace-nowrap px-5 py-2.5 bg-card border border-border shadow-soft rounded-2xl text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors"
             >
               Start preferred session?
             </motion.button>
@@ -160,7 +160,7 @@ const TimerCallout: React.FC = () => {
         borderRadius: 32,
       }}
       transition={{ type: 'spring', damping: 30, stiffness: 220 }}
-      className="fixed top-0 left-0 z-[100] cursor-grab active:cursor-grabbing select-none bg-white dark:bg-neutral-panel shadow-layered overflow-hidden border border-gray-100/60 dark:border-neutral-border/40"
+      className="fixed top-0 left-0 z-[100] cursor-grab active:cursor-grabbing select-none bg-card shadow-layered overflow-hidden border border-border/60"
     >
       <AnimatePresence mode="wait">
         {isTimerExpanded ? (
@@ -176,31 +176,31 @@ const TimerCallout: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-primary">{modeLabel}</p>
-                <p className="text-[11px] font-medium text-gray-400 mt-0.5">Session active</p>
+                <p className="text-[11px] font-medium text-muted-foreground mt-0.5">Session active</p>
               </div>
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setTimerExpanded(false)} title="Minimize"><MinimizeIcon size={14} /></Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" onClick={cancelFocusSession} title="Cancel"><CloseIcon size={14} /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive hover:bg-destructive/10" onClick={cancelFocusSession} title="Cancel"><CloseIcon size={14} /></Button>
               </div>
             </div>
 
             {/* Countdown display */}
-            <div className="flex-1 flex flex-col items-center justify-center rounded-2xl bg-gray-50/70 dark:bg-neutral-dark/50 border border-gray-100/60 dark:border-neutral-border/20 relative overflow-hidden">
+            <div className="flex-1 flex flex-col items-center justify-center rounded-2xl bg-muted/40 border border-border/50 relative overflow-hidden">
               <motion.div
                 className="absolute bottom-0 left-0 h-[3px] bg-primary/25"
                 animate={{ width: `${progressPct * 100}%` }}
                 transition={{ duration: 1, ease: 'linear' }}
               />
-              <span className="text-5xl font-black tracking-widest text-gray-900 dark:text-gray-50 font-mono tabular-nums z-10">
+              <span className="text-5xl font-black tracking-widest text-foreground font-mono tabular-nums z-10">
                 {formatTime(timeLeft)}
               </span>
-              <span className="mt-2 text-[9px] font-bold uppercase tracking-widest text-gray-400 z-10">remaining</span>
+              <span className="mt-2 text-[9px] font-bold uppercase tracking-widest text-muted-foreground z-10">remaining</span>
             </div>
 
             {/* Cancel */}
             <Button
               variant="ghost"
-              className="w-full rounded-2xl text-[11px] font-semibold text-gray-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500"
+              className="w-full rounded-2xl text-[11px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               onClick={cancelFocusSession}
             >
               Cancel session
@@ -229,7 +229,7 @@ const TimerCallout: React.FC = () => {
                 style={{ strokeDasharray: 2 * Math.PI * 30 }}
               />
             </svg>
-            <span className="text-[12px] font-black tabular-nums text-gray-800 dark:text-gray-100 z-10">
+            <span className="text-[12px] font-black tabular-nums text-foreground z-10">
               {formatTime(timeLeft)}
             </span>
           </motion.button>

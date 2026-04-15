@@ -454,14 +454,14 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
       {hours.map((hour) => (
         <div
           key={hour}
-          className="absolute left-0 right-0 border-t border-gray-200 dark:border-neutral-border/20"
+          className="absolute left-0 right-0 border-t border-border/60"
           style={{ top: (hour - startHour) * HOUR_HEIGHT }}
         />
       ))}
       {hours.map((hour) => (
         <div
           key={`h-${hour}`}
-          className="absolute left-0 right-0 border-t border-dashed border-gray-200/70 dark:border-neutral-border/10"
+          className="absolute left-0 right-0 border-t border-dashed border-border/30"
           style={{ top: (hour - startHour) * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
         />
       ))}
@@ -530,7 +530,7 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
               <div className="pointer-events-none w-2.5 h-2.5 rounded-full bg-red-500 -ml-[5px]" />
               <div className="h-[2px] flex-1 bg-gradient-to-r from-red-500/60 to-transparent relative">
                 <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-2.5 px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
-                  <span className="w-1 h-1 bg-white rounded-full animate-ping" />
+                  <span className="w-1 h-1 bg-background rounded-full animate-ping" />
                   {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>

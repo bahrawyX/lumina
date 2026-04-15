@@ -23,7 +23,7 @@ const MomentumCircle: React.FC<MomentumCircleProps> = ({ score, size = 64 }) => 
           stroke="currentColor"
           strokeWidth="2.5"
           fill="transparent"
-          className="text-gray-100 dark:text-neutral-border"
+          className="text-border"
         />
         <motion.circle
           cx={size / 2}
@@ -41,7 +41,7 @@ const MomentumCircle: React.FC<MomentumCircleProps> = ({ score, size = 64 }) => 
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0">
-        <span className="text-[10px] font-black text-gray-900 dark:text-gray-100 leading-none">{score}</span>
+        <span className="text-[10px] font-black text-foreground leading-none">{score}</span>
         <div className="w-1 h-1 bg-primary rounded-full mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </div>

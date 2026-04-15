@@ -91,7 +91,7 @@ const EventContent = React.memo<{
                 <TooltipTrigger asChild>
                   <h4
                     className={`font-bold leading-tight overflow-hidden ${
-                      isExternal ? '' : 'text-gray-800 dark:text-gray-100'
+                      isExternal ? '' : 'text-foreground'
                     } ${isVeryShort ? 'text-[8px]' : isShort ? 'text-[9px]' : 'text-[11px]'}`}
                     style={{ color: isExternal ? accentColor : undefined }}
                   >
@@ -104,7 +104,7 @@ const EventContent = React.memo<{
           ) : (
             <h4
               className={`font-bold leading-tight overflow-hidden ${
-                isExternal ? '' : 'text-gray-800 dark:text-gray-100'
+                isExternal ? '' : 'text-foreground'
               } ${isVeryShort ? 'text-[8px]' : isShort ? 'text-[9px]' : 'text-[11px]'}`}
               style={{ color: isExternal ? accentColor : undefined }}
             >
@@ -125,7 +125,7 @@ const EventContent = React.memo<{
       {!isVeryShort && (
         <div className="flex items-center gap-1.5 opacity-60">
           <span className={`font-bold leading-none ${
-            isExternal ? '' : 'text-gray-500 dark:text-gray-400'
+            isExternal ? '' : 'text-muted-foreground'
           } ${(isShort || forceInitialsMode) ? 'text-[8px]' : 'text-[9px]'}`} style={{
             color: isExternal ? accentColor : undefined,
             opacity: isExternal ? 0.75 : undefined,
@@ -142,7 +142,7 @@ const EventContent = React.memo<{
 
       {/* Location — only for full-size cards */}
       {!isShort && !forceInitialsMode && event.location && duration > 45 && (
-        <span className="text-[9px] text-gray-400 dark:text-gray-500 italic truncate mt-auto leading-none flex items-center gap-1">
+        <span className="text-[9px] text-muted-foreground/70 italic truncate mt-auto leading-none flex items-center gap-1">
           <ExternalLink size={8} /> {event.location}
         </span>
       )}

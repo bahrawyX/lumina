@@ -43,7 +43,7 @@ function ToggleRow({ label, description, checked, disabled, onChange }: ToggleRo
       >
         <span
           className={[
-            'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform',
+            'inline-block h-4 w-4 transform rounded-full bg-background shadow-sm transition-transform',
             checked ? 'translate-x-6' : 'translate-x-1',
           ].join(' ')}
         />

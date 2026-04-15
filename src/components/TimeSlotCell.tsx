@@ -141,11 +141,11 @@ const TimeSlotCell = memo<TimeSlotCellProps>(
 
         {/* Half-hour dashed divider */}
         <div
-          className="absolute left-0 right-0 border-t border-gray-300/50 dark:border-neutral-border/10 border-dashed pointer-events-none"
+          className="absolute left-0 right-0 border-t border-border/40 border-dashed pointer-events-none"
           style={{ top: '50%' }}
         />
         {/* Bottom hour border */}
-        <div className="absolute bottom-0 left-0 right-0 border-b border-gray-200 dark:border-neutral-border/20 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 right-0 border-b border-border/60 pointer-events-none" />
         {/* Hover time hint - non-blocking */}
         {hovered && (
           <span className="absolute right-2 top-1.5 text-[7.5px] font-bold text-primary/35 pointer-events-none select-none leading-none">

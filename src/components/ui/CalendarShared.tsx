@@ -11,18 +11,17 @@ import React from 'react';
 
 /** Outer rounded container — identical for Month, Week, Day */
 export const SURFACE_CLS =
-  'flex-1 flex flex-col h-full bg-white dark:bg-neutral-panel rounded-3xl overflow-hidden border border-gray-100 dark:border-neutral-border shadow-soft';
+  'flex-1 flex flex-col h-full bg-card rounded-3xl overflow-hidden border border-border/70 shadow-soft';
 
 /**
  * Card cell surface — used for month day cells AND week day columns.
  * Includes rounded corners, soft shadow, and subtle border.
  */
 export const CELL_CLS = [
-  'bg-white dark:bg-neutral-panel/60',
+  'bg-card',
   'rounded-xl overflow-hidden',
-  'border border-gray-200/80 dark:border-neutral-border/40',
-  'shadow-[0_1px_3px_rgba(0,0,0,0.05),0_0_0_1px_rgba(0,0,0,0.04)]',
-  'dark:shadow-[0_1px_4px_rgba(0,0,0,0.22),0_0_0_1px_rgba(255,255,255,0.03)]',
+  'border border-border/60',
+  'shadow-card',
 ].join(' ');
 
 /**
@@ -31,48 +30,47 @@ export const CELL_CLS = [
  */
 export const CELL_HOVER_CLS = [
   'cursor-pointer select-none',
-  'transition-[box-shadow,background-color]',
-  'duration-[130ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]',
-  'hover:shadow-[0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.04)]',
-  'dark:hover:shadow-[0_2px_8px_rgba(0,0,0,0.2),0_0_0_1px_rgba(255,255,255,0.04)]',
-  'hover:bg-white dark:hover:bg-neutral-panel',
+  'transition-[box-shadow,background-color,border-color]',
+  'duration-[130ms] ease-signature',
+  'hover:shadow-card-hover',
+  'hover:border-foreground/14',
 ].join(' ');
 
 /** Sticky header bar (weekday labels / date number row) */
 export const HEADER_CLS =
-  'border-b border-gray-200 dark:border-neutral-border bg-gray-50/40 dark:bg-neutral-dark/20';
+  'border-b border-border/70 bg-muted/30';
 
 /** Time-of-day label: 12 AM, 1 PM … */
 export const TIME_LABEL_CLS =
-  'text-[10px] font-bold uppercase text-gray-500 dark:text-gray-600';
+  'text-[10px] font-bold uppercase text-muted-foreground';
 
 /** Weekday abbreviation header: SUN, MON … */
 export const WEEKDAY_LABEL_CLS =
-  'text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-500';
+  'text-[10px] font-bold uppercase tracking-widest text-muted-foreground';
 
 /** Today circle badge */
 export const TODAY_BADGE_CLS = 'font-display bg-primary text-white shadow-sm';
 
 /** Normal (non-today) date number */
-export const DATE_NUMBER_CLS = 'font-display text-gray-700 dark:text-gray-300';
+export const DATE_NUMBER_CLS = 'font-display text-foreground/80';
 
 /** Today ring on interactive cells */
 export const TODAY_RING_CLS = 'ring-1 ring-primary/20';
 
 /** Hour boundary separator (used by TimeSlotCell + GridSeparator) */
 export const HOUR_LINE_CLS =
-  'border-b border-gray-200 dark:border-neutral-border/20';
+  'border-b border-border/60';
 
 /** Quarter-hour dashed guide (used by TimeSlotCell + GridSeparator) */
 export const QUARTER_LINE_CLS =
-  'border-t border-dashed border-gray-200/70 dark:border-neutral-border/10';
+  'border-t border-dashed border-border/30';
 
 /** Left time-labels sidebar (week + day views) */
 export const TIME_SIDEBAR_CLS =
-  'w-20 border-r border-gray-200 dark:border-neutral-border/30 bg-gray-50/30 dark:bg-neutral-dark/10 sticky left-0 z-20';
+  'w-20 border-r border-border/60 bg-muted/20 sticky left-0 z-20';
 
 /** Canvas background visible between / behind the day-column cards */
-export const GRID_CANVAS_CLS = 'bg-gray-50/30 dark:bg-neutral-dark/20';
+export const GRID_CANVAS_CLS = 'bg-muted/20';
 
 /** Slot hover tint (used inline as background-color value) */
 export const SLOT_HOVER_BG = 'rgba(109, 89, 224, 0.04)';
