@@ -58,13 +58,16 @@ export default function DocsHomePage() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 md:px-8 py-6 max-w-3xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">
+      {/* Header — editorial */}
+      <div className="flex items-end justify-between gap-4 mb-6 pb-5 border-b border-border/60">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
+            Workspace · Library
+          </p>
+          <h1 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em] leading-none">
             {greeting}{userName ? `, ${userName}` : ''}
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-[11px] md:text-xs text-muted-foreground/80 mt-2 italic">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>

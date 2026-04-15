@@ -274,7 +274,7 @@ export default function GoalsPage() {
           fallback={
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[1, 2, 3, 4].map(i => (
-                <div key={i} className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+                <div key={i} className="rounded-xl border border-border/60 bg-card p-4 space-y-3 shadow-card">
                   <SkeletonPrimitive className="h-4 w-3/4 rounded" />
                   <SkeletonPrimitive className="h-1.5 w-full rounded-full" />
                   <SkeletonPrimitive className="h-3 w-1/2 rounded" />
@@ -284,19 +284,25 @@ export default function GoalsPage() {
           }
         >
         {filtered.length === 0 ? (
-          /* Empty state */
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="text-4xl">🎯</div>
-            <p className="text-sm text-muted-foreground">
-              {statusFilter === 'active' ? 'No active goals yet' : 'No goals found'}
-            </p>
+          /* Empty state — editorial */
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+            <div className="text-5xl opacity-80" style={{ animation: 'float 4s ease-in-out infinite' }}>🎯</div>
+            <div className="space-y-1.5">
+              <p className="font-display text-lg md:text-xl font-medium text-foreground tracking-[-0.02em]">
+                {statusFilter === 'active' ? 'A quiet slate.' : 'Nothing to see here.'}
+              </p>
+              <p className="text-[12px] text-muted-foreground/80 italic max-w-[320px]">
+                {statusFilter === 'active' ? 'Set a measurable target and Lumina will chart the journey.' : 'Try a different filter to find what you\'re looking for.'}
+              </p>
+            </div>
             {statusFilter === 'active' && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => { setEditingGoal(null); setDialogOpen(true); }}
-                className="text-primary"
+                className="mt-2 gap-1.5 rounded-lg"
               >
+                <PlusIcon />
                 Create your first goal
               </Button>
             )}

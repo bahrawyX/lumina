@@ -94,12 +94,12 @@ const CalendarPage: React.FC = () => {
             key={`${view}-${currentDate.getTime()}`}
             initial={{ opacity: 0, x: -5 }}
             animate={{ opacity: 1, x: 0 }}
-            className="font-display text-xl md:text-3xl lg:text-4xl font-semibold tracking-tight text-gray-800 dark:text-gray-100"
+            className="font-display text-xl md:text-3xl lg:text-4xl font-medium tracking-[-0.035em] text-foreground leading-none"
           >
             {view === ViewType.DAY ? (
-              <> {MONTHS[currentDate.getMonth()]} <span className="text-gray-300 dark:text-gray-700 font-light">{currentDate.getDate()}</span> </>
+              <> {MONTHS[currentDate.getMonth()]} <span className="text-muted-foreground/40 font-light">{currentDate.getDate()}</span> </>
             ) : (
-              <> {MONTHS[currentDate.getMonth()]} <span className="text-gray-300 dark:text-gray-700 font-light">{currentDate.getFullYear()}</span> </>
+              <> {MONTHS[currentDate.getMonth()]} <span className="text-muted-foreground/40 font-light">{currentDate.getFullYear()}</span> </>
             )}
           </motion.h2>
         </div>

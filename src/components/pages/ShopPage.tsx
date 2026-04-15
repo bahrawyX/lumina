@@ -199,7 +199,7 @@ export default function ShopPage() {
           fallback={
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
               {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+                <div key={i} className="rounded-xl border border-border/60 bg-card p-4 space-y-3 shadow-card">
                   <div className="flex items-start gap-3">
                     <SkeletonPrimitive className="w-8 h-8 rounded-lg flex-shrink-0" />
                     <div className="flex-1 space-y-1.5">
