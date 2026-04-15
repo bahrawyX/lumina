@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoalsStore, selectActiveGoals } from '@/store/useGoalsStore';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,14 @@ import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
 import type { Goal, GoalStatus, GoalTimeframe, GoalColor } from '@/types/goal';
 import { computeGoalProgress, computeTargetProgress, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
-import { GoalDetailSheet } from '@/components/goals/GoalDetailSheet';
-import { GoalDialog } from '@/components/goals/GoalDialog';
+// Dialog + sheet are only mounted after user interaction — lazy-load keeps
+// them out of the initial /goals bundle.
+const GoalDetailSheet = lazy(() =>
+  import('@/components/goals/GoalDetailSheet').then(m => ({ default: m.GoalDetailSheet })),
+);
+const GoalDialog = lazy(() =>
+  import('@/components/goals/GoalDialog').then(m => ({ default: m.GoalDialog })),
+);
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -333,19 +339,27 @@ export default function GoalsPage() {
         </Skeleton>
       </div>
 
-      {/* Dialogs */}
-      <GoalDialog
-        open={dialogOpen}
-        goal={editingGoal}
-        onClose={() => { setDialogOpen(false); setEditingGoal(null); }}
-      />
+      {/* Dialogs — lazy, only mount once opened */}
+      <Suspense fallback={null}>
+        {(dialogOpen || editingGoal) && (
+          <GoalDialog
+            open={dialogOpen}
+            goal={editingGoal}
+            onClose={() => { setDialogOpen(false); setEditingGoal(null); }}
+          />
+        )}
+      </Suspense>
 
-      <GoalDetailSheet
-        goal={selectedGoal}
-        open={!!selectedGoal}
-        onClose={() => setSelectedGoal(null)}
-        onEdit={handleEdit}
-      />
+      <Suspense fallback={null}>
+        {selectedGoal && (
+          <GoalDetailSheet
+            goal={selectedGoal}
+            open={!!selectedGoal}
+            onClose={() => setSelectedGoal(null)}
+            onEdit={handleEdit}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

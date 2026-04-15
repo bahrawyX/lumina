@@ -1,15 +1,20 @@
 'use client';
 
-import confetti from 'canvas-confetti';
-
 /**
  * Fire a celebratory confetti burst.
- * Respects prefers-reduced-motion — skips if user prefers reduced motion.
- * Call this directly (no component needed — canvas-confetti manages its own canvas).
+ *
+ * canvas-confetti is lazy-loaded on first call so the 30+ KB library
+ * never ships in the initial bundle — it only arrives after the user
+ * actually completes their first task.
+ *
+ * Respects prefers-reduced-motion — skips entirely if user prefers
+ * reduced motion (avoids even loading the module in that case).
  */
-export function triggerConfetti() {
+export async function triggerConfetti(): Promise<void> {
   if (typeof window === 'undefined') return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const { default: confetti } = await import('canvas-confetti');
 
   confetti({
     particleCount: 80,

@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense, lazy } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
-import EventModal from "@/components/EventModal";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { PageTransition } from "@/components/ui/PageTransition";
-import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
 import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
 import PomodoroFloatingWidget from "@/components/focus/PomodoroFloatingWidget";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,15 +18,22 @@ import { useTaskBoardStore } from "@/store/useTaskBoardStore";
 import { useFocusStore } from "@/store/useFocusStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
-import InstallPrompt from "@/components/pwa/InstallPrompt";
 import OfflineIndicator from "@/components/pwa/OfflineIndicator";
-import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
-import QuickSwitcher from "@/components/docs/QuickSwitcher";
+
+// Heavy optional surfaces — lazy-load so the app shell stays lean.
+// These only mount when the user opens them or when specific conditions
+// fire (event selected, cmd+K pressed, tutorial triggered, first install
+// prompt, ambient sound panel opened).
+const EventModal        = lazy(() => import("@/components/EventModal"));
+const QuickSwitcher     = lazy(() => import("@/components/docs/QuickSwitcher"));
+const AmbientSoundDrawer = lazy(() => import("@/components/ambient/AmbientSoundDrawer"));
+const TutorialOverlay   = lazy(() => import("@/components/tutorial/TutorialOverlay"));
+const InstallPrompt     = lazy(() => import("@/components/pwa/InstallPrompt"));
 
 
 const MOBILE_NAV_ITEMS = [
@@ -341,7 +346,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <PageTransition>{children}</PageTransition>
           </div>
         </main>
-        <EventModal />
+        <Suspense fallback={null}><EventModal /></Suspense>
         <SonnerToaster />
         {/* OAuthRedirectToast must be in Suspense — useSearchParams requirement */}
         <Suspense fallback={null}>
@@ -349,11 +354,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
-        <TutorialOverlay />
-        <AmbientSoundDrawer />
+        <Suspense fallback={null}><TutorialOverlay /></Suspense>
+        <Suspense fallback={null}><AmbientSoundDrawer /></Suspense>
         <FloatingAmbientPlayer />
         <PomodoroFloatingWidget />
-        <InstallPrompt />
+        <Suspense fallback={null}><InstallPrompt /></Suspense>
         <OfflineIndicator />
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">
@@ -385,8 +390,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </div>
 
-      {/* Quick Switcher (Cmd+K) */}
-      <QuickSwitcher open={quickSwitcherOpen} onOpenChange={setQuickSwitcherOpen} />
+      {/* Quick Switcher (Cmd+K) — only mount once opened */}
+      <Suspense fallback={null}>
+        {quickSwitcherOpen && (
+          <QuickSwitcher open={quickSwitcherOpen} onOpenChange={setQuickSwitcherOpen} />
+        )}
+      </Suspense>
 
       {/* Task completion prompt — shown when linked event is marked complete */}
       <AnimatePresence>

@@ -36,8 +36,16 @@ import { createLinkedEvent } from '../../lib/persistence/linkPersistence';
 import notify from '../../utils/notify';
 import { TaskColumn } from './TaskColumn';
 import { TaskCard } from './TaskCard';
-import { TaskDialog, TaskDialogPayload } from './TaskDialog';
-import { TaskScheduleDialog, TaskSchedulePayload } from './TaskScheduleDialog';
+import type { TaskDialogPayload } from './TaskDialog';
+import type { TaskSchedulePayload } from './TaskScheduleDialog';
+// Dialogs are only mounted when the user opens them — keep them out of
+// the initial bundle. React.lazy + Suspense does the split.
+const TaskDialog = React.lazy(() =>
+  import('./TaskDialog').then(m => ({ default: m.TaskDialog })),
+);
+const TaskScheduleDialog = React.lazy(() =>
+  import('./TaskScheduleDialog').then(m => ({ default: m.TaskScheduleDialog })),
+);
 import { TaskListView } from './TaskListView';
 import { AnimatePresence } from 'framer-motion';
 import { useFocusStore } from '../../store/useFocusStore';
@@ -372,7 +380,7 @@ export const TaskBoard: React.FC = () => {
 
   const onTaskCompleted = useCallback((task: Task) => {
     // Confetti if owned + active
-    if (activeCosmetics.confetti) triggerConfetti();
+    if (activeCosmetics.confetti) void triggerConfetti();
     // Estimated coin toast (exact amount computed server-side)
     const base = task.difficulty === 'hard' ? 10 : 5;
     showCoinToast(base, task.difficulty === 'hard' ? 'Hard task completed' : 'Task completed');
@@ -947,32 +955,40 @@ export const TaskBoard: React.FC = () => {
         </div>
       )}
 
-      {/* Task dialog (create / edit) */}
-      <TaskDialog
-        open={dialogOpen}
-        task={editingTask}
-        linkedEvent={editingTask?.linkedEventId ? linkedEvents[editingTask.linkedEventId] ?? null : null}
-        defaultStatus={defaultStatus}
-        onSave={handleSave}
-        onClose={closeDialog}
-        subtasks={editingTask ? (subtaskMap[editingTask.id] ?? []) : []}
-        onAddSubtask={handleAddSubtask}
-        onToggleSubtaskDone={handleToggleSubtaskDone}
-        onDeleteSubtask={handleDelete}
-        onOpenSubtask={(sub) => {
-          // Close current dialog, open subtask dialog
-          closeDialog();
-          setTimeout(() => openEditDialog(sub), 150);
-        }}
-      />
+      {/* Task dialog (create / edit) — lazy, only mount when open */}
+      <React.Suspense fallback={null}>
+        {(dialogOpen || editingTask) && (
+          <TaskDialog
+            open={dialogOpen}
+            task={editingTask}
+            linkedEvent={editingTask?.linkedEventId ? linkedEvents[editingTask.linkedEventId] ?? null : null}
+            defaultStatus={defaultStatus}
+            onSave={handleSave}
+            onClose={closeDialog}
+            subtasks={editingTask ? (subtaskMap[editingTask.id] ?? []) : []}
+            onAddSubtask={handleAddSubtask}
+            onToggleSubtaskDone={handleToggleSubtaskDone}
+            onDeleteSubtask={handleDelete}
+            onOpenSubtask={(sub) => {
+              // Close current dialog, open subtask dialog
+              closeDialog();
+              setTimeout(() => openEditDialog(sub), 150);
+            }}
+          />
+        )}
+      </React.Suspense>
 
-      <TaskScheduleDialog
-        open={scheduleOpen}
-        task={schedulingTask}
-        linkedEvent={schedulingTask?.linkedEventId ? linkedEvents[schedulingTask.linkedEventId] ?? null : null}
-        onSchedule={handleSchedule}
-        onClose={closeScheduleDialog}
-      />
+      <React.Suspense fallback={null}>
+        {(scheduleOpen || schedulingTask) && (
+          <TaskScheduleDialog
+            open={scheduleOpen}
+            task={schedulingTask}
+            linkedEvent={schedulingTask?.linkedEventId ? linkedEvents[schedulingTask.linkedEventId] ?? null : null}
+            onSchedule={handleSchedule}
+            onClose={closeScheduleDialog}
+          />
+        )}
+      </React.Suspense>
     </div>
   );
 };
