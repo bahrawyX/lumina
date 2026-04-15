@@ -21,7 +21,7 @@ import {
   GRID_CANVAS_CLS,
 } from './ui/CalendarShared';
 
-const MAX_EVENTS_PER_CELL = 2;
+const MAX_EVENTS_PER_CELL = 1;
 
 /* ... types ... */
 interface MonthGridDay {
