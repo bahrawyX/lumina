@@ -474,7 +474,7 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
       ref={(el) => {
         (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
       }}
-      className="flex-1 overflow-y-auto no-scrollbar scroll-smooth relative"
+      className="flex-1 min-h-0 overflow-y-auto no-scrollbar scroll-smooth relative"
       onScroll={onScroll}
     >
       <div

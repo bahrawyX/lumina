@@ -830,7 +830,7 @@ export const TaskBoard: React.FC = () => {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex gap-3 h-full overflow-x-auto overflow-y-hidden pb-4 items-stretch no-scrollbar snap-x snap-mandatory px-1 md:px-0">
+        <div className="flex gap-3 flex-1 min-h-0 overflow-x-auto overflow-y-hidden pb-4 items-stretch no-scrollbar snap-x snap-mandatory px-1 md:px-0">
           {COLUMNS.map(col => (
             <motion.div
               key={col.id}

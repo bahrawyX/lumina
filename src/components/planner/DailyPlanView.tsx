@@ -465,6 +465,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
     <Skeleton
       name="planner.DailyPlanView"
       loading={!mounted || !dbHydrated}
+      className="flex-1 flex flex-col min-h-0"
       fallback={
           <div className="flex flex-col h-full gap-5">
             <div className="flex items-center justify-between">
