@@ -128,7 +128,7 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
         type: 'event',
         icon: '📅',
         subtitle: event.date,
-        href: '/',
+        href: '/calendar',
       });
     }
 

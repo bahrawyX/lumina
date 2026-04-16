@@ -39,8 +39,8 @@ const QuickSwitcher = lazy(() => import("@/components/docs/QuickSwitcher"));
 
 const MOBILE_NAV_ITEMS = [
   {
-    href: '/',
-    label: 'Home',
+    href: '/calendar',
+    label: 'Calendar',
     icon: (
       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -237,7 +237,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!onboardingCompleted && pathname !== "/onboarding") {
       router.replace("/onboarding");
     } else if (onboardingCompleted && pathname === "/onboarding") {
-      router.replace("/");
+      router.replace("/calendar");
     }
   }, [onboardingHydrated, onboardingCompleted, pathname, router]);
 
@@ -272,7 +272,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         gPending = false;
         if (gTimer) clearTimeout(gTimer);
         e.preventDefault();
-        if (key === "c") router.push("/");
+        if (key === "c") router.push("/calendar");
         else if (key === "t") router.push("/tasks");
         else if (key === "p") router.push("/plan");
         else if (key === "r") router.push("/performance");
@@ -308,7 +308,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (key === "c") {
         e.preventDefault();
         setTab("calendar");
-        router.push("/");
+        router.push("/calendar");
       }
       if (key === "m") setView(ViewType.MONTH);
       if (key === "w") setView(ViewType.WEEK);

@@ -25,7 +25,7 @@ export default function LoginButton() {
       const signIn = await authClient.signIn.email({
         email,
         password,
-        callbackURL: '/',
+        callbackURL: '/calendar',
       });
 
       if (signIn.error) {
@@ -40,7 +40,7 @@ export default function LoginButton() {
           email,
           password,
           name: defaultName,
-          callbackURL: '/',
+          callbackURL: '/calendar',
         });
 
         if (signup.error) {

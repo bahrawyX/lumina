@@ -211,11 +211,11 @@ export default function SignInPage() {
         email: normalizedEmail,
         password,
         name: normalizedName,
-        callbackURL: '/',
+        callbackURL: '/calendar',
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign up failed.'); return; }
       finalizeAuth();
-      router.replace('/');
+      router.replace('/calendar');
     } finally {
       setBusy(null);
     }
@@ -232,11 +232,11 @@ export default function SignInPage() {
       const result = await authClient.signIn.email({
         email: normalizedEmail,
         password,
-        callbackURL: '/',
+        callbackURL: '/calendar',
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
       finalizeAuth();
-      router.replace('/');
+      router.replace('/calendar');
     } finally {
       setBusy(null);
     }
@@ -249,7 +249,7 @@ export default function SignInPage() {
       const completed = await startOAuth('google');
       if (!completed) { setMessage('Google sign-in was cancelled.'); return; }
       finalizeAuth();
-      router.replace('/');
+      router.replace('/calendar');
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
     } finally {
@@ -266,7 +266,7 @@ export default function SignInPage() {
   /* ── Already logged in ─────────────────────────────────── */
   if (!sessionLoading && session?.user) {
     finalizeAuth();
-    router.replace('/');
+    router.replace('/calendar');
     return null;
   }
 

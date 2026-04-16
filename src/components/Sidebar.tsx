@@ -220,7 +220,7 @@ const AppSidebar: React.FC = () => {
     return () => { if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current); };
   }, [isSidebarCollapsed]);
 
-  const isCalendarPage = pathname === '/';
+  const isCalendarPage = pathname === '/calendar';
   const isIntelligencePage = pathname === '/intelligence';
   const isTasksPage = pathname === '/tasks';
   const isGoalsPage = pathname === '/goals';
@@ -737,7 +737,7 @@ const AppSidebar: React.FC = () => {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => {
-                    router.push('/');
+                    router.push('/calendar');
                     openModal();
                   }}
                   data-tutorial="new-entry"
@@ -839,8 +839,8 @@ const AppSidebar: React.FC = () => {
                   isActive={isCalendarPage}
                   collapsed={isSidebarCollapsed}
                   showTooltip={tooltipsReady}
-                  href="/"
-                  onClick={() => router.push('/')}
+                  href="/calendar"
+                  onClick={() => router.push('/calendar')}
                   dataTutorial="nav-calendar"
                 />
                 <WorkspaceItem

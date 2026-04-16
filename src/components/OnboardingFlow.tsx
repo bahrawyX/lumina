@@ -1538,7 +1538,7 @@ const OnboardingFlow: React.FC = () => {
         role: store.userRole || calStore.profile.role,
       });
       store.complete();
-      router.replace('/');
+      router.replace('/calendar');
       return;
     }
     setDirection(1);
