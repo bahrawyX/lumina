@@ -1,8 +1,10 @@
 'use client';
 
 import { CountUp } from './animations/CountUp';
-import { motion, useInView } from 'framer-motion';
-import { useRef } from 'react';
+import { motion } from 'framer-motion';
+import { LottieAnimation } from './LottieAnimation';
+import { LOTTIES } from '@/lib/landing/lottieConfig';
+import { useLottieInView } from '@/hooks/useLottieControls';
 
 const STATS = [
   { value: 6, label: 'Workspace views' },
@@ -12,30 +14,43 @@ const STATS = [
 ];
 
 export function StatsBar() {
-  const ref = useRef<HTMLElement>(null);
-  const isInView = useInView(ref, { once: true, margin: '-40px' });
+  // Rocket plays once when the stats enter view — syncs with CountUp
+  const rocket = useLottieInView({ once: true, margin: '-40px' });
 
   return (
-    <section ref={ref} className="py-14 md:py-20 px-4 md:px-6" aria-label="Stats">
+    <section ref={rocket.containerRef} className="py-14 md:py-20 px-4 md:px-6" aria-label="Stats">
       <motion.div
-        className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-4 text-center"
+        className="max-w-4xl mx-auto"
         initial={{ opacity: 0 }}
-        animate={isInView ? { opacity: 1 } : {}}
+        animate={rocket.isInView ? { opacity: 1 } : {}}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        {STATS.map((stat) => (
-          <div key={stat.label}>
-            <CountUp
-              to={stat.value}
-              duration={1500}
-              className="font-display text-3xl md:text-4xl font-medium text-foreground tracking-[-0.035em]"
-              suffix={stat.suffix}
-            />
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 mt-2">
-              {stat.label}
-            </p>
-          </div>
-        ))}
+        {/* Rocket Lottie — plays once, synchronized with the CountUp launch */}
+        <div className="w-[60px] h-[60px] md:w-[80px] md:h-[80px] mx-auto mb-4" aria-hidden="true">
+          <LottieAnimation
+            src={LOTTIES.rocket.src}
+            autoplay={false}
+            loop={false}
+            className="w-full h-full"
+            dotLottieRefCallback={rocket.setDotLottieRef}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-4 text-center">
+          {STATS.map((stat) => (
+            <div key={stat.label}>
+              <CountUp
+                to={stat.value}
+                duration={1500}
+                className="font-display text-3xl md:text-4xl font-medium text-foreground tracking-[-0.035em]"
+                suffix={stat.suffix}
+              />
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 mt-2">
+                {stat.label}
+              </p>
+            </div>
+          ))}
+        </div>
       </motion.div>
     </section>
   );

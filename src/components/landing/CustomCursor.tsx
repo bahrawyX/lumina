@@ -1,75 +1,96 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
+/**
+ * Zone-aware custom cursor.
+ *
+ * Unlike a global "sticky" cursor that hijacks the entire page, this one
+ * only shows up inside `<CursorZone>` regions — each zone declares a label
+ * and color via `data-cursor-label` / `data-cursor-color` attributes.
+ *
+ * Behavior:
+ *   - Native cursor is visible everywhere by default.
+ *   - When the mouse enters a CursorZone: native cursor hides, custom
+ *     cursor appears with that zone's label/color.
+ *   - When the mouse leaves the zone (or hovers a text input inside a zone):
+ *     native cursor returns.
+ *
+ * The scoped `cursor: none` is applied only to the zone element itself via
+ * inline style, not via a global `<style>` tag — leaving the rest of the
+ * landing page (nav, footer, empty space) with the normal cursor.
+ */
 export function CustomCursor() {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const [label, setLabel] = useState("You");
+  const [color, setColor] = useState("#cef136");
 
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
 
-    // Touch device — don't render the custom cursor at all
+    // Touch device — never render
     if (window.matchMedia("(pointer: coarse)").matches) {
       wrap.style.display = "none";
       return;
     }
 
-    // Hide the default cursor globally. The `* { cursor: none !important }`
-    // stylesheet is what fixes the real-cursor leaking through on buttons/
-    // links that set their own `cursor-pointer` — !important beats the
-    // Tailwind util. We tear both down in cleanup so the calendar app gets
-    // its normal cursor back on navigation.
-    document.documentElement.style.cursor = "none";
-    const style = document.createElement("style");
-    style.textContent = "* { cursor: none !important; }";
-    document.head.appendChild(style);
+    // Which zone element is currently hiding its native cursor — we track
+    // this so we can restore it when leaving.
+    let activeZone: HTMLElement | null = null;
 
-    // Elements that need their native cursor (resize handles, text inputs)
-    const NATIVE_CURSOR_CHECK = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) return false;
-      if (target.classList.contains("cf-panel")) return true;
-      if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
-        if (target.type === "text" || target.type === "email" || target.tagName === "TEXTAREA") {
-          return true;
-        }
+    const isTextyInput = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el instanceof HTMLInputElement) {
+        const t = el.type;
+        return t === "text" || t === "email" || t === "password" || t === "search" || t === "url";
       }
-      return false;
+      return el instanceof HTMLTextAreaElement;
     };
 
-    let pressed = false;
-    // RAF-throttled state — writing transform on every mousemove (120+ Hz
-    // on gaming mice) is wasteful. Batching into one RAF per frame is the
-    // standard cursor-follower perf fix.
+    // RAF throttling
     let mouseX = 0;
     let mouseY = 0;
     let lastTarget: EventTarget | null = null;
     let rafScheduled = false;
 
-    const show = () => {
-      wrap.style.opacity = "1";
-      wrap.style.visibility = "visible";
-    };
     const hide = () => {
       wrap.style.opacity = "0";
       wrap.style.visibility = "hidden";
+    };
+    const show = () => {
+      wrap.style.opacity = "1";
+      wrap.style.visibility = "visible";
     };
 
     const render = () => {
       rafScheduled = false;
       wrap.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
 
-      const needsNative =
-        NATIVE_CURSOR_CHECK(lastTarget) ||
-        pressed ||
-        document.body.classList.contains("d20-dragging");
+      // Find the nearest ancestor declaring itself a cursor zone
+      const el = lastTarget instanceof HTMLElement ? lastTarget : null;
+      const zone = el?.closest<HTMLElement>("[data-cursor-label]") ?? null;
+      const zoneLabel = zone?.dataset.cursorLabel ?? "";
+      const zoneColor = zone?.dataset.cursorColor ?? "#cef136";
 
-      if (needsNative) {
-        hide();
-        document.documentElement.style.cursor = "auto";
-      } else {
+      // Restore native cursor on the previous zone if we've moved away
+      if (activeZone && activeZone !== zone) {
+        activeZone.style.cursor = "";
+        activeZone = null;
+      }
+
+      if (zone && zoneLabel && !isTextyInput(lastTarget)) {
+        // Enter a zone (or move within one): hide native cursor on it and show ours
+        if (activeZone !== zone) {
+          zone.style.cursor = "none";
+          activeZone = zone;
+        }
+        setLabel(zoneLabel);
+        setColor(zoneColor);
         show();
-        document.documentElement.style.cursor = "none";
+      } else {
+        // Outside all zones — native cursor is visible, ours is hidden
+        hide();
       }
     };
 
@@ -83,49 +104,24 @@ export function CustomCursor() {
       }
     };
 
-    const onMouseDown = (e: MouseEvent) => {
-      pressed = true;
-      if (NATIVE_CURSOR_CHECK(e.target)) {
-        hide();
-        document.documentElement.style.cursor = "auto";
+    const onMouseLeave = () => {
+      hide();
+      if (activeZone) {
+        activeZone.style.cursor = "";
+        activeZone = null;
       }
     };
-
-    const onMouseUp = () => {
-      pressed = false;
-      // Next mousemove decides visibility — don't force-show here
-    };
-
-    // D20 (dnd-kit drag) class observer — hide immediately on drag start
-    const updateD20Visibility = () => {
-      if (document.body.classList.contains("d20-dragging")) {
-        hide();
-      }
-    };
-    const classObserver = new MutationObserver(updateD20Visibility);
-    classObserver.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    const onLeave = () => hide();
-    const onEnter = () => show();
 
     document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("mouseup", onMouseUp);
-    document.addEventListener("mouseleave", onLeave);
-    document.addEventListener("mouseenter", onEnter);
+    document.addEventListener("mouseleave", onMouseLeave);
 
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.removeEventListener("mouseleave", onLeave);
-      document.removeEventListener("mouseenter", onEnter);
-      classObserver.disconnect();
-      document.documentElement.style.cursor = "";
-      style.remove();
+      document.removeEventListener("mouseleave", onMouseLeave);
+      if (activeZone) {
+        activeZone.style.cursor = "";
+        activeZone = null;
+      }
     };
   }, []);
 
@@ -139,6 +135,9 @@ export function CustomCursor() {
         pointerEvents: "none",
         zIndex: 9999,
         willChange: "transform",
+        opacity: 0,
+        visibility: "hidden",
+        transition: "opacity 120ms ease-out",
       }}
     >
       {/* Triangular arrow cursor with notch */}
@@ -149,8 +148,7 @@ export function CustomCursor() {
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         style={{
-          filter:
-            "drop-shadow(0 0 8px rgba(206,241,54,0.35)) drop-shadow(0 2px 6px rgba(0,0,0,0.55))",
+          filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.55))",
           transform: "rotate(-6deg)",
         }}
       >
@@ -168,21 +166,22 @@ export function CustomCursor() {
           position: "absolute",
           left: 18,
           top: 18,
-          background: "#cef136",
+          background: color,
           color: "#131313",
-          fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+          fontFamily: "'Geist Mono', 'Space Grotesk', ui-monospace, monospace",
           fontSize: 9,
           fontWeight: 700,
           padding: "2px 6px",
           borderRadius: 3,
           whiteSpace: "nowrap",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.35), 0 0 10px rgba(206,241,54,0.2)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
           lineHeight: 1.2,
           letterSpacing: "0.05em",
           textTransform: "uppercase",
+          transition: "background 200ms ease-out",
         }}
       >
-        You
+        {label}
       </div>
     </div>
   );

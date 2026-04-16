@@ -2,6 +2,9 @@
 
 import { motion, useInView } from 'framer-motion';
 import { useRef } from 'react';
+import { LottieAnimation, type DotLottieInstance } from './LottieAnimation';
+import { LOTTIES } from '@/lib/landing/lottieConfig';
+import { CursorZone } from './CursorZone';
 
 const FEATURES = [
   {
@@ -12,7 +15,7 @@ const FEATURES = [
         <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
       </svg>
     ),
-    span: 'md:col-span-2', // wide card
+    span: 'md:col-span-2',
   },
   {
     title: 'Task Board',
@@ -62,9 +65,71 @@ const FEATURES = [
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>
       </svg>
     ),
-    span: 'md:col-span-2', // wide card
+    span: 'md:col-span-2',
   },
 ];
+
+/* Individual feature card — owns its own dotLottie ref so we can
+   cascade play-on-view and replay-on-hover per card. */
+function FeatureCard({
+  feature,
+  index,
+  sectionInView,
+}: {
+  feature: (typeof FEATURES)[number];
+  index: number;
+  sectionInView: boolean;
+}) {
+  const dotLottieRef = useRef<DotLottieInstance | null>(null);
+  const hasPlayed = useRef(false);
+
+  // Cascade play: each card's Lottie fires 150ms after the previous one
+  // once the section enters view. Fires only once.
+  if (sectionInView && !hasPlayed.current && dotLottieRef.current) {
+    hasPlayed.current = true;
+    window.setTimeout(() => {
+      dotLottieRef.current?.play();
+    }, index * 150);
+  }
+
+  const handleHoverReplay = () => {
+    if (!dotLottieRef.current) return;
+    dotLottieRef.current.stop();
+    dotLottieRef.current.play();
+  };
+
+  return (
+    <motion.div
+      className={`card-lift rounded-2xl border border-border bg-card p-6 md:p-8 shadow-card ${feature.span}`}
+      initial={{ opacity: 0, y: 20 }}
+      animate={sectionInView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
+      onMouseEnter={handleHoverReplay}
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          {feature.icon}
+        </div>
+        {/* Lottie: checkmark burst — plays cascading on view, replays on card hover */}
+        <div className="w-10 h-10 flex-shrink-0" aria-hidden="true">
+          <LottieAnimation
+            src={LOTTIES.featureCheck.src}
+            autoplay={false}
+            loop={false}
+            className="w-full h-full"
+            dotLottieRefCallback={(d) => { dotLottieRef.current = d; }}
+          />
+        </div>
+      </div>
+      <h3 className="font-display text-lg font-medium text-foreground tracking-[-0.02em] mb-1.5">
+        {feature.title}
+      </h3>
+      <p className="text-sm text-muted-foreground leading-relaxed">
+        {feature.description}
+      </p>
+    </motion.div>
+  );
+}
 
 export function FeatureShowcase() {
   const ref = useRef<HTMLElement>(null);
@@ -82,27 +147,18 @@ export function FeatureShowcase() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {FEATURES.map((feature, i) => (
-            <motion.div
-              key={feature.title}
-              className={`card-lift rounded-2xl border border-border bg-card p-6 md:p-8 shadow-card ${feature.span}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={isInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-4">
-                {feature.icon}
-              </div>
-              <h3 className="font-display text-lg font-medium text-foreground tracking-[-0.02em] mb-1.5">
-                {feature.title}
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {feature.description}
-              </p>
-            </motion.div>
-          ))}
-        </div>
+        <CursorZone label="Explore" color="#cef136">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {FEATURES.map((feature, i) => (
+              <FeatureCard
+                key={feature.title}
+                feature={feature}
+                index={i}
+                sectionInView={isInView}
+              />
+            ))}
+          </div>
+        </CursorZone>
       </div>
     </section>
   );
