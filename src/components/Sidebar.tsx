@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { CATEGORIES } from '../constants';
@@ -170,6 +170,26 @@ const AppSidebar: React.FC = () => {
   const { data: _session } = authClient.useSession();
   const _userId = _session?.user?.id ?? null;
   const resetOnboarding = useOnboardingStore((s) => s.reset);
+  const handleSignOut = useCallback(async () => {
+    // CRITICAL: hard-navigate FIRST before any state changes. If we call
+    // authClient.signOut() or resetOnboarding() while still inside an
+    // (app)/ route, AppShell's redirect effect fires synchronously on
+    // re-render and wins the race — landing the user on /onboarding.
+    // window.location.href does a full reload, bypassing React entirely.
+    try {
+      if (_userId) clearAll(_userId);
+      usePlannerStore.getState().clearExternalEvents();
+      // Fire-and-forget sign-out — don't await. The subsequent full page
+      // reload will tear everything down. BetterAuth stores the session in
+      // an httpOnly cookie that the server clears via the sign-out endpoint;
+      // the hard redirect below ensures we get a fresh page without a session.
+      authClient.signOut().catch(() => { /* swallow */ });
+    } catch { /* swallow */ }
+    // Do NOT reset onboarding — it's about user preferences, not auth.
+    // Hard redirect to landing — no race, no React rerender.
+    window.location.href = '/';
+  }, [authClient, _userId]);
+  void resetOnboarding; // Preserved for potential future use; unused here.
   const startTutorial = useTutorialStore((s) => s.startTutorial);
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const tasks = useTaskBoardStore((s) => s.tasks);
@@ -1194,7 +1214,7 @@ const AppSidebar: React.FC = () => {
 
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                onClick={resetOnboarding}
+                onClick={handleSignOut}
               >
                 <LogOutIcon size={14} />
                 Sign Out

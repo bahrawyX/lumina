@@ -69,7 +69,8 @@ export default function LoginButton() {
         setErrorMessage(result.error.message ?? 'Unable to sign out.');
         return;
       }
-      await refetch();
+      // Hard navigation to bypass AppShell's redirect race
+      window.location.href = '/';
     } finally {
       setBusy(false);
     }
