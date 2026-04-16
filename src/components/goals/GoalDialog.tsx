@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useGoalsStore } from '@/store/useGoalsStore';
 import type { Goal, GoalColor, GoalTimeframe, TargetType } from '@/types/goal';
 import { GOAL_COLORS, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
@@ -204,18 +205,24 @@ export const GoalDialog: React.FC<{
         {/* Color */}
         <div>
           <Label className="text-xs mb-1.5">Color</Label>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {GOAL_COLORS.map(c => {
               const cls = GOAL_COLOR_MAP[c];
+              const selected = color === c;
               return (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full border-2 transition-all ${cls.bg} ${
-                    color === c ? `${cls.border} scale-110` : 'border-transparent'
+                  className={`w-7 h-7 rounded-full transition-all ${
+                    selected ? 'ring-2 ring-offset-2 ring-offset-card scale-110' : 'opacity-70 hover:opacity-100 hover:scale-105'
                   }`}
+                  style={{
+                    backgroundColor: cls.hex,
+                    ...(selected ? { boxShadow: `0 0 0 2px hsl(var(--card)), 0 0 0 4px ${cls.hex}66` } : {}),
+                  }}
                   aria-label={c}
+                  aria-pressed={selected}
                 />
               );
             })}
@@ -281,36 +288,39 @@ export const GoalDialog: React.FC<{
             <Label className="text-xs">Key Results / Targets</Label>
             {targets.map(t => (
               <div key={t.tempId} className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-muted/20">
-                <input
-                  type="text"
+                <Input
                   value={t.title}
                   onChange={e => updateTargetInput(t.tempId, 'title', e.target.value)}
                   placeholder="Target title..."
-                  className="flex-1 text-xs bg-transparent outline-none text-foreground"
+                  className="flex-1 h-7 text-xs bg-transparent border-0 shadow-none px-1"
                 />
-                <select
+                <Select
                   value={t.type}
-                  onChange={e => updateTargetInput(t.tempId, 'type', e.target.value)}
-                  className="text-[10px] bg-card border border-border rounded px-1 py-0.5 text-foreground"
+                  onValueChange={v => updateTargetInput(t.tempId, 'type', v)}
                 >
-                  <option value="number">Number</option>
-                  <option value="percentage">%</option>
-                  <option value="boolean">Yes/No</option>
-                  <option value="task_completion">Tasks</option>
-                </select>
+                  <SelectTrigger className="w-[90px] h-7 text-[11px] rounded-md">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="number">Number</SelectItem>
+                    <SelectItem value="percentage">%</SelectItem>
+                    <SelectItem value="boolean">Yes/No</SelectItem>
+                    <SelectItem value="task_completion">Tasks</SelectItem>
+                  </SelectContent>
+                </Select>
                 {t.type !== 'boolean' && t.type !== 'task_completion' && (
-                  <input
+                  <Input
                     type="number"
                     value={t.targetValue}
                     onChange={e => updateTargetInput(t.tempId, 'targetValue', Number(e.target.value))}
-                    className="w-12 text-[10px] bg-card border border-border rounded px-1 py-0.5 text-foreground"
+                    className="w-14 h-7 text-[11px] rounded-md px-2"
                     min={1}
                   />
                 )}
                 <button
                   type="button"
                   onClick={() => removeTargetInput(t.tempId)}
-                  className="text-muted-foreground hover:text-destructive transition-colors"
+                  className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                 >
                   <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

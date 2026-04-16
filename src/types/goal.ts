@@ -61,12 +61,12 @@ export function computeGoalProgress(goal: Goal): number {
 }
 
 /** Color name → Tailwind class mappings */
-export const GOAL_COLOR_MAP: Record<GoalColor, { border: string; bg: string; text: string }> = {
-  blue:   { border: 'border-primary',       bg: 'bg-primary/10',       text: 'text-primary' },
-  green:  { border: 'border-emerald-500',   bg: 'bg-emerald-500/10',   text: 'text-emerald-600 dark:text-emerald-400' },
-  purple: { border: 'border-violet-500',    bg: 'bg-violet-500/10',    text: 'text-violet-600 dark:text-violet-400' },
-  orange: { border: 'border-amber-500',     bg: 'bg-amber-500/10',     text: 'text-amber-600 dark:text-amber-400' },
-  red:    { border: 'border-destructive',   bg: 'bg-destructive/10',   text: 'text-destructive' },
+export const GOAL_COLOR_MAP: Record<GoalColor, { border: string; bg: string; text: string; hex: string }> = {
+  blue:   { border: 'border-primary',       bg: 'bg-primary/10',       text: 'text-primary',                                hex: '#6D59E0' },
+  green:  { border: 'border-emerald-500',   bg: 'bg-emerald-500/10',   text: 'text-emerald-600 dark:text-emerald-400',      hex: '#10B981' },
+  purple: { border: 'border-violet-500',    bg: 'bg-violet-500/10',    text: 'text-violet-600 dark:text-violet-400',        hex: '#8B5CF6' },
+  orange: { border: 'border-amber-500',     bg: 'bg-amber-500/10',     text: 'text-amber-600 dark:text-amber-400',          hex: '#F59E0B' },
+  red:    { border: 'border-destructive',   bg: 'bg-destructive/10',   text: 'text-destructive',                            hex: '#DA4E65' },
 };
 
 export const GOAL_COLORS: GoalColor[] = ['blue', 'green', 'purple', 'orange', 'red'];

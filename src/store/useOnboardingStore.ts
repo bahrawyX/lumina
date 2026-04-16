@@ -123,17 +123,21 @@ export const useOnboardingStore = create<OnboardingState>()(
  * default state (which always has `completed: false`).
  */
 export function useOnboardingHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(
-    () => typeof window !== 'undefined' && (useOnboardingStore.persist?.hasHydrated() ?? false)
-  );
+  // Always start false on both server AND client to avoid hydration mismatch.
+  // The effect fires only on the client after mount, checking if the store
+  // has already hydrated from localStorage.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (hydrated) return;
+    // Already hydrated synchronously? Set immediately.
+    if (useOnboardingStore.persist?.hasHydrated()) {
+      setHydrated(true);
+      return;
+    }
+    // Otherwise, wait for hydration to finish.
     const unsub = useOnboardingStore.persist?.onFinishHydration(() => setHydrated(true));
-    // Re-check synchronously in case hydration finished between the useState init and here
-    if (useOnboardingStore.persist?.hasHydrated()) setHydrated(true);
     return unsub;
-  }, [hydrated]);
+  }, []);
 
   return hydrated;
 }

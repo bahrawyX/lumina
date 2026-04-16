@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-16 (v23 — Performance pass: lazy-load heavy dialogs, `@next/bundle-analyzer`, dynamic canvas-confetti, removed emoji-picker-react. Palette hygiene: zero hard-coded grays remain, CalendarShared.tsx fully rewritten to semantic tokens, 4-test guard via git grep. Route-lag elimination: `*` transition scoped to `html.transitioning-theme`, per-field Zustand selectors across all stores (only OnboardingFlow exempt), PageTransition AnimatePresence removed. Dashboard consolidated from 3 widgets to single `DailyBriefStrip`. Focus outlines killed globally. 88 Vitest tests.)
+> Last updated: 2026-04-16 (v24 — Layout fixes: task board kanban columns now stretch full height via flex-1 + boneyard CSS fix, Plan Day timeline scrollable via min-h-0 chain fix, Skeleton className passthrough on DailyPlanView. PlannedTaskCard redesigned: bg-card surface, shadow-card, left accent bar, signature easing. Planned block height multiplier 0.75→0.9, min 20→32px. Editorial headers added to /pomodoro and /focus pages. 88 Vitest tests.)
 
 ---
 
@@ -2039,6 +2039,35 @@ Unknown `id` → renders a neutral 18px circle. Never throws.
 
 ### `item.emoji` still exists
 The `emoji` field on `SHOP_ITEMS` rows is preserved in `src/config/shopItems.ts` for any consumer (toasts, mobile share sheets, notifications) that needs a text representation. The SVG component is rendering-only.
+
+---
+
+---
+
+## 30. SESSION v24 CHANGES
+
+### 30.1 Task Board Full-Height Columns — FIXED
+- **Root cause**: Boneyard's `<Skeleton>` wraps children in a plain `<div data-boneyard-content>` that is `display: block` — breaks flex height chain.
+- **Fix 1**: Global CSS rule in `globals.css` for `[data-boneyard-content="true"]` sets `flex: 1 1 0%; display: flex; flex-direction: column; min-height: 0`.
+- **Fix 2**: Kanban flex wrapper changed from `h-full` to `flex-1 min-h-0` in `TaskBoard.tsx`.
+- Columns now stretch to full viewport height.
+
+### 30.2 Plan Day Timeline Scrollable — FIXED
+- **Root cause**: `DayCalendarTimeline` scroll container had `flex-1` but missing `min-h-0`, causing it to expand to full content height (1920px) instead of being constrained by parent.
+- **Fix 1**: Added `min-h-0` to DayCalendarTimeline's scroll container (`DayCalendarTimeline.tsx`).
+- **Fix 2**: Added `className="flex-1 flex flex-col min-h-0"` to Boneyard `<Skeleton>` in `DailyPlanView.tsx`.
+- Timeline now scrolls through full 24-hour day.
+
+### 30.3 PlannedTaskCard Redesign — COMPLETE
+- **Old**: flat primary-tinted card (`shadow-soft`, `bg-primary/5`), cramped 8px fonts, always-visible grip icon.
+- **New**: `bg-card` surface with `shadow-card` / `shadow-card-hover`, 3px left accent bar (primary purple, emerald when done), `rounded-xl`, signature cubic-bezier easing, grip hidden until hover, refined checkbox, 12px title / 10px mono time labels.
+- Block height multiplier increased from `0.75` to `0.9`, min height `20px` to `32px` in `DayCalendarTimeline.tsx`.
+- Files: `src/components/planner/PlannedTaskCard.tsx` (rewritten), `src/components/calendar/DayCalendarTimeline.tsx` (height tweak).
+
+### 30.4 Focus/Pomodoro Editorial Headers — COMPLETE
+- `/pomodoro` page (`src/app/(app)/pomodoro/page.tsx`): added `Workspace · Focus` eyebrow, `Pomodoro` display title, italic supporting line, border-b separator. Content area restructured to `flex-1 min-h-0 overflow-y-auto`.
+- `/focus` page (`src/components/pages/FocusPage.tsx`): added `Workspace · Focus` eyebrow, `Focus` display title, italic supporting line. Tabs component changed from `h-full` to `flex-1 min-h-0`.
+- Both pages now match the editorial header pattern used across TaskBoard, GoalsPage, ShopPage, PerformancePage, DocsHomePage, IntelligencePage.
 
 ---
 

@@ -66,11 +66,50 @@ const MOBILE_NAV_ITEMS = [
     ),
   },
   {
+    href: '/pomodoro',
+    label: 'Focus',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    ),
+  },
+] as const;
+
+const MORE_MENU_ITEMS = [
+  {
+    href: '/goals',
+    label: 'Goals',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+      </svg>
+    ),
+  },
+  {
     href: '/performance',
-    label: 'Stats',
+    label: 'Performance',
     icon: (
       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
         <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/shop',
+    label: 'Shop',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/intelligence',
+    label: 'Insights',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>
     ),
   },
@@ -83,6 +122,15 @@ const MOBILE_NAV_ITEMS = [
         <polyline points="14 2 14 8 20 8"/>
         <line x1="9" y1="13" x2="15" y2="13"/>
         <line x1="9" y1="17" x2="13" y2="17"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/focus',
+    label: 'Focus Timer',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
     ),
   },
@@ -163,6 +211,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const redo = useCalendarEventsStore((s) => s.redo);
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+
+  // Close the "More" sheet on route change
+  useEffect(() => { setMobileMoreOpen(false); }, [pathname]);
 
   useOutlookSync();
 
@@ -390,8 +442,75 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            {/* More menu button */}
+            <button
+              type="button"
+              onClick={() => setMobileMoreOpen(prev => !prev)}
+              className={`min-h-[52px] rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${
+                mobileMoreOpen || MORE_MENU_ITEMS.some(i => i.href === pathname)
+                  ? 'text-primary'
+                  : 'text-muted-foreground active:text-foreground'
+              }`}
+              aria-label="More"
+            >
+              <span className={`transition-transform ${mobileMoreOpen ? 'scale-110' : ''}`}>
+                <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
+                </svg>
+              </span>
+              <span className={`text-[10px] font-medium leading-none tracking-wide ${mobileMoreOpen || MORE_MENU_ITEMS.some(i => i.href === pathname) ? 'text-primary' : 'text-muted-foreground'}`}>
+                More
+              </span>
+            </button>
           </div>
         </nav>
+
+        {/* Mobile "More" sheet */}
+        <AnimatePresence>
+          {mobileMoreOpen && (
+            <>
+              <motion.div
+                className="md:hidden fixed inset-0 z-[49] bg-background/60 backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                onClick={() => setMobileMoreOpen(false)}
+              />
+              <motion.div
+                className="md:hidden fixed bottom-[68px] left-2 right-2 z-[49] bg-card border border-border rounded-2xl shadow-card-lift overflow-hidden pb-safe"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="grid grid-cols-3 gap-1 p-2">
+                  {MORE_MENU_ITEMS.map((item) => {
+                    const active = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch
+                        onClick={() => setMobileMoreOpen(false)}
+                        className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl transition-all ${
+                          active
+                            ? 'text-primary bg-primary/5'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/40 active:bg-muted/60'
+                        }`}
+                      >
+                        {item.icon}
+                        <span className={`text-[11px] font-medium ${active ? 'text-primary' : 'text-muted-foreground'}`}>
+                          {item.label}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Quick Switcher (Cmd+K) — only mount once opened */}
