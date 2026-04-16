@@ -181,8 +181,23 @@ const FocusPage: React.FC = () => {
         onDone={() => setShowStreakFire(false)}
       />
 
-      <Tabs defaultValue="focus" className="flex flex-col h-full" data-tutorial="focus-tabs">
-        <div className="px-2 lg:px-4 pt-1 pb-3">
+      {/* Editorial header */}
+      <div className="flex items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
+            Workspace · Focus
+          </p>
+          <h1 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em] leading-none">
+            Focus
+          </h1>
+          <p className="text-[11px] md:text-xs text-muted-foreground/80 mt-2 italic">
+            Deep work, timed and tracked.
+          </p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="focus" className="flex flex-col flex-1 min-h-0" data-tutorial="focus-tabs">
+        <div className="px-2 lg:px-4 pb-3 flex-shrink-0">
           <TabsList className="bg-muted/30 border border-border/60 p-0.5 rounded-lg h-auto">
             <TabsTrigger
               value="focus"

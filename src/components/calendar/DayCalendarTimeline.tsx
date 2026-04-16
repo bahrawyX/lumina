@@ -82,7 +82,7 @@ const PlannedBlock: React.FC<{
 }> = React.memo(({ planItem, task, startHour, onRemove, onMarkDone, onDragHandlePointerDown, isDragging, planDragRef, left, width, revealDelayMs }) => {
   const durMins = timeToMinutes(planItem.endTime) - timeToMinutes(planItem.startTime);
   const originalTop = (timeToMinutes(planItem.startTime) - startHour * 60) * PX_PER_MIN;
-  const height = Math.max(20, durMins * PX_PER_MIN * 0.75);
+  const height = Math.max(32, durMins * PX_PER_MIN * 0.9);
 
   const blockRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);

@@ -140,17 +140,34 @@ export default function PomodoroPage() {
   }, [lastSessionId]);
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto no-scrollbar">
-      <div className="w-full px-4 py-4 space-y-4">
-        {moodLogsLoaded && moodLogs.length >= 3 && (
-          <div className="max-w-lg mx-auto">
-            <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
-          </div>
-        )}
-        <PomodoroView
-          onSessionComplete={handleSessionComplete}
-          onRequestFeedback={handleRequestFeedback}
-        />
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Editorial header */}
+      <div className="flex items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
+            Workspace · Focus
+          </p>
+          <h1 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em] leading-none">
+            Pomodoro
+          </h1>
+          <p className="text-[11px] md:text-xs text-muted-foreground/80 mt-2 italic">
+            Work in focused intervals, rest in between.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
+        <div className="w-full px-4 py-4 space-y-4">
+          {moodLogsLoaded && moodLogs.length >= 3 && (
+            <div className="max-w-lg mx-auto">
+              <MoodAnalysisCard moodLogs={moodLogs} onDismiss={() => {}} />
+            </div>
+          )}
+          <PomodoroView
+            onSessionComplete={handleSessionComplete}
+            onRequestFeedback={handleRequestFeedback}
+          />
+        </div>
       </div>
 
       <PomodoroFeedbackModal
