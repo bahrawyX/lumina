@@ -2,8 +2,6 @@
 
 import { motion, useInView } from 'framer-motion';
 import { useRef } from 'react';
-import { LottieAnimation } from './LottieAnimation';
-import { LOTTIES } from '@/lib/landing/lottieConfig';
 import { CursorZone } from './CursorZone';
 
 const INSIGHTS = [
@@ -20,19 +18,6 @@ export function AIInsightsSection() {
     <section ref={ref} className="py-16 md:py-24 px-4 md:px-6 bg-muted/30" aria-label="AI insights">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-10 max-w-3xl">
-          {/* Lottie: AI brain / sparkle — ambient loop as the section's visual anchor */}
-          <div
-            className="w-[100px] h-[100px] md:w-[140px] md:h-[140px] flex-shrink-0 mx-auto md:mx-0"
-            aria-hidden="true"
-          >
-            <LottieAnimation
-              src={LOTTIES.aiSparkle.src}
-              autoplay
-              loop
-              className="w-full h-full"
-            />
-          </div>
-
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
               Intelligence

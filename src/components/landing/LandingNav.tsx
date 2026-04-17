@@ -3,8 +3,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { LottieAnimation } from './LottieAnimation';
-import { LOTTIES } from '@/lib/landing/lottieConfig';
 
 export function LandingNav() {
   return (
@@ -28,27 +26,11 @@ export function LandingNav() {
               Sign in
             </Button>
           </Link>
-
-          {/* Get started button with tiny sparkle Lottie overlay */}
-          <div className="relative">
-            <Link href="/onboarding" tabIndex={-1}>
-              <Button size="sm" className="rounded-lg px-4">
-                Get started
-              </Button>
-            </Link>
-            <div
-              className="absolute -top-1 -right-1 w-6 h-6 pointer-events-none"
-              aria-hidden="true"
-            >
-              <LottieAnimation
-                src={LOTTIES.navSparkle.src}
-                autoplay
-                loop
-                speed={0.7}
-                className="w-full h-full"
-              />
-            </div>
-          </div>
+          <Link href="/onboarding" tabIndex={-1}>
+            <Button size="sm" className="rounded-lg px-4">
+              Get started
+            </Button>
+          </Link>
         </div>
       </nav>
     </header>
