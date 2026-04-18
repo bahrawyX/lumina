@@ -114,17 +114,24 @@ const WHEEL_THRESHOLD = 30;
 export function FeatureShowcase() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
   const wheelLockRef = useRef<boolean>(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Section-in-view gate for keyboard + wheel handlers.
-  // `-40% 0px -40% 0px` means the section is only considered "in view"
-  // when it occupies the middle 20% of the viewport — this makes the
-  // scroll hijack activate when the showcase is near the CENTER of the
-  // screen, not when it's just peeking in at the top.
-  const sectionInView = useInView(sectionRef, {
-    margin: '-40% 0px -40% 0px',
+  //
+  // We observe a tiny sentinel placed at the vertical CENTER of the snap
+  // track (not the whole <section>). The section wrapper includes the
+  // heading + dots footer which add ~25vh of padding above/below the
+  // track — using the section itself caused the hijack to engage as
+  // soon as the heading peeked into the center strip, which felt early.
+  //
+  // With the sentinel + `-35% 0px -35% 0px`, the hijack only activates
+  // once the track's midpoint is inside the middle 30% of the viewport,
+  // i.e. the showcase is meaningfully centered on the screen.
+  const sectionInView = useInView(sentinelRef, {
+    margin: '-35% 0px -35% 0px',
     once: false,
   });
 
@@ -278,6 +285,18 @@ export function FeatureShowcase() {
           aria-label="Lumina features"
           tabIndex={0}
         >
+          {/*
+            Invisible sentinel at the track's vertical center. Observed by
+            `useInView` above to decide when the hijack/keyboard gate is on.
+            Positioned with `sticky` so it stays at the track's midpoint
+            regardless of which slide is currently scrolled — its viewport
+            position tracks the track itself, not the scrolled content.
+          */}
+          <div
+            ref={sentinelRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-1/2 top-1/2 w-px h-px"
+          />
           {SLIDES.map((slide, i) => (
             <div
               key={slide.key}
