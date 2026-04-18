@@ -13,10 +13,11 @@ import { CustomCursor } from './CustomCursor';
 import { SmoothScroll } from './SmoothScroll';
 
 export function LandingPage() {
-  // Note: `cursor-none` is no longer applied here — CustomCursor injects a
-  // global `* { cursor: none !important }` stylesheet on mount (and tears it
-  // down on unmount). That beats any Tailwind `cursor-pointer` on buttons,
-  // which was the reason the real cursor bled through on hover.
+  // CustomCursor is LANDING-PAGE-ONLY on purpose. The authenticated app
+  // (calendar, tasks, docs, focus, goals) relies on native cursor affordances
+  // — drag handles, resize cursors, the BlockNote editor's text caret, etc.
+  // Mounting the custom cursor globally overrode those and broke UX, so it
+  // stays scoped here.
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SmoothScroll />

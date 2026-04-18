@@ -13,7 +13,13 @@ export function LandingPageWrapper() {
 
   useEffect(() => {
     if (isPending) return;
-    if (session?.user) {
+    // `?preview=1` lets signed-in users view the marketing landing without
+    // being bounced to /calendar (useful for previewing copy/layout).
+    const previewRequested =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('preview') === '1';
+
+    if (session?.user && !previewRequested) {
       router.replace('/calendar');
     } else {
       setReady(true);

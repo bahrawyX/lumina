@@ -3,27 +3,120 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Zone-aware custom cursor.
+ * Site-wide custom cursor.
  *
- * Unlike a global "sticky" cursor that hijacks the entire page, this one
- * only shows up inside `<CursorZone>` regions — each zone declares a label
- * and color via `data-cursor-label` / `data-cursor-color` attributes.
+ * - Always visible on pointer (non-touch) devices across the entire app.
+ * - Shows a default "Lumina" label with the theme's primary color when not
+ *   in any cursor zone.
+ * - When the mouse enters a `<CursorZone>` with `data-cursor-label` /
+ *   `data-cursor-color`, the label + pill color swap to that zone's values.
+ * - Hides over text inputs/textareas so the native text caret is usable.
+ * - No-op on touch devices.
  *
- * Behavior:
- *   - Native cursor is visible everywhere by default.
- *   - When the mouse enters a CursorZone: native cursor hides, custom
- *     cursor appears with that zone's label/color.
- *   - When the mouse leaves the zone (or hovers a text input inside a zone):
- *     native cursor returns.
- *
- * The scoped `cursor: none` is applied only to the zone element itself via
- * inline style, not via a global `<style>` tag — leaving the rest of the
- * landing page (nav, footer, empty space) with the normal cursor.
+ * The cursor reads the currently-applied `--primary` CSS variable at runtime
+ * so the pill always matches the live theme (light/dark). Zones override the
+ * color with their own hex for section accent signaling.
  */
+
+const DEFAULT_LABEL = "Lumina";
+// Sentinel — means "use live theme --primary". Actual color is read at render time.
+const THEME_PRIMARY = "__theme_primary__";
+
+/**
+ * Pick a readable foreground color for a given background.
+ * Accepts `#rrggbb`, `#rgb`, or `hsl(...)` / `hsla(...)`.
+ * Falls back to dark text if we can't parse.
+ */
+function readableTextOn(bg: string): string {
+  const ctx = readableTextOn as unknown as { cache?: Map<string, string> };
+  if (!ctx.cache) ctx.cache = new Map();
+  const cached = ctx.cache.get(bg);
+  if (cached) return cached;
+
+  let r = 0, g = 0, b = 0;
+  let ok = false;
+
+  if (bg.startsWith("#")) {
+    let hex = bg.slice(1);
+    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+    if (hex.length === 6) {
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+      ok = true;
+    }
+  } else if (bg.startsWith("hsl")) {
+    const m = /hsla?\(\s*([-\d.]+)\s*,?\s*([-\d.]+)%\s*,?\s*([-\d.]+)%/.exec(bg);
+    if (m) {
+      const h = parseFloat(m[1]!) / 360;
+      const s = parseFloat(m[2]!) / 100;
+      const l = parseFloat(m[3]!) / 100;
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      let rf, gf, bf;
+      if (s === 0) rf = gf = bf = l;
+      else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        rf = hue2rgb(p, q, h + 1 / 3);
+        gf = hue2rgb(p, q, h);
+        bf = hue2rgb(p, q, h - 1 / 3);
+      }
+      r = Math.round(rf * 255);
+      g = Math.round(gf * 255);
+      b = Math.round(bf * 255);
+      ok = true;
+    }
+  }
+
+  if (!ok) {
+    ctx.cache.set(bg, "#131313");
+    return "#131313";
+  }
+
+  // Relative luminance (WCAG)
+  const lum =
+    0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255);
+  const fg = lum > 0.55 ? "#131313" : "#ffffff";
+  ctx.cache.set(bg, fg);
+  return fg;
+}
+
+/** Read the current theme's --primary as an HSL string. */
+function resolveThemePrimary(): string {
+  if (typeof window === "undefined") return "hsl(249, 66%, 61%)";
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--primary")
+    .trim();
+  // --primary is stored as "H S% L%" (three space-separated values)
+  return raw ? `hsl(${raw})` : "hsl(249, 66%, 61%)";
+}
+
 export function CustomCursor() {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [label, setLabel] = useState("You");
-  const [color, setColor] = useState("#cef136");
+  const [label, setLabel] = useState(DEFAULT_LABEL);
+  const [color, setColor] = useState<string>(THEME_PRIMARY);
+  const [resolvedPrimary, setResolvedPrimary] = useState<string>(
+    "hsl(249, 66%, 61%)",
+  );
+
+  // Re-resolve --primary when the theme class flips on <html>
+  useEffect(() => {
+    const update = () => setResolvedPrimary(resolveThemePrimary());
+    update();
+    const mo = new MutationObserver(update);
+    mo.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+    return () => mo.disconnect();
+  }, []);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -35,63 +128,79 @@ export function CustomCursor() {
       return;
     }
 
-    // Which zone element is currently hiding its native cursor — we track
-    // this so we can restore it when leaving.
-    let activeZone: HTMLElement | null = null;
-
-    const isTextyInput = (el: EventTarget | null): boolean => {
-      if (!(el instanceof HTMLElement)) return false;
-      if (el instanceof HTMLInputElement) {
-        const t = el.type;
-        return t === "text" || t === "email" || t === "password" || t === "search" || t === "url";
+    // Hide the native cursor globally via a scoped style tag. We use the
+    // `data-lumina-cursor` attribute on <html> so tests / opting-out pages
+    // can disable it by removing the attribute.
+    document.documentElement.setAttribute("data-lumina-cursor", "on");
+    const style = document.createElement("style");
+    style.setAttribute("data-lumina-cursor-style", "");
+    style.textContent = `
+      html[data-lumina-cursor="on"],
+      html[data-lumina-cursor="on"] body,
+      html[data-lumina-cursor="on"] *:not(input):not(textarea):not([contenteditable="true"]) {
+        cursor: none !important;
       }
-      return el instanceof HTMLTextAreaElement;
-    };
+      html[data-lumina-cursor="on"] input,
+      html[data-lumina-cursor="on"] textarea,
+      html[data-lumina-cursor="on"] [contenteditable="true"] {
+        cursor: text !important;
+      }
+    `;
+    document.head.appendChild(style);
 
-    // RAF throttling
     let mouseX = 0;
     let mouseY = 0;
     let lastTarget: EventTarget | null = null;
     let rafScheduled = false;
 
+    const isTextyInput = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable) return true;
+      if (el instanceof HTMLInputElement) {
+        const t = el.type;
+        return (
+          t === "text" ||
+          t === "email" ||
+          t === "password" ||
+          t === "search" ||
+          t === "url" ||
+          t === "number" ||
+          t === "tel"
+        );
+      }
+      return el instanceof HTMLTextAreaElement;
+    };
+
     const hide = () => {
       wrap.style.opacity = "0";
-      wrap.style.visibility = "hidden";
     };
     const show = () => {
       wrap.style.opacity = "1";
-      wrap.style.visibility = "visible";
     };
 
     const render = () => {
       rafScheduled = false;
       wrap.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
 
-      // Find the nearest ancestor declaring itself a cursor zone
+      // Hide over text inputs so the caret is readable
+      if (isTextyInput(lastTarget)) {
+        hide();
+        return;
+      }
+
       const el = lastTarget instanceof HTMLElement ? lastTarget : null;
       const zone = el?.closest<HTMLElement>("[data-cursor-label]") ?? null;
-      const zoneLabel = zone?.dataset.cursorLabel ?? "";
-      const zoneColor = zone?.dataset.cursorColor ?? "#cef136";
+      const zoneLabel = zone?.dataset.cursorLabel;
+      const zoneColor = zone?.dataset.cursorColor;
 
-      // Restore native cursor on the previous zone if we've moved away
-      if (activeZone && activeZone !== zone) {
-        activeZone.style.cursor = "";
-        activeZone = null;
-      }
-
-      if (zone && zoneLabel && !isTextyInput(lastTarget)) {
-        // Enter a zone (or move within one): hide native cursor on it and show ours
-        if (activeZone !== zone) {
-          zone.style.cursor = "none";
-          activeZone = zone;
-        }
+      if (zone && zoneLabel) {
         setLabel(zoneLabel);
-        setColor(zoneColor);
-        show();
+        setColor(zoneColor || THEME_PRIMARY);
       } else {
-        // Outside all zones — native cursor is visible, ours is hidden
-        hide();
+        setLabel(DEFAULT_LABEL);
+        setColor(THEME_PRIMARY);
       }
+      show();
     };
 
     const onMouseMove = (e: MouseEvent) => {
@@ -104,26 +213,25 @@ export function CustomCursor() {
       }
     };
 
-    const onMouseLeave = () => {
-      hide();
-      if (activeZone) {
-        activeZone.style.cursor = "";
-        activeZone = null;
-      }
-    };
+    const onMouseLeave = () => hide();
+    const onMouseEnter = () => show();
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseleave", onMouseLeave);
+    document.addEventListener("mouseenter", onMouseEnter);
 
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseleave", onMouseLeave);
-      if (activeZone) {
-        activeZone.style.cursor = "";
-        activeZone = null;
-      }
+      document.removeEventListener("mouseenter", onMouseEnter);
+      document.documentElement.removeAttribute("data-lumina-cursor");
+      style.remove();
     };
   }, []);
+
+  // Resolve the effective background color for the pill + pick a readable fg
+  const pillBg = color === THEME_PRIMARY ? resolvedPrimary : color;
+  const pillFg = readableTextOn(pillBg);
 
   return (
     <div
@@ -136,7 +244,6 @@ export function CustomCursor() {
         zIndex: 9999,
         willChange: "transform",
         opacity: 0,
-        visibility: "hidden",
         transition: "opacity 120ms ease-out",
       }}
     >
@@ -166,8 +273,8 @@ export function CustomCursor() {
           position: "absolute",
           left: 18,
           top: 18,
-          background: color,
-          color: "#131313",
+          background: pillBg,
+          color: pillFg,
           fontFamily: "'Geist Mono', 'Space Grotesk', ui-monospace, monospace",
           fontSize: 9,
           fontWeight: 700,
@@ -178,7 +285,7 @@ export function CustomCursor() {
           lineHeight: 1.2,
           letterSpacing: "0.05em",
           textTransform: "uppercase",
-          transition: "background 200ms ease-out",
+          transition: "background 200ms ease-out, color 200ms ease-out",
         }}
       >
         {label}

@@ -1,10 +1,17 @@
 'use client';
 
 import { motion, useInView } from 'framer-motion';
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { CursorZone } from './CursorZone';
 
-const FEATURES = [
+type Feature = {
+  title: string;
+  description: string;
+  icon: ReactNode;
+  span: string;
+};
+
+const FEATURES: Feature[] = [
   {
     title: 'Calendar',
     description: 'Month, week, and day views with drag-and-drop event management and recurring events.',
@@ -72,7 +79,7 @@ function FeatureCard({
   index,
   sectionInView,
 }: {
-  feature: (typeof FEATURES)[number];
+  feature: Feature;
   index: number;
   sectionInView: boolean;
 }) {
