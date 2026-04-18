@@ -276,27 +276,29 @@ export function FeatureShowcase() {
       </div>
 
       <CursorZone label="Swipe" color={activeSlide.accent}>
-        <div
-          ref={trackRef}
-          data-lenis-prevent
-          className="feature-snap-track"
-          role="region"
-          aria-roledescription="carousel"
-          aria-label="Lumina features"
-          tabIndex={0}
-        >
-          {/*
-            Invisible sentinel at the track's vertical center. Observed by
-            `useInView` above to decide when the hijack/keyboard gate is on.
-            Positioned with `sticky` so it stays at the track's midpoint
-            regardless of which slide is currently scrolled — its viewport
-            position tracks the track itself, not the scrolled content.
-          */}
+        {/*
+          Wrapper that is NOT scrollable. The sentinel lives here, not
+          inside the track, because absolute-positioned children of the
+          scrolling track move with horizontal scroll — once you pass
+          slide ~3 the sentinel goes offscreen and useInView flips to
+          false, which kills the wheel handler. Keeping the sentinel
+          outside the scroll container fixes that.
+        */}
+        <div className="relative">
           <div
             ref={sentinelRef}
             aria-hidden="true"
             className="pointer-events-none absolute left-1/2 top-1/2 w-px h-px"
           />
+          <div
+            ref={trackRef}
+            data-lenis-prevent
+            className="feature-snap-track"
+            role="region"
+            aria-roledescription="carousel"
+            aria-label="Lumina features"
+            tabIndex={0}
+          >
           {SLIDES.map((slide, i) => (
             <div
               key={slide.key}
@@ -319,6 +321,7 @@ export function FeatureShowcase() {
               />
             </div>
           ))}
+          </div>
         </div>
       </CursorZone>
 
