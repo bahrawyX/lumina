@@ -40,7 +40,7 @@ export const metadata: Metadata = {
       'A productivity workspace combining calendar, tasks, focus sessions, goals, and AI scheduling insights.',
     images: [
       {
-        url: '/opengraph-image',
+        url: '/og.png',
         width: 1200,
         height: 630,
         alt: 'Lumina productivity workspace',
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     title: 'Lumina — Calendar, tasks, and focus in one place',
     description:
       'A productivity workspace combining calendar, tasks, focus sessions, goals, and AI scheduling insights.',
-    images: ['/twitter-image'],
+    images: ['/og.png'],
   },
   robots: {
     index: true,
