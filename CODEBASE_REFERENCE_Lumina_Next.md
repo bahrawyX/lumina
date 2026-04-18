@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-16 (v24 — Layout fixes: task board kanban columns now stretch full height via flex-1 + boneyard CSS fix, Plan Day timeline scrollable via min-h-0 chain fix, Skeleton className passthrough on DailyPlanView. PlannedTaskCard redesigned: bg-card surface, shadow-card, left accent bar, signature easing. Planned block height multiplier 0.75→0.9, min 20→32px. Editorial headers added to /pomodoro and /focus pages. 88 Vitest tests.)
+> Last updated: 2026-04-18 (v25 — OG image switched from dynamic edge route to static /og.png. opengraph-image.tsx + twitter-image.tsx deleted. FeatureShowcase reverted to icon+text cards (no mockups). CustomCursor confined to landing page only. LandingPageWrapper gains ?preview=1 bypass for signed-in users. seo.test.ts added. 102 Vitest tests across 9 files.)
 
 ---
 
@@ -98,7 +98,7 @@ This is the single source of truth for the Lumina codebase. It covers:
 - **jsdom** — DOM implementation for node.
 - `tests/setup.ts` stubs `matchMedia`, `ResizeObserver`, and `scrollTo` for Radix components and auto-cleans mounted trees between tests.
 - Scripts: `npm test` (run once, CI mode), `npm run test:watch`, `npm run test:ui`.
-- Current suite: **84 tests across 7 files** — `design-system`, `button`, `editorial-headers`, `goal-progress`, `shop-config`, `useCoinsStore`, `shop-item-icon`. See Section 27.
+- Current suite: **102 tests across 9 files** — `design-system`, `button`, `editorial-headers`, `goal-progress`, `shop-config`, `useCoinsStore`, `shop-item-icon`, `no-hardcoded-colors`, `seo`. See Section 28.
 
 ---
 
@@ -169,10 +169,20 @@ src/
 │   │   │   └── streak-reminder/route.ts ← Vercel cron: 8 PM local-time streak risk
 │   │   └── maintenance/cleanup-external-events/route.ts
 │   ├── globals.css
-│   ├── layout.tsx                  ← Root layout: AuthProvider, ThemeProvider, metadata
+│   ├── layout.tsx                  ← Root layout: AuthProvider, ThemeProvider, metadata. og:image + twitter:image both point to /og.png (public/)
+│   ├── opengraph-image.tsx         ← DELETED (v25). Static /og.png used instead.
+│   ├── twitter-image.tsx           ← DELETED (v25). Static /og.png used instead.
 │   └── providers.tsx
 │
 ├── components/
+│   ├── landing/
+│   │   ├── LandingPage.tsx          ← Top-level landing page shell; mounts CustomCursor + SmoothScroll (Lenis)
+│   │   ├── LandingPageWrapper.tsx   ← Auth-aware wrapper; ?preview=1 query param bypasses redirect for signed-in users
+│   │   ├── HeroSection.tsx          ← Hero with Lottie animation, CursorZone, useLottieHover
+│   │   ├── FeatureShowcase.tsx      ← Six feature cards: icon + title + description (no mockup images)
+│   │   ├── CustomCursor.tsx         ← Landing-page-only custom cursor; reads CSS --primary; zone-aware via data-cursor-label/color
+│   │   ├── CursorZone.tsx           ← Wraps children with data-cursor-* attributes for cursor customisation
+│   │   └── [other landing sections] ← CTASection, FAQSection, FooterSection, PricingSection, etc.
 │   ├── auth/
 │   │   ├── GuestBanner.tsx         ← Amber dismissible banner shown at top of AppShell in guest mode
 │   │   └── GuestUpgradeModal.tsx   ← Dialog shown when guest attempts gated feature
@@ -1964,7 +1974,7 @@ Vitest 4 with jsdom — `vitest.config.ts` wires `@` → `./src`, points `setupF
 | `npm run test:watch` | Watch mode |
 | `npm run test:ui` | Vitest UI dashboard |
 
-### Test files (88 tests total)
+### Test files (102 tests total)
 | File | Tests | Coverage |
 |---|---|---|
 | `tests/design-system.test.ts` | 15 | globals.css / tailwind.config / layout.tsx carry the crafted tokens (card-lift, signature easing, shadow-card, warm HSL, grain, Clash+Geist fonts) |
@@ -1975,6 +1985,7 @@ Vitest 4 with jsdom — `vitest.config.ts` wires `@` → `./src`, points `setupF
 | `tests/useCoinsStore.test.ts` | 15 | Hydration idempotency, purchase success/rollback, insufficient funds, transaction cap, selectors |
 | `tests/shop-item-icon.test.tsx` | 6 | Every SKU has icon, accent swatches use correct HSL, currentColor stroke, size prop, fallback |
 | `tests/no-hardcoded-colors.test.ts` | 4 | Palette hygiene guard — `git grep` asserts zero `text-gray-*`, `bg-gray-*`, `border-gray-*`, `bg-white` in `src/` |
+| `tests/seo.test.ts` | 14 | Guards SEO plumbing: metadataBase, title template, og/twitter/robots/alternates/viewport metadata, lang="en", robots.ts + sitemap.ts exist, `public/og.png` exists, og:image points to `/og.png`, (app) layout sets noindex, JSON-LD present |
 
 ### Patterns
 - **String-level assertions** for design tokens: `readFileSync` → regex match. Fast, no render needed, catches accidental deletions.
@@ -2068,6 +2079,33 @@ The `emoji` field on `SHOP_ITEMS` rows is preserved in `src/config/shopItems.ts`
 - `/pomodoro` page (`src/app/(app)/pomodoro/page.tsx`): added `Workspace · Focus` eyebrow, `Pomodoro` display title, italic supporting line, border-b separator. Content area restructured to `flex-1 min-h-0 overflow-y-auto`.
 - `/focus` page (`src/components/pages/FocusPage.tsx`): added `Workspace · Focus` eyebrow, `Focus` display title, italic supporting line. Tabs component changed from `h-full` to `flex-1 min-h-0`.
 - Both pages now match the editorial header pattern used across TaskBoard, GoalsPage, ShopPage, PerformancePage, DocsHomePage, IntelligencePage.
+
+---
+
+## 31. SESSION v25 CHANGES
+
+### 31.1 Static OG Image — COMPLETE
+- **Before**: `src/app/opengraph-image.tsx` and `src/app/twitter-image.tsx` were dynamic edge routes that rendered JSX via `ImageResponse` on every request.
+- **After**: Both files deleted. `layout.tsx` `openGraph.images` and `twitter.images` both point to `'/og.png'` (served from `public/`).
+- **File**: `public/og.png` — 1200×630 static image used for all social previews.
+- **Why**: Static PNG is instantly cached by Vercel CDN; no cold-start edge invocation needed for every link share. Simpler, faster, more reliable.
+- **Files changed**: `src/app/layout.tsx` (og/twitter image URLs), deleted `src/app/opengraph-image.tsx`, deleted `src/app/twitter-image.tsx`.
+
+### 31.2 FeatureShowcase Reverted to Icon Cards — COMPLETE
+- `src/components/landing/FeatureShowcase.tsx` stripped of all mockup image/video code. Back to clean icon + title + description card layout.
+- No `Image`, no `<video>`, no `MockupFrame` component, no `Mockup` type.
+- Six feature cards rendered in a `grid-cols-1 md:grid-cols-3` grid with `md:col-span-2` on Calendar and Documents.
+
+### 31.3 Landing Page Components — DOCUMENTED
+- **`src/components/landing/LandingPage.tsx`**: Top-level shell. Mounts `<CustomCursor />` (landing-only) and `<SmoothScroll />` (Lenis). Contains all landing sections.
+- **`src/components/landing/LandingPageWrapper.tsx`**: Auth-aware wrapper rendered by `/` app route. Normally redirects authenticated users to `/calendar`. Accepts `?preview=1` query param to bypass the redirect — lets signed-in users view the landing page at `/?preview=1` without being kicked out.
+- **`src/components/landing/CustomCursor.tsx`**: Custom cursor shown only on the landing page. Reads `--primary` CSS variable for theme awareness. Zone-aware: looks up the DOM for `data-cursor-label` / `data-cursor-color` attributes (set by `<CursorZone>`). Not mounted in the authenticated app shell — deliberately confined to landing.
+- **`src/components/landing/HeroSection.tsx`**: Hero with Lottie animation via `useLottieHover` + `LOTTIES.hero`. Uses `<CursorZone>`. Do not modify without re-testing animation replay on hover.
+
+### 31.4 SEO Test Added — COMPLETE
+- `tests/seo.test.ts`: 14 static-analysis tests guarding SEO plumbing.
+- Key assertions: `metadataBase`, title/template, `openGraph`, `twitter`, `robots`, `alternates`, `viewport.themeColor`, `lang="en"`, `robots.ts` + `sitemap.ts` existence, `public/og.png` existence, `og.png` referenced in layout, (app) layout has `noindex`, `JsonLd` component present.
+- Test was updated in v25 to replace the check for the now-deleted `opengraph-image.tsx` with checks for `public/og.png` and the `/og.png` string in `layout.tsx`.
 
 ---
 

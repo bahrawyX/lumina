@@ -60,10 +60,12 @@ describe('SEO foundation', () => {
     expect(existsSync(resolve(process.cwd(), 'src/app/sitemap.ts'))).toBe(true);
   });
 
-  it('src/app/opengraph-image.tsx exists', () => {
-    expect(
-      existsSync(resolve(process.cwd(), 'src/app/opengraph-image.tsx')),
-    ).toBe(true);
+  it('public/og.png exists (static OG image)', () => {
+    expect(existsSync(resolve(process.cwd(), 'public/og.png'))).toBe(true);
+  });
+
+  it('og:image in layout points to /og.png', () => {
+    expect(rootLayout).toContain('/og.png');
   });
 
   it('app layout for authenticated routes sets noindex', () => {
