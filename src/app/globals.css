@@ -585,3 +585,54 @@ html body .bn-container [data-radix-popper-content-wrapper] {
 .bn-container [class*="sideMenu"]:hover {
   opacity: 0.8;
 }
+
+/* ── Feature snap-scroll showcase ───────────────────────── */
+/*
+ * The feature showcase uses a horizontal CSS scroll-snap track on
+ * desktop and a vertical stack on mobile. The container MUST have
+ * overflow: scroll/auto for snap to work — overflow: hidden breaks it.
+ * Scrollbars are hidden visually but the axis is still scrollable.
+ *
+ * On desktop (>=768px): horizontal track, wheel events are hijacked
+ * in JS to page between slides. `data-lenis-prevent` on the element
+ * stops Lenis from intercepting scroll.
+ *
+ * On mobile (<768px): vertical snap, native touch scroll handles it.
+ */
+.feature-snap-track {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scroll-snap-stop: always;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+}
+.feature-snap-track::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.feature-snap-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+@media (min-width: 768px) {
+  .feature-snap-track {
+    height: 85vh;
+    flex-direction: row;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+  }
+}
