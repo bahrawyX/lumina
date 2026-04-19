@@ -1461,28 +1461,56 @@ type TreeNode = DocTreeNode & { children: TreeNode[] };
 
 const InlineDocItem: React.FC<{ node: TreeNode; depth: number }> = ({ node, depth }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const isActive = pathname === `/docs/${node.id}`;
   const expandedIds = useDocsStore((s) => s.expandedIds);
   const toggleExpanded = useDocsStore((s) => s.toggleExpanded);
+  const updateDoc = useDocsStore((s) => s.updateDoc);
+  const archiveDoc = useDocsStore((s) => s.archiveDoc);
+  const pinDoc = useDocsStore((s) => s.pinDoc);
   const hasChildren = node.children.length > 0;
   const isExpanded = expandedIds.includes(node.id);
 
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const startRename = useCallback(() => {
+    setRenameValue(node.title);
+    setIsRenaming(true);
+  }, [node.title]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== node.title) {
+      updateDoc(node.id, { title: trimmed.slice(0, 512) });
+    }
+    setIsRenaming(false);
+  }, [renameValue, node.title, node.id, updateDoc]);
+
+  const handleDelete = useCallback(() => {
+    archiveDoc(node.id);
+    setShowDeleteConfirm(false);
+    if (pathname === `/docs/${node.id}`) {
+      router.push('/docs');
+    }
+  }, [archiveDoc, node.id, pathname, router]);
+
   return (
     <>
-      <Link
-        href={`/docs/${node.id}`}
-        className={`group flex items-center gap-1.5 py-1 pr-2 rounded-md text-xs transition-colors truncate ${
+      <div
+        className={`group flex items-center gap-1.5 py-1 rounded-md text-xs transition-colors ${
           isActive
             ? 'bg-accent/60 text-foreground font-medium'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
         }`}
-        style={{ paddingLeft: `${20 + depth * 12}px` }}
+        style={{ paddingLeft: `${20 + depth * 12}px`, paddingRight: '4px' }}
       >
         {hasChildren ? (
           <button
             type="button"
             className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleExpanded(node.id); }}
+            onClick={() => toggleExpanded(node.id)}
           >
             <motion.svg
               width={8} height={8} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1507,8 +1535,75 @@ const InlineDocItem: React.FC<{ node: TreeNode; depth: number }> = ({ node, dept
             <polyline points="14 2 14 8 20 8" />
           </svg>
         )}
-        <span className="truncate">{node.title}</span>
-      </Link>
+
+        {isRenaming ? (
+          <input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value.slice(0, 512))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+              if (e.key === 'Escape') setIsRenaming(false);
+            }}
+            onBlur={commitRename}
+            className="flex-1 min-w-0 bg-transparent text-xs outline-none border-b border-primary/50"
+            autoFocus
+          />
+        ) : showDeleteConfirm ? (
+          <span className="flex-1 flex items-center gap-1 min-w-0 overflow-hidden">
+            <span className="text-destructive text-[10px] font-medium flex-shrink-0">Delete?</span>
+            <button type="button" onClick={handleDelete} className="flex-shrink-0 text-[10px] text-destructive hover:underline font-semibold">Yes</button>
+            <button type="button" onClick={() => setShowDeleteConfirm(false)} className="flex-shrink-0 text-[10px] text-muted-foreground hover:underline">No</button>
+          </span>
+        ) : (
+          <>
+            <Link
+              href={`/docs/${node.id}`}
+              className="flex-1 truncate min-w-0"
+              onDoubleClick={(e) => { e.preventDefault(); startRename(); }}
+            >
+              {node.title}
+            </Link>
+            <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                title="Delete"
+                onClick={(e) => { e.preventDefault(); setShowDeleteConfirm(true); }}
+                className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive transition-colors"
+              >
+                <TrashIcon size={10} />
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreIcon size={10} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={4} className="w-36">
+                  <DropdownMenuItem onClick={startRename}>
+                    <EditIcon size={12} />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => pinDoc(node.id, !node.isPinned)}>
+                    {node.isPinned ? 'Unpin' : 'Pin'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                  >
+                    <TrashIcon size={12} />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        )}
+      </div>
       {isExpanded && hasChildren && node.children.map((child) => (
         <InlineDocItem key={child.id} node={child} depth={depth + 1} />
       ))}

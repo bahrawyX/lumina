@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useCoinsStore, selectCoinBalance, selectOwnedItems, selectActiveCosmetics } from '@/store/useCoinsStore';
 import { SHOP_ITEMS, type ShopItem, ACCENT_COLORS } from '@/config/shopItems';
 import { Button } from '@/components/ui/button';
@@ -38,12 +37,7 @@ const ShopItemCard: React.FC<{
   onPurchase: () => void;
   onActivate?: () => void;
 }> = React.memo(({ item, owned, canAfford, isActive, onPurchase, onActivate }) => (
-  <motion.div
-    layout
-    initial={{ opacity: 0, y: 8, scale: 0.96 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    exit={{ opacity: 0, y: -6, scale: 0.96 }}
-    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+  <div
     className="card-lift rounded-xl border border-border/70 bg-card p-4 flex flex-col gap-3 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none"
   >
     <div className="flex items-start gap-3">
@@ -108,7 +102,7 @@ const ShopItemCard: React.FC<{
         </Button>
       )}
     </div>
-  </motion.div>
+  </div>
 ));
 ShopItemCard.displayName = 'ShopItemCard';
 
@@ -227,29 +221,27 @@ export default function ShopPage() {
           }
         >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-4">
-          <AnimatePresence mode="popLayout">
-            {filtered.map(item => {
-              const owned = ownedItems.includes(item.id);
-              const isAccentActive = item.id.startsWith('accent_') && activeCosmetics.accentColor === item.id.replace('accent_', '');
-              const isConfettiActive = item.id === 'confetti_unlock' && activeCosmetics.confetti === true;
+          {filtered.map(item => {
+            const owned = ownedItems.includes(item.id);
+            const isAccentActive = item.id.startsWith('accent_') && activeCosmetics.accentColor === item.id.replace('accent_', '');
+            const isConfettiActive = item.id === 'confetti_unlock' && activeCosmetics.confetti === true;
 
-              return (
-                <ShopItemCard
-                  key={item.id}
-                  item={item}
-                  owned={owned}
-                  canAfford={balance >= item.cost}
-                  isActive={isAccentActive || isConfettiActive}
-                  onPurchase={() => handlePurchase(item)}
-                  onActivate={
-                    item.id.startsWith('accent_') ? () => handleActivateAccent(item.id.replace('accent_', '')) :
-                    item.id === 'confetti_unlock' ? handleToggleConfetti :
-                    undefined
-                  }
-                />
-              );
-            })}
-          </AnimatePresence>
+            return (
+              <ShopItemCard
+                key={item.id}
+                item={item}
+                owned={owned}
+                canAfford={balance >= item.cost}
+                isActive={isAccentActive || isConfettiActive}
+                onPurchase={() => handlePurchase(item)}
+                onActivate={
+                  item.id.startsWith('accent_') ? () => handleActivateAccent(item.id.replace('accent_', '')) :
+                  item.id === 'confetti_unlock' ? handleToggleConfetti :
+                  undefined
+                }
+              />
+            );
+          })}
         </div>
         </Skeleton>
       </div>

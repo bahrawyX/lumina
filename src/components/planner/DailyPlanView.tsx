@@ -410,6 +410,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
     setQuickAddOpen(true);
     setQuickAddTitle('');
     setQuickAddDuration(30);
+    setQuickAddDifficulty('medium');
     setQuickAddEmojiOpen(false);
     setTimeout(() => quickAddInputRef.current?.focus(), 30);
   }, []);
@@ -428,8 +429,10 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
     if (!trimmed) { setQuickAddOpen(false); return; }
     addTask({ title: trimmed, status: 'todo', priority: 'medium', difficulty: quickAddDifficulty, durationMinutes: quickAddDuration });
     setQuickAddTitle('');
-    // Keep open so user can add multiple tasks in a row
-    setTimeout(() => quickAddInputRef.current?.focus(), 20);
+    setQuickAddDifficulty('medium');
+    setQuickAddDuration(30);
+    setQuickAddEmojiOpen(false);
+    setQuickAddOpen(false);
   }, [quickAddTitle, quickAddDuration, quickAddDifficulty, addTask]);
 
   const cancelQuickAdd = useCallback(() => {

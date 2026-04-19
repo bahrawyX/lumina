@@ -25,12 +25,14 @@ const AUDIO_URLS: Record<AmbientTrack, string> = {
 let sessionId = 0;
 
 let activeAudio: { track: AmbientTrack; element: HTMLAudioElement } | null = null;
+let cdnFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 let fallbackCtx: AudioContext | null = null;
 let fallbackPlayer: { track: AmbientTrack; stop: () => void; setVolume: (v: number) => void } | null = null;
 
 // ── Internal: kill everything ────────────────────────────────────────────────
 
 function destroyAudioElement(): void {
+  if (cdnFallbackTimer) { clearTimeout(cdnFallbackTimer); cdnFallbackTimer = null; }
   if (!activeAudio) return;
   const el = activeAudio.element;
   // Remove all listeners so stale callbacks can't fire
@@ -68,8 +70,17 @@ export function playTrack(track: AmbientTrack, volume = 0.6): void {
   audio.volume = Math.max(0, Math.min(1, volume));
   // No crossOrigin needed — we only do simple playback, not Web Audio graph routing
 
+  // Safety net: if CDN audio doesn't fire canplaythrough within 8 s (dead URL,
+  // wrong MIME type, or extreme throttling), switch to Web Audio synthesis.
+  cdnFallbackTimer = setTimeout(() => {
+    if (sessionId !== thisSession) return;
+    destroyAudioElement();
+    useFallback(track, volume, thisSession);
+  }, 8000);
+
   // Guard: only act if this session is still current
   audio.oncanplaythrough = () => {
+    if (cdnFallbackTimer) { clearTimeout(cdnFallbackTimer); cdnFallbackTimer = null; }
     if (sessionId !== thisSession) {
       // Stale — a stop or switch happened; kill this orphan
       audio.pause();
@@ -86,6 +97,7 @@ export function playTrack(track: AmbientTrack, volume = 0.6): void {
   };
 
   audio.onerror = () => {
+    if (cdnFallbackTimer) { clearTimeout(cdnFallbackTimer); cdnFallbackTimer = null; }
     if (sessionId !== thisSession) return;
     destroyAudioElement();
     useFallback(track, volume, thisSession);
