@@ -640,12 +640,12 @@ html body .bn-container [data-radix-popper-content-wrapper] {
 }
 @media (min-width: 768px) {
   .feature-snap-track {
-    height: 85vh;
+    height: 100%; /* fills the flex-1 parent; section is h-screen flex-col */
     flex-direction: row;
     overflow-x: scroll;
     overflow-y: hidden;
     scroll-snap-type: x mandatory;
-    overscroll-behavior-x: contain; /* prevent horizontal overscroll chaining on desktop */
+    overscroll-behavior-x: auto; /* allow page to continue scrolling after last slide */
     overscroll-behavior-y: auto;
   }
 }

@@ -263,10 +263,10 @@ export function FeatureShowcase() {
       ref={sectionRef}
       id="features"
       aria-label="Feature showcase"
-      className="relative"
+      className="relative md:h-screen md:flex md:flex-col"
     >
       {/* Section heading */}
-      <div className="text-center pt-16 md:pt-24 pb-8 md:pb-12 px-4">
+      <div className="text-center pt-12 md:pt-10 pb-5 md:pb-4 px-4 md:flex-shrink-0">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
           Everything you need
         </p>
@@ -275,7 +275,7 @@ export function FeatureShowcase() {
         </h2>
       </div>
 
-      <CursorZone label="Swipe" color={activeSlide.accent}>
+      <CursorZone label="Swipe" color={activeSlide.accent} className="md:flex-1 md:min-h-0">
         {/*
           Wrapper that is NOT scrollable. The sentinel lives here, not
           inside the track, because absolute-positioned children of the
@@ -284,7 +284,7 @@ export function FeatureShowcase() {
           false, which kills the wheel handler. Keeping the sentinel
           outside the scroll container fixes that.
         */}
-        <div className="relative">
+        <div className="relative md:h-full">
           <div
             ref={sentinelRef}
             aria-hidden="true"
@@ -326,7 +326,7 @@ export function FeatureShowcase() {
       </CursorZone>
 
       {/* Navigation: dots + progress + counter */}
-      <div className="flex flex-col items-center gap-3 pt-4 pb-12 md:pb-20">
+      <div className="flex flex-col items-center gap-3 pt-3 pb-10 md:pb-6 md:flex-shrink-0">
         <div
           className="flex items-center gap-2"
           role="tablist"
