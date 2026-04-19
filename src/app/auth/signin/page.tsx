@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLuminaAuthClient } from '@/components/AuthProvider';
 import { GoogleProviderIcon } from '@/components/icons';
-import { useOnboardingStore } from '@/store/useOnboardingStore';
 import { useGuestStore } from '@/store/useGuestStore';
-import { useTutorialStore } from '@/store/useTutorialStore';
 import { cn } from '@/lib/utils';
 import {
   getFieldError,
@@ -137,15 +135,6 @@ function useOAuthPopup(authClient: ReturnType<typeof useLuminaAuthClient>) {
   }, [authClient]);
 }
 
-/* ── Post-auth actions ──────────────────────────────────────── */
-function finalizeAuth() {
-  // Mark onboarding complete so AppShell doesn't redirect to /onboarding
-  useOnboardingStore.getState().complete();
-  // Clear guest mode
-  useGuestStore.getState().setGuest(false);
-  // Reset tutorial so "New to Lumina? Explore" prompt reappears
-  useTutorialStore.setState({ hasSeenPrompt: false, hasCompletedTutorial: false });
-}
 
 /* ═══════════════════════════════════════════════════════════════
    SIGN IN / SIGN UP PAGE
@@ -211,11 +200,11 @@ export default function SignInPage() {
         email: normalizedEmail,
         password,
         name: normalizedName,
-        callbackURL: '/calendar',
+        callbackURL: '/onboarding',
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign up failed.'); return; }
-      finalizeAuth();
-      router.replace('/calendar');
+      useGuestStore.getState().setGuest(false);
+      router.replace('/onboarding');
     } finally {
       setBusy(null);
     }
@@ -232,11 +221,11 @@ export default function SignInPage() {
       const result = await authClient.signIn.email({
         email: normalizedEmail,
         password,
-        callbackURL: '/calendar',
+        callbackURL: '/onboarding',
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
-      finalizeAuth();
-      router.replace('/calendar');
+      useGuestStore.getState().setGuest(false);
+      router.replace('/onboarding');
     } finally {
       setBusy(null);
     }
@@ -248,8 +237,8 @@ export default function SignInPage() {
     try {
       const completed = await startOAuth('google');
       if (!completed) { setMessage('Google sign-in was cancelled.'); return; }
-      finalizeAuth();
-      router.replace('/calendar');
+      useGuestStore.getState().setGuest(false);
+      router.replace('/onboarding');
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
     } finally {
@@ -265,8 +254,7 @@ export default function SignInPage() {
 
   /* ── Already logged in ─────────────────────────────────── */
   if (!sessionLoading && session?.user) {
-    finalizeAuth();
-    router.replace('/calendar');
+    router.replace('/onboarding');
     return null;
   }
 

@@ -255,6 +255,8 @@ const AuthField: React.FC<{
 const StepAuth = memo<{
   authStatus: 'loading' | 'logged out' | 'logged in';
   authUserEmail: string | null;
+  authUserName: string | null;
+  authUserImage: string | null;
   authMode: AuthMode;
   authName: string;
   authEmail: string;
@@ -274,6 +276,8 @@ const StepAuth = memo<{
 }>(({
   authStatus,
   authUserEmail,
+  authUserName,
+  authUserImage,
   authMode,
   authName,
   authEmail,
@@ -331,19 +335,34 @@ const StepAuth = memo<{
 
   /* ── Logged-in state ─────────────────────────────────────────────── */
   if (authStatus === 'logged in') {
+    const initials = authUserName
+      ? authUserName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+      : (authUserEmail?.[0] ?? '?').toUpperCase();
+
     return (
       <StepShell
         title="Secure your workspace"
         description="Your account is connected. Continue to finish setup."
       >
         <div className="space-y-3">
-          <div className="rounded-lg border border-primary/20 bg-primary/[0.04] px-4 py-3">
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.1em] mb-0.5">
-              Connected account
-            </p>
-            <p className="text-sm font-medium text-foreground break-all">
-              {authUserEmail ?? 'user'}
-            </p>
+          <div className="rounded-lg border border-primary/20 bg-primary/[0.04] px-4 py-3.5 flex items-center gap-3">
+            {authUserImage ? (
+              <img
+                src={authUserImage}
+                alt={authUserName ?? authUserEmail ?? 'User'}
+                className="w-9 h-9 rounded-full object-cover flex-shrink-0 ring-2 ring-primary/20"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 ring-2 ring-primary/20">
+                <span className="text-xs font-semibold text-primary">{initials}</span>
+              </div>
+            )}
+            <div className="min-w-0">
+              {authUserName && (
+                <p className="text-sm font-semibold text-foreground truncate leading-snug">{authUserName}</p>
+              )}
+              <p className="text-xs text-muted-foreground truncate leading-snug">{authUserEmail ?? ''}</p>
+            </div>
           </div>
           <button
             type="button"
@@ -1049,6 +1068,14 @@ const OnboardingFlow: React.FC = () => {
     void hydrateNameFromSession();
   }, [hydrateNameFromSession, authStatus]);
 
+  // Auto-advance past the Welcome step when the user arrives already signed in
+  React.useEffect(() => {
+    if (step === 0 && authStatus === 'logged in') {
+      setDirection(1);
+      setStep(1);
+    }
+  }, [step, authStatus]);
+
   const startSocialSignInPopup = useCallback(async (provider: 'google' | 'microsoft'): Promise<boolean> => {
     const socialSignIn = (authClient.signIn as any)?.social;
     if (typeof socialSignIn !== 'function') {
@@ -1570,6 +1597,8 @@ const OnboardingFlow: React.FC = () => {
           <StepAuth
             authStatus={authStatus}
             authUserEmail={authUser?.email ?? null}
+            authUserName={authUser?.name ?? null}
+            authUserImage={authUser?.image ?? null}
             authMode={authMode}
             authName={authName}
             authEmail={authEmail}

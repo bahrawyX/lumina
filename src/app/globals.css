@@ -621,12 +621,10 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   overflow-x: hidden;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
-  scroll-snap-stop: always;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto; /* allow page scroll chain at top/bottom boundaries on mobile */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  scroll-behavior: smooth;
 }
 .feature-snap-track::-webkit-scrollbar {
   display: none;
@@ -647,5 +645,7 @@ html body .bn-container [data-radix-popper-content-wrapper] {
     overflow-x: scroll;
     overflow-y: hidden;
     scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain; /* prevent horizontal overscroll chaining on desktop */
+    overscroll-behavior-y: auto;
   }
 }
