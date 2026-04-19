@@ -772,8 +772,7 @@ const StepCalendarSync = memo<{
   integrationMessage?: string | null;
   onConnectGoogle: () => void;
   onConnectMicrosoft: () => void;
-  onSkip: () => void;
-}>(({ googleConnected, microsoftConnected, googleLoading, outlookLoading, integrationMessage, onConnectGoogle, onConnectMicrosoft, onSkip }) => {
+}>(({ googleConnected, microsoftConnected, googleLoading, outlookLoading, integrationMessage, onConnectGoogle, onConnectMicrosoft }) => {
   const connectedCount = (googleConnected ? 1 : 0) + (microsoftConnected ? 1 : 0);
   const statusText =
     connectedCount === 2
@@ -857,13 +856,12 @@ const StepCalendarSync = memo<{
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onSkip}
-        className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors py-1 cursor-pointer"
-      >
-        Skip — I don't use a calendar right now
-      </button>
+      {/*
+        Skip button intentionally removed — the global footer Continue button
+        becomes "Skip for now" when no calendar is connected and "Continue →"
+        once a calendar is linked. Having two buttons that fired the same
+        action was confusing users.
+      */}
     </StepShell>
   );
 });
@@ -1634,7 +1632,6 @@ const OnboardingFlow: React.FC = () => {
             integrationMessage={integrationMessage}
             onConnectGoogle={handleOnboardingGoogleConnect}
             onConnectMicrosoft={handleOnboardingMicrosoftConnect}
-            onSkip={goNext}
           />
         );
       case 7:
@@ -1698,24 +1695,50 @@ const OnboardingFlow: React.FC = () => {
             Back
           </button>
 
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={!canContinue()}
-            className={cn(
-              'flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-150',
-              canContinue()
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
-                : 'bg-muted text-muted-foreground/60 cursor-not-allowed opacity-60'
-            )}
-          >
-            {isFirstStep ? 'Start Setup' : isLastStep ? 'Enter Workspace' : 'Continue'}
-            {!isFirstStep && !isLastStep && (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            )}
-          </button>
+          {(() => {
+            // Calendar-sync step (step 6): context-aware label.
+            //   - No calendar connected → "Skip for now" (no arrow)
+            //   - At least one connected → "Continue →" (normal)
+            // This replaces the old duplicate "Skip" button that lived inside
+            // StepCalendarSync and fired the same goNext action.
+            const onCalendarStep = step === 6;
+            const hasCalendarConnected =
+              store.googleConnected || store.microsoftConnected;
+            const showSkipLabel = onCalendarStep && !hasCalendarConnected;
+
+            const label = isFirstStep
+              ? 'Start Setup'
+              : isLastStep
+                ? 'Enter Workspace'
+                : showSkipLabel
+                  ? 'Skip for now'
+                  : 'Continue';
+
+            const showArrow = !isFirstStep && !isLastStep && !showSkipLabel;
+
+            return (
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!canContinue()}
+                className={cn(
+                  'flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-150',
+                  canContinue()
+                    ? showSkipLabel
+                      ? 'border border-border/60 text-foreground hover:bg-muted/50 cursor-pointer'
+                      : 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
+                    : 'bg-muted text-muted-foreground/60 cursor-not-allowed opacity-60'
+                )}
+              >
+                {label}
+                {showArrow && (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                )}
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>

@@ -372,7 +372,18 @@ export default function SignInPage() {
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); clearErr('password'); }}
                 placeholder={authMode === 'signup' ? 'Min. 8 characters' : '••••••••'}
-                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                // SECURITY: always "new-password" — even in sign-in mode.
+                // Browsers treat "current-password" as an invitation to autofill
+                // saved credentials, which means anyone returning to /auth/signin
+                // on a shared device can log in without typing anything. The
+                // email field still autofills (good UX — it's just the account
+                // identifier), but the password must be typed every time.
+                autoComplete="new-password"
+                // Belt-and-braces: disable 1Password / LastPass inline fill
+                // heuristics that look for `name` / `data-*` attrs on the input.
+                name="auth-password-no-autofill"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 disabled={Boolean(busy)}
                 className={inputCls('password')}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}

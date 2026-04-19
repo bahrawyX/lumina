@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-19 (v26 — Comprehensive security audit. Timing-safe cron secret; Google OAuth CSRF fix (random state + httpOnly cookie); security headers (CSP/HSTS/Referrer/Permissions); RRULE DoS pre-validation; rate limits on parse-event + daily-brief refresh; docs search XSS defence; npm audit 0 vulns. New Playwright E2E layer with guest-mode fixture + 54 tests across 12 specs. BrownNoiseIcon d-attr animation replaced with opacity cross-fade to silence SVG parser warnings. 102 Vitest tests + 54 Playwright tests.)
+> Last updated: 2026-04-19 (v27 — Sign-in autofill hardening: password field forced to `autoComplete="new-password"` + 1Password/LastPass ignore attrs so returning to /auth/signin on a shared device no longer allows one-click login. Onboarding calendar step: removed duplicate Skip button; global footer is now context-aware (`Skip for now` when no calendar connected, `Continue →` when linked). Confirmed planner DB persistence has been fully wired since v20 — documented here to prevent future "is this a stub?" confusion. 102 Vitest tests + 54 Playwright tests.)
 
 ---
 
@@ -1373,7 +1373,7 @@ Inactive item: `text-muted-foreground`
 |---|---|---|
 | 1 | Medium | Task status vocabulary dual boundary: DB uses `in_progress`, UI uses `doing`. API normalizes both ways. New code should use `in_progress` in DB calls. |
 | 2 | ~~High~~ Resolved | ~~Event contract mismatch~~ — Fixed: `category`, `color`, `completed`, `linkedTaskId` now persisted. Recurrence fields stored in `event_recurrence` table with full RRULE support. |
-| 3 | ~~Medium~~ Resolved | ~~Planner localStorage-only~~ — Fixed: Full DB persistence via API routes + Zustand optimistic updates. |
+| 3 | ~~Medium~~ Resolved | ~~Planner localStorage-only~~ — Fixed long ago (v20): full DB persistence via `/api/planner-items` (GET/POST/PATCH/DELETE, `src/app/api/planner-items/*`), client adapter `src/lib/persistence/plannerPersistence.ts` (real — `migrateMany` is the only deliberate no-op, reserved for a future localStorage-import flow), Zustand optimistic updates with rollback-plus-retry toast in `useDailyPlanStore`. DB is sole source of truth; no `persist` middleware. Hydrated in parallel by `PersistenceBootstrap.tsx:161-167`. **Do not re-implement at `/api/planner/*`** — that URL is unused. Documented explicitly in §34.4 after a v27 task was filed against an outdated mental model. |
 | 4 | Low | No unique DB constraint for one primary local calendar per user (app logic handles it but DB doesn't enforce). |
 | 5 | ~~Low~~ Resolved | ~~`taskTitle` not persisted~~ — Fixed: `task_title` column added, API reads/writes it, UI renders with "Deep work" fallback. |
 | 6 | ~~Medium~~ Resolved | ~~Recurring event visual indicator~~ — Fixed: `RepeatIcon` shown in `TimeGridEvent.tsx` (Day/Week) and `EventItem.tsx` (Month). Opacity 50 normally, 100 on `isRecurrenceException`. Hidden on very short events. |
@@ -2350,6 +2350,89 @@ src/components/ui/AnimatedIcons.tsx               | BrownNoiseIcon d-attr → op
 package.json                                      | +4 test:e2e scripts, +playwright devDep
 .gitignore                                        | +playwright-screenshots/, +test-results/, +playwright-report/
 ```
+
+---
+
+## 34. SESSION v27 CHANGES (2026-04-19)
+
+Three small but load-bearing changes. One is a real security hardening, one is a UX dedup, and one is a documentation fix to prevent future phantom work.
+
+### 34.1 Sign-in autofill hardening — `src/app/auth/signin/page.tsx`
+
+**Problem.** After a user signed out and returned to `/auth/signin`, the browser autofilled both email AND password into the form. Because the submit button was a plain `<button type="button">` (no form submit guard) and the fields pre-populated, a second person on a shared device could log straight in without typing anything.
+
+**Root cause.** The password input used `autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}`. `current-password` is the browser-standard opt-in to saved-password autofill — correct for most apps, wrong for this threat model.
+
+**Fix.** Force the password field to `autoComplete="new-password"` in both modes. Browsers treat `new-password` as a "create-new" field and skip saved-credential autofill, while still letting password managers offer to *save* new passwords during sign-up. Belt-and-braces, also set `data-lpignore="true"` and `data-1p-ignore="true"` (1Password + LastPass inline-fill heuristics) and change the `name` to a non-standard token so legacy extensions don't pattern-match on "password". Email field is unchanged — `autoComplete="email"` still allows the account picker (good UX; it's just the identifier).
+
+**Sign-out cookie behavior verified.** `Sidebar.tsx:handleSignOut` calls `authClient.signOut()` (BetterAuth server endpoint clears the httpOnly session cookie) and then `window.location.href = '/'` — a hard reload, no React re-render race. The signin page also early-returns to `/calendar` if `session?.user` is still present on mount, so if BetterAuth ever failed to clear the cookie the user would be routed away from signin entirely (no half-authed state exposes the form). No change needed here.
+
+**How to verify manually.**
+1. Sign in with email + password
+2. Click Sign out in the sidebar → full reload to `/`
+3. Navigate to `/auth/signin`
+4. Email field may auto-fill (by design). Password field **must be empty**.
+
+### 34.2 Onboarding calendar step — single context-aware button — `src/components/OnboardingFlow.tsx`
+
+**Problem.** Step 6 (`StepCalendarSync`) had both a global footer "Continue" button AND an in-step "Skip — I don't use a calendar right now" link. Both fired the same `goNext` action. The footer button was always enabled because `canContinue()` returns `true` for this step (it's intentionally skippable). Users reported this as confusing.
+
+**Fix.**
+- Removed the in-step Skip button and the `onSkip` prop from `StepCalendarSync`.
+- Footer button is now context-aware:
+  - `step === 6` && no calendar connected → label `Skip for now`, outline/secondary styling, no arrow.
+  - `step === 6` && at least one calendar connected → label `Continue`, primary filled styling, arrow.
+  - All other steps → unchanged.
+- `showArrow` and `label` are computed inline in an IIFE inside the JSX so the existing prop contract of the footer button survives.
+
+No behavioral regression: `canContinue()` still returns `true` on this step, so the button is always clickable; only the visual treatment and label change based on connection state.
+
+### 34.3 CODEBASE_REFERENCE correction — planner DB persistence was never a stub
+
+A v27 task was filed asking to "wire the planner_items schema to a real API" and "replace the no-op persistence stub" with 8 phases of implementation. After Phase 0 reading it became clear the work had been done already (v20), the URL convention was just different from what the task author expected:
+
+| What the task assumed | What actually exists |
+|---|---|
+| `POST /api/planner` | `POST /api/planner-items` (functionally identical) |
+| Stub `plannerPersistence.ts` with no-op exports | Full `fetchAllForCurrentUser` / `createOne` / `createMany` / `updateOne` / `deleteOne` — only `migrateMany` is deliberately deferred (future localStorage-import flow) |
+| `scheduledItems` persisted to Zustand `persist` middleware | Store uses no `persist` wrapper at all — DB is the sole source of truth |
+| Bootstrap not calling planner | `PersistenceBootstrap.tsx:161-167` already in the `Promise.allSettled` hydration block |
+| Missing optimistic updates | All 5 write actions (`addPlanItem`, `batchAddPlanItems`, `removePlanItem`, `removeAllByTaskId`, `updatePlanItem`) already optimistic with rollback + retry toast |
+| `isAutoScheduled` boolean missing from store | Not needed by the UI; DB stores it for the coin-award side effect (award 15 coins when user has planned exactly 3 tasks for today) |
+
+**Decision:** Do not duplicate the endpoints at `/api/planner/*`. Do not touch the working implementation. Row #3 of §19 now points here so future readers don't repeat the investigation.
+
+### 34.4 Planner persistence reference — canonical paths
+
+```
+DB table                 → src/db/schema/plannerItems.ts
+  planner_items            (FK cascade on users.id + tasks.id,
+                            user_id+start_time index,
+                            end_time > start_time CHECK)
+
+API routes               → src/app/api/planner-items/route.ts      (GET + POST)
+                           src/app/api/planner-items/[id]/route.ts (PATCH + DELETE)
+
+Client adapter           → src/lib/persistence/plannerPersistence.ts
+                           (ISO ↔ HH:mm conversion)
+
+Store                    → src/store/useDailyPlanStore.ts
+                           (plansByDate, dbHydrated, optimistic actions)
+
+Hydration                → src/components/PersistenceBootstrap.tsx (line 161-167)
+```
+
+### 34.5 Files changed in v27
+
+```
+src/app/auth/signin/page.tsx          | password autoComplete + LP/1P ignore attrs
+src/components/OnboardingFlow.tsx     | drop onSkip prop, remove in-step Skip,
+                                        context-aware footer label
+CODEBASE_REFERENCE_Lumina_Next.md     | v27 header, §19 row 3 expanded, §34 NEW
+```
+
+### 34.6 Test count (unchanged)
+- 102 Vitest tests, 54 Playwright tests — no new specs added (both fixes are covered by existing auth + onboarding smoke tests).
 
 ---
 
