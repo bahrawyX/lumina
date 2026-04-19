@@ -21,6 +21,7 @@ const EMPTY_COUNTS: DailyContributionInputs = {
   focusSessions: 0,
   completedEvents: 0,
   completedPlannerItems: 0,
+  scheduledEvents: 0,
 };
 
 export function buildContributionCalendar(
@@ -60,6 +61,7 @@ export function buildContributionCalendar(
         focusSessions: input.focusSessions,
         completedEvents: input.completedEvents,
         completedPlannerItems: input.completedPlannerItems,
+        scheduledEvents: input.scheduledEvents ?? 0,
       };
 
       days.push(day);

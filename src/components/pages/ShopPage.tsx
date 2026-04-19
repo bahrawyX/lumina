@@ -40,8 +40,10 @@ const ShopItemCard: React.FC<{
 }> = React.memo(({ item, owned, canAfford, isActive, onPurchase, onActivate }) => (
   <motion.div
     layout
-    initial={{ opacity: 0, y: 8 }}
-    animate={{ opacity: 1, y: 0 }}
+    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: -6, scale: 0.96 }}
+    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
     className="card-lift rounded-xl border border-border/70 bg-card p-4 flex flex-col gap-3 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none"
   >
     <div className="flex items-start gap-3">

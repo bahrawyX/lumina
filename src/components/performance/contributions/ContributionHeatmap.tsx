@@ -70,7 +70,7 @@ const ContributionHeatmap: React.FC = () => {
               <PopoverContent align="end" className="w-64 p-3">
                 <p className="text-xs font-semibold text-foreground">How contributions are counted</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Tasks +1, Focus sessions +2, Completed events +1, Completed planner items +1.
+                  Tasks done +1, Focus sessions +2, Scheduled events +1, Completed events +1 bonus, Planner items +1.
                 </p>
                 <div className="mt-2 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
                   <p>Level 1: 1-2</p>

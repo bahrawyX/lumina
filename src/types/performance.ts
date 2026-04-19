@@ -8,6 +8,7 @@ export interface ContributionDay {
   focusSessions: number;
   completedEvents: number;
   completedPlannerItems: number;
+  scheduledEvents: number;
 }
 
 export interface ContributionWeek {
@@ -35,6 +36,8 @@ export interface DailyContributionInputs {
   focusSessions: number;
   completedEvents: number;
   completedPlannerItems: number;
+  /** All calendar events on this day (scheduled meetings count as activity) */
+  scheduledEvents: number;
 }
 
 export interface WeekdayLabel {

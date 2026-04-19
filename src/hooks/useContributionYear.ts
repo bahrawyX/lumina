@@ -35,6 +35,7 @@ function increment(
     focusSessions: 0,
     completedEvents: 0,
     completedPlannerItems: 0,
+    scheduledEvents: 0,
   };
 
   map.set(dateKey, {
@@ -66,10 +67,15 @@ export function useContributionYear(selectedYear: number): ContributionYearResul
     });
 
     events.forEach((event) => {
-      if (!event.completed) return;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date)) return;
-      years.add(Number(event.date.slice(0, 4)));
-      increment(map, event.date, 'completedEvents', 1);
+      const yearNum = Number(event.date.slice(0, 4));
+      years.add(yearNum);
+      // Every scheduled event is activity on that day (+1 pt)
+      increment(map, event.date, 'scheduledEvents', 1);
+      // Explicitly completed events earn a bonus point
+      if (event.completed) {
+        increment(map, event.date, 'completedEvents', 1);
+      }
     });
 
     focusHistory.forEach((session) => {

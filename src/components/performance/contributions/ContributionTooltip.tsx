@@ -16,8 +16,9 @@ const ContributionTooltip: React.FC<ContributionTooltipProps> = ({ day }) => {
       <div className="mt-1 border-t border-background/20 pt-1 text-[10px] text-background/80">
         <p>Tasks completed: {day.completedTasks}</p>
         <p>Focus sessions: {day.focusSessions}</p>
-        <p>Completed events: {day.completedEvents}</p>
-        <p>Completed planner items: {day.completedPlannerItems}</p>
+        <p>Events scheduled: {day.scheduledEvents ?? 0}</p>
+        {day.completedEvents > 0 && <p>Events completed: {day.completedEvents}</p>}
+        {day.completedPlannerItems > 0 && <p>Planner items: {day.completedPlannerItems}</p>}
       </div>
     </div>
   );

@@ -19,6 +19,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { CompactEmojiPicker } from '@/components/ui/CompactEmojiPicker';
 import {
   Popover,
@@ -73,6 +81,7 @@ function DocTreeItemComponent({
   const expandedIds = useDocsStore((s) => s.expandedIds);
   const toggleExpanded = useDocsStore((s) => s.toggleExpanded);
   const archiveDoc = useDocsStore((s) => s.archiveDoc);
+  const deleteDoc = useDocsStore((s) => s.deleteDoc);
   const pinDoc = useDocsStore((s) => s.pinDoc);
   const createDoc = useDocsStore((s) => s.createDoc);
   const updateDoc = useDocsStore((s) => s.updateDoc);
@@ -81,6 +90,7 @@ function DocTreeItemComponent({
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(node.title);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const handleRenameSubmit = useCallback(() => {
     const trimmed = renameValue.trim();
@@ -257,13 +267,57 @@ function DocTreeItemComponent({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  className="text-destructive"
+                  className="text-muted-foreground"
                   onClick={() => archiveDoc(node.id)}
                 >
                   Archive
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setDeleteConfirmOpen(true);
+                  }}
+                >
+                  Delete permanently
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Delete confirmation dialog */}
+            <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+              <DialogContent className="sm:max-w-[360px]">
+                <DialogHeader>
+                  <DialogTitle>Delete &ldquo;{node.title || 'Untitled'}&rdquo;?</DialogTitle>
+                  <DialogDescription>
+                    This will permanently delete the doc
+                    {node.children.length > 0
+                      ? ` and its ${node.children.length} child doc${node.children.length > 1 ? 's' : ''}`
+                      : ''}
+                    . This action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeleteConfirmOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setDeleteConfirmOpen(false);
+                      deleteDoc(node.id);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </SidebarMenuItem>
