@@ -175,6 +175,19 @@ html.transitioning-theme *::after {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ─── Mobile input zoom prevention (P0) ──────────────────────────────────── */
+/* iOS Safari and Android Chrome auto-zoom inputs whose computed font-size
+   is < 16px. That zoom is disruptive on mobile — it locks the viewport and
+   forces the user to pinch-out afterwards. We force the minimum on small
+   viewports only so desktop typography is untouched. */
+@media (max-width: 768px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* ─── Boneyard skeleton content wrapper ──────────────────────────────────── */
 /* The boneyard <Skeleton> component wraps children in a plain <div> that
    breaks flex height chains. Make it inherit flex layout from its parent. */

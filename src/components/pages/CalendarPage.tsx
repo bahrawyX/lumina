@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { DailyBriefStrip } from '@/components/dashboard/DailyBriefStrip';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   ChevronLeftIcon, ChevronRightIcon, UndoIcon, RedoIcon,
   SearchIcon, SparkIcon as ZapIcon, MonthIcon as LayoutGridIcon,
@@ -24,7 +25,7 @@ import {
 
 const CalendarPage: React.FC = () => {
   // Per-field selectors to avoid re-rendering on every store update.
-  const view            = useCalendarStore((s) => s.view);
+  const storedView      = useCalendarStore((s) => s.view);
   const setView         = useCalendarStore((s) => s.setView);
   const currentDate     = useCalendarStore((s) => s.currentDate);
   const setCurrentDate  = useCalendarStore((s) => s.setCurrentDate);
@@ -37,6 +38,13 @@ const CalendarPage: React.FC = () => {
 
   const { filteredInstances } = useCalendar();
   const [navDirection, setNavDirection] = useState<number>(0);
+
+  // Week-view 7-column grid is unreadable at ~58px/col on a 412px mobile
+  // viewport. On mobile we transparently render Day view while keeping the
+  // user's stored preference intact. The view-switcher tabs are also hidden
+  // on mobile — day nav is the only affordance on that breakpoint.
+  const isMobile = useIsMobile();
+  const view = isMobile && storedView === ViewType.WEEK ? ViewType.DAY : storedView;
 
   const navigate = useCallback((dir: number) => {
     setNavDirection(dir);
@@ -76,7 +84,8 @@ const CalendarPage: React.FC = () => {
     <>
       <header className="flex flex-col md:flex-row md:items-center justify-between mb-3 md:mb-6 lg:mb-10 gap-2 md:gap-4 lg:gap-6 px-2 lg:px-4 py-2 md:py-4">
         <div className="flex items-center gap-3 md:gap-6 lg:gap-10 flex-wrap">
-          <Tabs value={view} onValueChange={(v) => setView(v as ViewType)}>
+          {/* View-switcher — hidden on mobile where Day view is forced */}
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewType)} className="hidden md:block">
             <TabsList className="h-9" data-tutorial="cal-view-tabs">
               <TabsTrigger value={ViewType.MONTH} className="text-xs gap-1.5">
                 <LayoutGridIcon size={14} className="opacity-70" />

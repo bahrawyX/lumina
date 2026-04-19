@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-19 (v27 — Sign-in autofill hardening: password field forced to `autoComplete="new-password"` + 1Password/LastPass ignore attrs so returning to /auth/signin on a shared device no longer allows one-click login. Onboarding calendar step: removed duplicate Skip button; global footer is now context-aware (`Skip for now` when no calendar connected, `Continue →` when linked). Confirmed planner DB persistence has been fully wired since v20 — documented here to prevent future "is this a stub?" confusion. 102 Vitest tests + 54 Playwright tests.)
+> Last updated: 2026-04-19 (v28 — Mobile polish for Android Chrome / Pixel-class viewport (~412×915). Three P0 fixes: (1) Global `input/textarea/select { font-size: 16px }` under `@media (max-width: 768px)` in globals.css so iOS Safari / Android Chrome no longer auto-zoom the viewport on focus; (2) TaskBoard force-renders **List view** on mobile via `useIsMobile()` — the 4-column kanban at 260px/col cannot fit on a 412px viewport even with snap-scroll, so the stored preference is overridden (not mutated) on mobile and the view-toggle is hidden; (3) CalendarPage transparently maps stored `view=WEEK` → `DayView` on mobile since a 7-column grid is unreadable at ~58px/col, and hides the view-switcher tabs on mobile. P1: ContributionGrid (performance heatmap) wrapped in `overflow-x-auto no-scrollbar` so the year-wide grid pans horizontally without widening the page. New `tests/e2e/mobile.spec.ts` tagged `@mobile` (14 tests: 10 no-horizontal-overflow + force-list + force-day + input-zoom + bottom-nav). Desktop project gains `grepInvert: /@mobile\b(?!.*@cross)/`. Before/after Pixel-5 full-page screenshots captured under `playwright-screenshots/{mobile,mobile-after}/` via env-var-driven spec. 102 Vitest + 54 Playwright desktop + 28 Playwright mobile (14 audit + 14 screenshot).)
 
 ---
 
@@ -2433,6 +2433,130 @@ CODEBASE_REFERENCE_Lumina_Next.md     | v27 header, §19 row 3 expanded, §34 NE
 
 ### 34.6 Test count (unchanged)
 - 102 Vitest tests, 54 Playwright tests — no new specs added (both fixes are covered by existing auth + onboarding smoke tests).
+
+---
+
+## 35. SESSION v28 CHANGES — Mobile polish for Android Chrome (2026-04-19)
+
+The app rendered on Pixel-class mobile viewports but had several P0 usability
+blockers: the Task Board kanban was unusable at 412px, the Calendar week grid
+compressed 7 columns into ~58px each, and input focus triggered iOS/Android
+auto-zoom because inline font-sizes were below the 16px threshold. v28 lands
+an audit-driven sweep: capture before screenshots → apply targeted
+`useIsMobile()` overrides (desktop layout is byte-for-byte unchanged) →
+capture after screenshots → add a mobile-tagged Playwright spec.
+
+### 35.1 Input zoom prevention (P0)
+
+`src/app/globals.css` gains a single media query:
+
+```css
+@media (max-width: 768px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+```
+
+Both iOS Safari and Android Chrome auto-zoom any focused input whose
+computed font-size is below 16px. The zoom locks the viewport and forces
+the user to pinch-out afterwards — a small pain that repeats dozens of
+times a session. The rule is scoped to ≤768px so desktop typography is
+completely untouched.
+
+### 35.2 Task Board force-list on mobile (P0)
+
+`src/components/tasks/TaskBoard.tsx`:
+- imports `useIsMobile`
+- renames the store selector to `storedViewMode`
+- computes the effective `viewMode` as `isMobile ? 'list' : storedViewMode`
+- hides the view-switcher on mobile via `hidden md:flex`
+
+The store value is never mutated — the user's desktop preference is
+preserved and re-applies as soon as the viewport crosses the breakpoint.
+
+### 35.3 Calendar force-day on mobile (P0)
+
+`src/components/pages/CalendarPage.tsx`:
+- imports `useIsMobile`
+- renames the store selector to `storedView`
+- maps `isMobile && storedView === ViewType.WEEK` → `ViewType.DAY`
+- wraps the Month/Week/Day tabs in `hidden md:block`
+
+A 7-column grid at 412px gives ~58px per column — too narrow for event
+titles. Day view is the only readable option on mobile. Month view still
+works on mobile and is kept accessible via the mobile bottom nav (which
+doesn't go through the view-switcher tabs).
+
+### 35.4 Contribution heatmap horizontal scroll (P1)
+
+`src/components/performance/contributions/ContributionGrid.tsx` wraps its
+year-wide grid in `overflow-x-auto no-scrollbar -mx-2 px-2` so the grid
+pans horizontally instead of stretching the page width beyond the
+viewport. `no-scrollbar` hides the scrollbar on desktop where the grid
+fits naturally.
+
+### 35.5 Mobile Playwright spec
+
+New `tests/e2e/mobile.spec.ts` (14 tests, tagged `@mobile`):
+- **No horizontal overflow** — 10 parametrised tests, one per guest route,
+  asserting `document.documentElement.scrollWidth ≤ clientWidth + 1`
+- **Task Board force-lists** — H1 reads "Tasks" (not "Task Board") and
+  the kanban toggle is hidden
+- **Calendar force-day** — seeds `view=week` in localStorage and asserts
+  the Week tab is hidden (so Day view is rendered instead)
+- **Input zoom prevention** — computed font-size on both email + password
+  inputs on `/auth/signin` is ≥ 16px
+- **Bottom-nav positioning** — visible and pinned to the bottom third of
+  the viewport on `/tasks`
+
+`playwright.config.ts` — `chromium-desktop` project gains
+`grepInvert: /@mobile\b(?!.*@cross)/` so mobile-only specs run only on
+`chromium-mobile` (14 audit + 14 screenshot specs under that project).
+
+### 35.6 Before/after screenshot spec
+
+`tests/e2e/visual/mobile-screenshots.spec.ts` accepts a
+`MOBILE_SNAPSHOT_DIR` env var that controls the subdirectory under
+`playwright-screenshots/`. A before/after pair can be captured without
+duplicating the spec:
+
+```bash
+MOBILE_SNAPSHOT_DIR=mobile        npx playwright test --project=chromium-mobile mobile-screenshots
+MOBILE_SNAPSHOT_DIR=mobile-after  npx playwright test --project=chromium-mobile mobile-screenshots
+```
+
+14 routes × 2 runs = 28 images under
+`playwright-screenshots/mobile/` and `playwright-screenshots/mobile-after/`.
+
+### 35.7 Files touched
+
+```
+src/app/globals.css                                  | @media (max-width:768px) 16px rule
+src/components/tasks/TaskBoard.tsx                   | useIsMobile + force-list + hide toggle
+src/components/pages/CalendarPage.tsx                | useIsMobile + map week→day + hide tabs
+src/components/performance/contributions/ContributionGrid.tsx | overflow-x-auto wrap
+playwright.config.ts                                 | grepInvert for mobile-only specs
+tests/e2e/mobile.spec.ts                             | 14 new mobile audit tests
+tests/e2e/visual/mobile-screenshots.spec.ts          | env-var-driven screenshot spec (already existed)
+CODEBASE_REFERENCE_Lumina_Next.md                    | v28 header + §35 NEW
+```
+
+### 35.8 Test count
+
+- Vitest: 102/102
+- Playwright desktop: 54/54
+- Playwright mobile: 28/28 (14 audit + 14 visual)
+
+### 35.9 Desktop parity
+
+All three `useIsMobile()` overrides compute `isMobile` at runtime via the
+SSR-safe matchMedia hook. Behind `>=768px` the hook returns `false` so
+every change is a strict no-op on desktop. No store writes, no DOM
+changes, no layout shifts. Desktop visual regression (54 screenshots
+under `playwright-screenshots/desktop/`) is unchanged.
 
 ---
 

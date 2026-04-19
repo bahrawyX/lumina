@@ -40,6 +40,9 @@ export default defineConfig({
     {
       name: 'chromium-desktop',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+      // Skip mobile-only specs. Tests tagged @mobile are mobile-only; tests
+      // tagged @cross (with or without @mobile) still run on desktop.
+      grepInvert: /@mobile\b(?!.*@cross)/,
     },
     {
       name: 'chromium-mobile',

@@ -48,6 +48,7 @@ const TaskScheduleDialog = React.lazy(() =>
 );
 import { TaskListView } from './TaskListView';
 import { AnimatePresence } from 'framer-motion';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useFocusStore } from '../../store/useFocusStore';
 import { Button } from '../ui/button';
 import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
@@ -109,8 +110,14 @@ export const TaskBoard: React.FC = () => {
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
 
   // ── View mode ──────────────────────────────────────────────────────────────
-  const viewMode = useTaskBoardStore(s => s.viewMode);
+  const storedViewMode = useTaskBoardStore(s => s.viewMode);
   const setViewMode = useTaskBoardStore(s => s.setViewMode);
+  // Kanban columns (260px min × 4) don't fit on a 412px mobile viewport.
+  // Force list mode when viewport is under md (768px) — the user's choice
+  // is preserved in the store and re-applies on desktop. We also hide the
+  // kanban/list toggle on mobile since the choice is forced.
+  const isMobile = useIsMobile();
+  const viewMode = isMobile ? 'list' : storedViewMode;
 
   // Detect `npx boneyard-js build` — when true, we render BOTH the kanban
   // and list branches (list offscreen) so the CLI can snapshot both Skeletons.
@@ -721,8 +728,8 @@ export const TaskBoard: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex items-center rounded-lg border border-border/50 p-0.5">
+          {/* View toggle — hidden on mobile where list view is forced */}
+          <div className="hidden md:flex items-center rounded-lg border border-border/50 p-0.5">
             <button
               type="button"
               onClick={() => setViewMode('kanban')}
