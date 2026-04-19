@@ -463,13 +463,30 @@ export const BrownNoiseIcon: React.FC<IconProps> = ({ size = 18, className }) =>
     transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
   >
     <circle cx="12" cy="12" r="9" fill="hsl(var(--muted-foreground))" opacity={0.15} stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} />
+    {/*
+      Cross-fade two static paths instead of animating the `d` attribute.
+      framer-motion's `d` interpolation serializes adjacent positive integers
+      without a separator (e.g. `c2 2 4 2 6 0` -> `c2 2 426 0`) during the
+      tween midpoint, producing a flood of "<path> attribute d: Expected
+      number" warnings in the console. An opacity cross-fade is visually
+      equivalent here and parses cleanly.
+    */}
     <motion.path
-      d="M6 12c2-2 4 2 6 0s4 2 6 0"
+      d="M6 12c2 -2 4 2 6 0 s4 2 6 0"
       stroke="hsl(var(--muted-foreground))"
       strokeWidth={1.5}
       strokeLinecap="round"
       fill="none"
-      animate={{ d: ['M6 12c2-2 4 2 6 0s4 2 6 0', 'M6 12c2 2 4-2 6 0s4-2 6 0', 'M6 12c2-2 4 2 6 0s4 2 6 0'] }}
+      animate={{ opacity: [1, 0, 1] }}
+      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+    />
+    <motion.path
+      d="M6 12c2 2 4 -2 6 0 s4 -2 6 0"
+      stroke="hsl(var(--muted-foreground))"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      fill="none"
+      animate={{ opacity: [0, 1, 0] }}
       transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
     />
   </motion.svg>

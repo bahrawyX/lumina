@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-18 (v26 — Comprehensive security audit. Timing-safe cron secret; Google OAuth CSRF fix (random state + httpOnly cookie); security headers (CSP/HSTS/Referrer/Permissions); RRULE DoS pre-validation; rate limits on parse-event + daily-brief refresh; docs search XSS defence; npm audit 0 vulns. 102 Vitest tests across 9 files.)
+> Last updated: 2026-04-19 (v26 — Comprehensive security audit. Timing-safe cron secret; Google OAuth CSRF fix (random state + httpOnly cookie); security headers (CSP/HSTS/Referrer/Permissions); RRULE DoS pre-validation; rate limits on parse-event + daily-brief refresh; docs search XSS defence; npm audit 0 vulns. New Playwright E2E layer with guest-mode fixture + 54 tests across 12 specs. BrownNoiseIcon d-attr animation replaced with opacity cross-fade to silence SVG parser warnings. 102 Vitest tests + 54 Playwright tests.)
 
 ---
 
@@ -315,6 +315,33 @@ src/
 │   ├── overlapEngine.ts
 │   └── slotEngine.ts
 └── constants.tsx                   ← Event categories, colors, constants
+
+tests/
+├── setup.ts                        ← Vitest setup: jest-dom, cleanup, matchMedia/ResizeObserver stubs
+├── *.test.ts / *.test.tsx          ← Vitest unit + component tests (9 files, 102 tests — see §28)
+└── e2e/                            ← Playwright E2E layer (v26, see §33)
+    ├── fixtures/
+    │   ├── guest.ts                ← Pre-seeds `lumina-onboarding` / `lumina-guest` / `lumina-tutorial`
+    │   │                             localStorage entries via `context.addInitScript` so first render
+    │   │                             is a completed-onboarding guest with tutorial fully suppressed.
+    │   └── helpers.ts              ← `collectConsole()` + `appErrors()` (filters 3rd-party noise),
+    │                                 `waitForAppReady()` (waits for hydration overlay to unmount)
+    ├── calendar.spec.ts            ← Calendar page smoke (view tabs, no console errors)
+    ├── tasks.spec.ts               ← Task board smoke
+    ├── plan.spec.ts                ← Daily planner smoke
+    ├── pomodoro.spec.ts            ← Pomodoro timer smoke
+    ├── focus.spec.ts               ← Focus session view smoke
+    ├── goals.spec.ts               ← Goals page smoke
+    ├── performance.spec.ts         ← Performance / contribution heatmap smoke
+    ├── shop.spec.ts                ← Shop page smoke
+    ├── intelligence.spec.ts        ← Intelligence page smoke
+    ├── docs.spec.ts                ← Docs home + invalid-doc-id redirect
+    ├── navigation.spec.ts          ← Cross-route navigation + SPA-routing (no full reloads)
+    └── visual/screenshots.spec.ts  ← Captures full-page PNGs for every route (out: playwright-screenshots/*.png, gitignored)
+
+playwright.config.ts                ← Two projects (chromium-desktop, chromium-mobile); auto-spins
+                                      `npm run dev` on http://localhost:3000; traces on first retry;
+                                      dotenv loads `.env.local` for the runner.
 ```
 
 ---
@@ -1996,11 +2023,12 @@ Vitest 4 with jsdom — `vitest.config.ts` wires `@` → `./src`, points `setupF
 - **RTL render tests** for stateless presentational components (Button, ShopItemIcon).
 - **Config validation** for registries (shop items) to catch duplicate ids / missing fields.
 
-### What is NOT covered (yet)
+### What is NOT covered (yet) — by this Vitest layer
 - Full page integration tests (GoalsPage, ShopPage, TaskBoard) — they import stores + persistence + boneyard with deeply nested children. Worth adding later with MSW or fetch stubs.
 - API route handler tests
-- E2E tests (Playwright is installed via boneyard but not used for app tests)
-- Visual regression
+- Visual regression (the E2E layer captures raw PNGs for manual review — see §33; pixel-diffing not wired up yet)
+
+E2E coverage lives in a separate Playwright layer — see **§33. E2E TESTING LAYER**.
 
 ### Adding a new test
 1. Drop a `*.test.ts` or `*.test.tsx` file under `tests/`.
@@ -2159,6 +2187,7 @@ Comprehensive read-the-code security audit across all ~40 API routes, auth flows
 
 ### 32.10 Test count
 - 102 Vitest tests across 9 files — unchanged.
+- **+54 Playwright E2E tests** added in v26 across 12 specs under `tests/e2e/` — see §33.
 
 ### 32.11 Files changed in v26
 ```
@@ -2174,6 +2203,152 @@ Comprehensive read-the-code security audit across all ~40 API routes, auth flows
  src/lib/recurrence/rruleEngine.ts             | +50 (validateRRule)
  src/lib/rateLimit.ts                          | NEW
  package-lock.json                             | npm audit fix
+```
+
+---
+
+## 33. E2E TESTING LAYER (v26)
+
+A new Playwright-based end-to-end layer complements the Vitest unit suite. Goal: catch crashes, hydration errors, and SPA-routing regressions across every app route without needing a human to click through the app.
+
+### 33.1 Tooling
+
+- **Playwright 1.59** — single-browser (`chromium`) + `chromium-mobile` project (Pixel 7 viewport).
+- **dotenv** — `playwright.config.ts` requires `dotenv/config` before reading `process.env`, so `.env.local` (`DATABASE_URL`, `BETTER_AUTH_SECRET`, etc.) is loaded for the spawned dev server.
+- **Auto-webServer**: Playwright starts `npm run dev` on `http://localhost:3000` if it's not already running and waits for a 200 before invoking any spec. `reuseExistingServer: true` during local dev.
+
+### 33.2 Directory
+
+```
+tests/e2e/
+├── fixtures/
+│   ├── guest.ts      ← seedGuest() + `test` extended with a `guestPage` fixture
+│   └── helpers.ts    ← collectConsole(), waitForAppReady()
+├── calendar.spec.ts
+├── tasks.spec.ts
+├── plan.spec.ts
+├── pomodoro.spec.ts
+├── focus.spec.ts
+├── goals.spec.ts
+├── performance.spec.ts
+├── shop.spec.ts
+├── intelligence.spec.ts
+├── docs.spec.ts
+├── navigation.spec.ts
+└── visual/
+    └── screenshots.spec.ts
+```
+
+### 33.3 Guest-mode fixture
+
+The app doesn't hard-gate routes server-side — `AppShell` only redirects to `/onboarding` when `lumina-onboarding.state.completed` is false. The fixture exploits this: before any page loads, `context.addInitScript` seeds the three localStorage keys that Zustand persist middleware reads:
+
+| Key | State shape | Purpose |
+|---|---|---|
+| `lumina-guest` | `{ isGuest: true, bannerDismissed: true }` | Enables guest-mode affordances, hides the amber banner |
+| `lumina-onboarding` | `{ completed: true, step: 6, userName, workStart/End, timezone, focusPreference, focusSessionLength, … }` | Satisfies `useOnboardingStore.completed` gate |
+| `lumina-tutorial` | `{ hasCompletedTutorial: true, hasSeenPrompt: true }` | Suppresses both the `TutorialOverlay` and the `TourPrompt` dismissible card. Shape must match `useTutorialStore`'s `partialize` exactly. |
+
+All values are wrapped in the `{ state, version: 0 }` envelope that Zustand persist uses.
+
+Export: `test` (extended Playwright test) with a `guestPage` fixture and `expect`.
+
+```ts
+import { test, expect } from './fixtures/guest';
+
+test('...', async ({ guestPage: page }) => { /* page is already a seeded guest */ });
+```
+
+### 33.4 Console-noise filter — `helpers.ts`
+
+`collectConsole(page).appErrors()` returns only error-level messages that represent real app bugs. It strips:
+
+- `favicon`, `/api/auth/*`, `better-auth`, `service-worker`, `manifest.webmanifest`, `web-push`
+- `net::ERR_ABORTED`, downloadable-fonts warnings, `[DEP0…]` Node deprecations
+- Guest-mode-expected 401/403/404s from DB-backed API routes
+- Next.js dev-mode noise: `[Fast Refresh]`, `[HMR]`, `Extra attributes from the server`
+- SVG-path `Expected number` warnings (kept as a safety net even after the v26 BrownNoiseIcon fix — see §33.7)
+
+`waitForAppReady(page, timeout = 15_000)` waits for:
+1. Any element with `z-[9999]` class (the hydration overlay) to unmount
+2. `networkidle`
+
+### 33.5 Spec patterns
+
+Each route spec follows the same shape:
+
+```ts
+test('renders X', async ({ guestPage: page }) => {
+  const con = collectConsole(page);
+  await page.goto('/route', { waitUntil: 'domcontentloaded' });
+  await waitForAppReady(page);
+  await expect(page).toHaveURL(/\/route/);
+  await expect(page.locator('h1').first()).toBeVisible({ timeout: 15_000 });
+
+  const errs = con.appErrors().map((e) => e.text());
+  expect(errs, `console errors:\n${errs.join('\n')}`).toEqual([]);
+});
+```
+
+- `navigation.spec.ts` visits every route in a data-driven loop, then clicks sidebar buttons by `aria-label` (they sit *over* the `<a>` element) and asserts `__navCount === 0` using a `beforeunload` counter to prove client-side routing.
+- `docs.spec.ts` additionally hits an invalid doc id to verify the error boundary renders without crashing.
+
+### 33.6 Visual capture — `visual/screenshots.spec.ts`
+
+Writes full-page PNGs for every authenticated route (via `guestPage`) and every public route (via a plain fresh context) to `playwright-screenshots/`. `animations: 'disabled'` keeps frame variance down. Output directory is gitignored. This is **raw capture, not pixel-diff regression** — humans (or a `Claude-in-Chrome` session) can eyeball them.
+
+### 33.7 BrownNoiseIcon SVG-path fix (v26)
+
+Root cause of the flood of `<path> attribute d: Expected number` warnings on `/pomodoro` and `/focus`: `src/components/ui/AnimatedIcons.tsx::BrownNoiseIcon` used framer-motion's `animate={{ d: [...] }}` to morph between two SVG paths. framer-motion's `d` interpolation serializes adjacent positive integers without a separator, so midway through the tween the attribute becomes e.g. `M6 12c2 2 4 2 6 0s4 2 6 0` → `…c2 2 426 0s…`, which the browser SVG parser rejects. Fix: replace the single `<motion.path>` with **two static `<motion.path>` elements cross-fading via `animate={{ opacity: [1, 0, 1] }}` / `[0, 1, 0]`**. No `d` mutation, no console noise. See AnimatedIcons.tsx lines ~455–485.
+
+### 33.8 Scripts
+
+| Command | Use |
+|---|---|
+| `npm run test:e2e` | Full headless run (both projects) |
+| `npm run test:e2e:ui` | Playwright UI mode (time-travel debugging) |
+| `npm run test:e2e:headed` | Watch the browser drive the app |
+| `npm run test:e2e:debug` | `PWDEBUG=1`, pauses at `await page.pause()` |
+
+### 33.9 What is NOT covered
+
+- **Real authenticated flows** (sign-up, sign-in, OAuth popup). Guest-mode is a deliberate proxy to avoid BetterAuth + Neon in CI.
+- **Write operations** that depend on DB-backed API routes (create task, create event, start focus session) — they'd 401 in guest mode. Worth adding later with a test-seeded DB user.
+- **Pixel-diff visual regression** (`@playwright/experimental-ct-react` or `toMatchSnapshot`) — we only capture raw PNGs today.
+- **Cross-browser** (WebKit, Firefox) — Chromium-only because the dev server is Next.js turbopack which occasionally glitches on non-Chromium.
+- **Mobile sidebar / drawer interactions** beyond viewport-only checks. The `chromium-mobile` project exists but most specs assert only that the page renders without errors.
+- **A11y audits** — not wired into the E2E layer (worth adding `@axe-core/playwright`).
+
+### 33.10 Adding a new spec
+
+1. Create `tests/e2e/<area>.spec.ts`.
+2. Import from the local fixture: `import { test, expect } from './fixtures/guest';`.
+3. Use `guestPage` (not `page`) to get a seeded guest context.
+4. Call `waitForAppReady(page)` after every `goto`.
+5. Assert on `collectConsole(page).appErrors()` at the end — add any legitimate 3rd-party noise you find to the IGNORE array in `helpers.ts`.
+6. Run `npm run test:e2e -- <spec-name>` to iterate.
+
+### 33.11 Files added in v26 (E2E)
+
+```
+playwright.config.ts                              | NEW
+tests/e2e/fixtures/guest.ts                       | NEW
+tests/e2e/fixtures/helpers.ts                     | NEW
+tests/e2e/calendar.spec.ts                        | NEW
+tests/e2e/tasks.spec.ts                           | NEW
+tests/e2e/plan.spec.ts                            | NEW
+tests/e2e/pomodoro.spec.ts                        | NEW
+tests/e2e/focus.spec.ts                           | NEW
+tests/e2e/goals.spec.ts                           | NEW
+tests/e2e/performance.spec.ts                     | NEW
+tests/e2e/shop.spec.ts                            | NEW
+tests/e2e/intelligence.spec.ts                    | NEW
+tests/e2e/docs.spec.ts                            | NEW
+tests/e2e/navigation.spec.ts                      | NEW
+tests/e2e/visual/screenshots.spec.ts              | NEW
+src/components/ui/AnimatedIcons.tsx               | BrownNoiseIcon d-attr → opacity cross-fade
+package.json                                      | +4 test:e2e scripts, +playwright devDep
+.gitignore                                        | +playwright-screenshots/, +test-results/, +playwright-report/
 ```
 
 ---
