@@ -26,6 +26,14 @@ export async function GET(req: NextRequest) {
     // Prefix search: "quar" → "quar:*", "quarterly review" → "quarterly:* & review:*"
     const tsquery = sql`to_tsquery('english', ${q.replace(/\s+/g, ':* & ') + ':*'})`;
 
+    // We ask Postgres to mark matches with placeholder tokens (not <mark>),
+    // then HTML-escape the entire excerpt client-side, then replace the
+    // placeholders with <mark>. This way user-provided characters like
+    // <script> or <img onerror=...> that end up in contentText are rendered
+    // as text, not HTML, even though the consumer uses dangerouslySetInnerHTML.
+    const MARK_START = '\u0001LUMI_MARK_START\u0001';
+    const MARK_END = '\u0001LUMI_MARK_END\u0001';
+
     const results = await db
       .select({
         id: docs.id,
@@ -37,7 +45,7 @@ export async function GET(req: NextRequest) {
           'english',
           coalesce(${docs.title}, '') || ' ' || coalesce(${docs.contentText}, ''),
           ${tsquery},
-          'MaxWords=20, MinWords=10, StartSel=<mark>, StopSel=</mark>'
+          ${'MaxWords=20, MinWords=10, StartSel=' + MARK_START + ', StopSel=' + MARK_END}
         )`,
       })
       .from(docs)
@@ -51,13 +59,25 @@ export async function GET(req: NextRequest) {
       .orderBy(sql`ts_rank(${tsvector}, ${tsquery}) DESC`)
       .limit(20);
 
+    const escapeHtml = (s: string) =>
+      s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
     const mapped = results.map((row) => ({
       id: row.id,
       title: row.title,
       icon: row.icon ?? null,
       parentId: row.parentId ?? null,
       updatedAt: row.updatedAt.toISOString(),
-      excerpt: row.excerpt,
+      excerpt: escapeHtml(row.excerpt)
+        .split(MARK_START)
+        .join('<mark>')
+        .split(MARK_END)
+        .join('</mark>'),
     }));
 
     return NextResponse.json(mapped);

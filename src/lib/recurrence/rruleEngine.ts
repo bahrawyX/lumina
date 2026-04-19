@@ -21,6 +21,56 @@ export interface ExpandedInstance {
 const MAX_INSTANCES = 500;
 
 /**
+ * Validate an RRULE string before it is stored. This is a safety check to
+ * prevent denial-of-service via pathological rules (e.g. FREQ=SECONDLY with
+ * no UNTIL/COUNT, or absurdly large COUNT values) that would blow up CPU
+ * every time the engine expands them.
+ *
+ * Returns { ok: true } on success, or { ok: false, reason } on rejection.
+ */
+export function validateRRule(
+  rruleStr: string,
+  dtstart: Date,
+): { ok: true } | { ok: false; reason: string } {
+  if (typeof rruleStr !== 'string' || rruleStr.length === 0) {
+    return { ok: false, reason: 'RRULE must be a non-empty string' };
+  }
+  if (rruleStr.length > 500) {
+    return { ok: false, reason: 'RRULE exceeds max length (500)' };
+  }
+
+  let rule: RRule;
+  try {
+    rule = parseRRule(rruleStr, dtstart);
+  } catch {
+    return { ok: false, reason: 'Invalid RRULE syntax' };
+  }
+
+  const opts = rule.options;
+
+  // Disallow sub-daily frequencies entirely — they have no productivity use
+  // case and are the easiest way to construct a CPU bomb.
+  // RRule FREQ numeric values: YEARLY=0 MONTHLY=1 WEEKLY=2 DAILY=3
+  // HOURLY=4 MINUTELY=5 SECONDLY=6
+  if (opts.freq >= 4) {
+    return { ok: false, reason: 'Sub-daily frequencies are not allowed' };
+  }
+
+  // Cap explicit COUNT to something reasonable. 500 aligns with MAX_INSTANCES.
+  if (opts.count && opts.count > MAX_INSTANCES) {
+    return { ok: false, reason: `COUNT exceeds maximum (${MAX_INSTANCES})` };
+  }
+
+  // If neither COUNT nor UNTIL is set, that's fine — we always window-clip
+  // on expansion. But guard against absurdly large INTERVALs.
+  if (opts.interval && opts.interval > 1000) {
+    return { ok: false, reason: 'INTERVAL exceeds maximum (1000)' };
+  }
+
+  return { ok: true };
+}
+
+/**
  * Parse an RRULE string into an RRule object anchored to the given dtstart.
  */
 export function parseRRule(rruleStr: string, dtstart: Date): RRule {

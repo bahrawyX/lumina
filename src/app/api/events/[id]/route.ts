@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence, tasks } from '@/db/schema';
+import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { eq, and, gte } from 'drizzle-orm';
 import type { EditScope } from '@/types';
 
@@ -327,6 +328,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // If editScope is 'all' and recurrence data is provided, update the recurrence rule
     const recurrenceBody = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
     if (editScope === 'all' && recurrenceBody && typeof recurrenceBody.rrule === 'string') {
+      // Pre-validate RRULE before storage (DoS protection).
+      const dtstartForValidation = (patch.startTime as Date | undefined) ?? existing.startTime;
+      const validation = validateRRule(recurrenceBody.rrule, dtstartForValidation);
+      if (validation.ok === false) {
+        return NextResponse.json(
+          { error: `Invalid recurrence: ${validation.reason}` },
+          { status: 400 },
+        );
+      }
       const recPatch: Record<string, unknown> = {
         rrule: recurrenceBody.rrule,
         updatedAt: new Date(),

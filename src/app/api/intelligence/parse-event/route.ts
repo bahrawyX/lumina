@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { GoogleGenAI, Type } from '@google/genai';
+import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+
+// 20 parses per minute per user. Gemini calls cost money and latency —
+// without a cap any authenticated user could run the bill up via a script.
+const parseEventLimiter = createRateLimiter('parseEvent', {
+  windowMs: 60_000,
+  max: 20,
+});
 
 // ── Zod input validation ─────────────────────────────────────────────────────
 
@@ -64,6 +72,11 @@ export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const limit = parseEventLimiter.check(session.user.id);
+  if (limit.limited) {
+    return rateLimitedResponse(limit.retryAfterMs);
   }
 
   let body: unknown;

@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
+import { validateRRule } from '@/lib/recurrence/rruleEngine';
 
 type EventProvider = 'local' | 'google' | 'outlook';
 type ApiEventProvider = 'local' | 'google' | 'microsoft';
@@ -246,16 +247,27 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // If recurrence rule is provided, create the event_recurrence row
+    // If recurrence rule is provided, validate and create the event_recurrence row.
+    // Pre-validation protects against DoS via pathological rules (sub-daily
+    // frequencies, enormous COUNT/INTERVAL) that would blow up CPU every
+    // time the engine later expands them.
     const recurrenceRule = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
     let recurrenceData = null;
     if (recurrenceRule && typeof recurrenceRule.rrule === 'string' && recurrenceRule.rrule.trim()) {
+      const trimmedRrule = recurrenceRule.rrule.trim();
+      const validation = validateRRule(trimmedRrule, startTs);
+      if (validation.ok === false) {
+        return NextResponse.json(
+          { error: `Invalid recurrence: ${validation.reason}` },
+          { status: 400 },
+        );
+      }
       const [recRow] = await db
         .insert(eventRecurrence)
         .values({
           eventId: row.id,
           userId,
-          rrule: recurrenceRule.rrule.trim(),
+          rrule: trimmedRrule,
           exdates: Array.isArray(recurrenceRule.exdates) ? recurrenceRule.exdates : [],
           recurrenceEnd: recurrenceRule.until ? new Date(recurrenceRule.until) : null,
         })

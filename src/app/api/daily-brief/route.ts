@@ -15,6 +15,15 @@ import {
 import { detectFocusWindows } from '@/lib/intelligence/focusWindows';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import type { IntelligenceCalendarEvent, IntelligencePlannedItem } from '@/lib/intelligence/types';
+import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+
+// The cached daily-brief path is cheap. The `?refresh=true` path re-runs
+// the Gemini narrative generation, which costs real money and seconds of
+// latency. Cap it to prevent a user from spamming regenerations.
+const briefRefreshLimiter = createRateLimiter('dailyBriefRefresh', {
+  windowMs: 60 * 60 * 1000,
+  max: 6,
+});
 
 interface DailyBriefData {
   date: string;
@@ -81,6 +90,14 @@ export async function GET(req: NextRequest) {
 
   if (!timezone) {
     return NextResponse.json({ error: 'timezone query param is required' }, { status: 400 });
+  }
+
+  // Gate the expensive cache-bypass path only.
+  if (forceRefresh) {
+    const limit = briefRefreshLimiter.check(userId);
+    if (limit.limited) {
+      return rateLimitedResponse(limit.retryAfterMs);
+    }
   }
 
   try {

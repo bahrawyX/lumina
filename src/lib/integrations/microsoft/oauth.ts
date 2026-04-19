@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, or } from 'drizzle-orm';
 import { cookies } from 'next/headers';
+import crypto from 'node:crypto';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { integrations } from '@/db/schema';
+
+/** Timing-safe string equality. Returns false for mismatched lengths. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  try {
+    return crypto.timingSafeEqual(ab, bb);
+  } catch {
+    return false;
+  }
+}
 
 const MS_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 const MS_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
@@ -81,7 +94,7 @@ export async function handleMicrosoftCallback(req: NextRequest) {
   }
 
   const storedState = cookieStore.get(STATE_COOKIE)?.value;
-  if (!storedState || storedState !== state) {
+  if (!storedState || !safeEqual(storedState, state)) {
     return NextResponse.redirect(`${errorRedirect}&detail=state_mismatch`);
   }
 
