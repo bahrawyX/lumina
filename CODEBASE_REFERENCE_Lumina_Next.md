@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-18 (v25 — OG image switched from dynamic edge route to static /og.png. opengraph-image.tsx + twitter-image.tsx deleted. FeatureShowcase reverted to icon+text cards (no mockups). CustomCursor confined to landing page only. LandingPageWrapper gains ?preview=1 bypass for signed-in users. seo.test.ts added. 102 Vitest tests across 9 files.)
+> Last updated: 2026-04-18 (v26 — Comprehensive security audit. Timing-safe cron secret; Google OAuth CSRF fix (random state + httpOnly cookie); security headers (CSP/HSTS/Referrer/Permissions); RRULE DoS pre-validation; rate limits on parse-event + daily-brief refresh; docs search XSS defence; npm audit 0 vulns. 102 Vitest tests across 9 files.)
 
 ---
 
@@ -281,7 +281,8 @@ src/
 │   ├── persistence/                ← Thin API wrappers: events/tasks/focus/planner
 │   ├── validation.ts               ← Zod schemas: nameSchema, emailSchema, passwordCreateSchema, passwordSchema, titleSchema, getFieldError()
 │   ├── utils.ts                    ← cn() and common utils
-│   ├── cronAuth.ts                 ← verifyCronSecret() — Bearer token check for Vercel cron
+│   ├── cronAuth.ts                 ← verifyCronSecret() — timing-safe Bearer token check for Vercel cron (v26: fail-closed, crypto.timingSafeEqual)
+│   ├── rateLimit.ts               ← createRateLimiter() / rateLimitedResponse() — sliding-window in-memory rate limiter (v26: NEW)
 │   ├── push/
 │   │   └── sendPushNotification.ts ← VAPID setup + sendPushToUser() (server-only)
 │   ├── intelligence/               ← AI engine: engine, types, recommendations, scoring, llmSummary
@@ -1411,7 +1412,7 @@ Inactive item: `text-muted-foreground`
 
 ### 20.6 RFC 5545 Recurring Events — COMPLETE
 - `event_recurrence` table with RRULE text, exdates array, recurrence end
-- `rruleEngine.ts`: parse, expand, build, describe RRULEs via `rrule` npm package
+- `rruleEngine.ts`: parse, expand, build, describe RRULEs via `rrule` npm package. `validateRRule(rrule, dtstart)` (v26) rejects sub-daily frequencies, COUNT>500, INTERVAL>1000, length>500 — called before any RRULE is stored to prevent DoS.
 - `GET /api/events/expand`: virtual instance expansion with 366-day window cap
 - Edit scope semantics: `this` (exdate + exception), `this_and_following` (DB transaction series split), `all` (update master)
 - `RecurrenceSelector.tsx`: presets + custom builder
@@ -1593,6 +1594,7 @@ Inactive item: `text-muted-foreground`
 - **canvas-confetti**: `triggerConfetti` in `ConfettiEffect` is now `async` — dynamic-imports `canvas-confetti` at call time instead of top-level import.
 - **Removed dep**: `emoji-picker-react` removed from package.json (unused).
 - **Bundle analyzer**: `@next/bundle-analyzer` added, `next.config.mjs` wraps config with `withBundleAnalyzer` when `ANALYZE=true`. npm script `"analyze"`.
+- **Security headers** (v26): `next.config.mjs` exports `async headers()` applying to every route: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera/mic/geo/FLoC off), `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`, CSP with `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`. Styles/scripts remain `unsafe-inline`/`unsafe-eval` for Next.js + framer-motion compatibility.
 - **Per-field Zustand selectors**: full-store destructures (`const { a, b } = useStore()`) replaced with individual `useStore(s => s.field)` selectors across AppShell, Sidebar, CalendarPage, TimerCallout, useCalendar, EventModal, MonthView, DayView, WeekView, Profile. Only `OnboardingFlow` still uses bare `useCalendarStore()`.
 - **Scoped theme transition**: global `* { transition: background-color 400ms }` moved to `html.transitioning-theme *` in `globals.css` — was the root cause of route-change lag (every element transitioned on mount).
 - **PageTransition gutted**: `AnimatePresence mode="wait"` removed entirely, component is now a plain `<div>`. Eliminates exit-animation delay between routes.
@@ -2106,6 +2108,73 @@ The `emoji` field on `SHOP_ITEMS` rows is preserved in `src/config/shopItems.ts`
 - `tests/seo.test.ts`: 14 static-analysis tests guarding SEO plumbing.
 - Key assertions: `metadataBase`, title/template, `openGraph`, `twitter`, `robots`, `alternates`, `viewport.themeColor`, `lang="en"`, `robots.ts` + `sitemap.ts` existence, `public/og.png` existence, `og.png` referenced in layout, (app) layout has `noindex`, `JsonLd` component present.
 - Test was updated in v25 to replace the check for the now-deleted `opengraph-image.tsx` with checks for `public/og.png` and the `/og.png` string in `layout.tsx`.
+
+---
+
+## 32. SESSION v26 CHANGES — Security Audit (2026-04-18)
+
+Comprehensive read-the-code security audit across all ~40 API routes, auth flows, external integrations, and frontend rendering.
+
+### 32.1 Cron Secret (CRITICAL fix) — `src/lib/cronAuth.ts`
+- **Before**: `auth === \`Bearer ${process.env.CRON_SECRET}\`` — string equality via `===` (timing-unsafe), and if `CRON_SECRET` was unset it compared against the literal `"Bearer undefined"` (fail-open).
+- **After**: fails closed when secret is absent or <32 chars; reads both `authorization` and `Authorization` header casings; uses `crypto.timingSafeEqual` via Node `node:crypto`.
+
+### 32.2 Google OAuth CSRF (CRITICAL fix) — `src/lib/integrations/google/oauth.ts`
+- **Before**: state was `JSON.stringify({ userId })` — predictable, passed over the URL, and the callback extracted `userId` from it without ever verifying it against anything stored server-side.
+- **After**: state is `crypto.randomUUID()`, stored in an `httpOnly; SameSite=Lax; Secure` cookie (`lumina_google_connect_state`) with 10-min TTL. Callback verifies via `crypto.timingSafeEqual`. Integration row is bound to `session.user.id` from the authenticated session — not from the URL-supplied state.
+- Google callback no longer leaks raw Google API error bodies to the client; full error is `console.error`'d server-side and the client gets a generic redirect.
+
+### 32.3 Microsoft OAuth (defense-in-depth) — `src/lib/integrations/microsoft/oauth.ts`
+- State cookie comparison was `!==` (timing-unsafe). Updated to use the same `safeEqual` helper.
+
+### 32.4 Security Headers (HIGH fix) — `next.config.mjs`
+- Added `async headers()` export applying a `securityHeaders` array to `/:path*`.
+- Headers: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`, `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`.
+- CSP: `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; styles/scripts remain `unsafe-inline`/`unsafe-eval` for Next.js + framer-motion inline styles.
+
+### 32.5 RRULE DoS Pre-Validation (CRITICAL fix) — `src/lib/recurrence/rruleEngine.ts`, `src/app/api/events/route.ts`, `src/app/api/events/[id]/route.ts`
+- **New export**: `validateRRule(rruleStr, dtstart): { ok: true } | { ok: false; reason: string }`.
+- Rejects: sub-daily frequencies (`HOURLY`/`MINUTELY`/`SECONDLY`), `COUNT > 500`, `INTERVAL > 1000`, length > 500 chars, or invalid RRULE syntax.
+- Wired into POST `/api/events` (before inserting `event_recurrence`) and PATCH `/api/events/[id]` with `editScope=all` (before updating the rule). Returns HTTP 400 with `{ error: "Invalid recurrence: <reason>" }`.
+
+### 32.6 Rate Limiting (HIGH fix) — `src/lib/rateLimit.ts` (NEW), `src/app/api/intelligence/parse-event/route.ts`, `src/app/api/daily-brief/route.ts`
+- **`src/lib/rateLimit.ts`**: shared `createRateLimiter(name, { windowMs, max })` — sliding-window in-memory per-key limiter. `rateLimitedResponse(retryAfterMs)` returns a 429 JSON response with `Retry-After` header. ⚠️ Per-process; replace the bucket store with Redis for multi-instance deployments.
+- **parse-event**: 20 requests/min per user (Gemini calls cost money).
+- **daily-brief `?refresh=true`**: 6 refreshes/hour per user. The uncached path runs Gemini narrative generation; the cached path remains unlimited.
+
+### 32.7 Docs Search XSS (MEDIUM fix) — `src/app/api/docs/search/route.ts`
+- **Before**: `ts_headline()` emitted `<mark>` tags into the raw excerpt, which `DocsHomePage` rendered via `dangerouslySetInnerHTML`. User-controlled `contentText` (e.g. `<script>…`) would appear as HTML.
+- **After**: Postgres emits sentinel tokens (`\u0001LUMI_MARK_START\u0001` / `\u0001LUMI_MARK_END\u0001`). The API route HTML-escapes the entire excerpt (escaping `&`, `<`, `>`, `"`, `'`), then substitutes sentinels with `<mark>` / `</mark>`. Only the safe highlight tags survive as HTML.
+
+### 32.8 npm audit — 0 vulnerabilities
+- `npm audit fix` applied before the audit: 6 vulnerabilities (1 critical protobufjs, 4 high, 1 moderate) resolved via non-breaking updates. 18 packages changed. Post-fix: 0 vulnerabilities across 1036 packages.
+
+### 32.9 Verified safe (no change)
+- **IDOR**: all `UPDATE`/`DELETE` on user data filter `eq(table.userId, userId)` — confirmed for events, tasks, docs, goals, focus-sessions, push subscriptions, integrations.
+- **Push send** (`/api/push/send`): hardcoded to `sendPushToUser(session.user.id, …)` — cannot target other users.
+- **Raw SQL** (`sql\`…\``): every occurrence is a Drizzle parameterized template tag — no string interpolation of user input.
+- **`dangerouslySetInnerHTML`**: `JsonLd.tsx` (`JSON.stringify` — safe), `layout.tsx` (static SW registration — safe). Docs search excerpt fixed above.
+- **Open redirect**: OAuth callbacks redirect to `${baseURL}/auth/popup-complete` where `baseURL` comes from env or request origin — not from user input.
+- **Secrets**: `.env*` gitignored; only `NEXT_PUBLIC_BETTER_AUTH_URL` is client-exposed (intentional).
+
+### 32.10 Test count
+- 102 Vitest tests across 9 files — unchanged.
+
+### 32.11 Files changed in v26
+```
+ next.config.mjs                               | +53 (security headers)
+ src/app/api/daily-brief/route.ts              | +17 (refresh rate limit)
+ src/app/api/docs/search/route.ts              | +24 (XSS-safe excerpt)
+ src/app/api/events/[id]/route.ts              | +10 (RRULE validation)
+ src/app/api/events/route.ts                   | +16 (RRULE validation)
+ src/app/api/intelligence/parse-event/route.ts | +13 (rate limit)
+ src/lib/cronAuth.ts                           | rewrite (timing-safe)
+ src/lib/integrations/google/oauth.ts          | rewrite (CSRF fix)
+ src/lib/integrations/microsoft/oauth.ts       | +15 (timingSafeEqual)
+ src/lib/recurrence/rruleEngine.ts             | +50 (validateRRule)
+ src/lib/rateLimit.ts                          | NEW
+ package-lock.json                             | npm audit fix
+```
 
 ---
 
