@@ -2,11 +2,49 @@
 
 import { motion, useInView } from 'framer-motion';
 import { useRef } from 'react';
+import type React from 'react';
 import { CursorZone } from './CursorZone';
+import { LottieAnimation } from './LottieAnimation';
+import { LOTTIES } from '@/lib/landing/lottieConfig';
+import { useLottieHover } from '@/hooks/useLottieControls';
+
+const FOCUS_MODES = [
+  {
+    lottieKey: 'focusPomodoro' as const,
+    label: 'Pomodoro',
+    desc: 'Work/break cycles with auto-chime and session tracking.',
+    iconStyle: undefined,
+  },
+  {
+    lottieKey: 'focusTimer' as const,
+    label: 'Focus Timer',
+    desc: 'Dedicated countdown linked to a specific task.',
+    iconStyle: undefined,
+  },
+  {
+    lottieKey: 'focusStopwatch' as const,
+    label: 'Stopwatch',
+    desc: 'Open-ended timing with lap support.',
+    iconStyle: undefined,
+  },
+  {
+    lottieKey: 'focusSounds' as const,
+    label: 'Ambient Sounds',
+    desc: 'Brown noise, rain, forest, and ocean — built in.',
+    // Shift blue headphones → warm amber to match the section accent
+    iconStyle: { filter: 'hue-rotate(175deg) saturate(1.3)' } as React.CSSProperties,
+  },
+];
 
 export function FocusModesSection() {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, margin: '-60px' });
+
+  const hover0 = useLottieHover(0.7, 2);
+  const hover1 = useLottieHover(0.7, 2);
+  const hover2 = useLottieHover(0.7, 2);
+  const hover3 = useLottieHover(0.7, 2);
+  const hovers = [hover0, hover1, hover2, hover3];
 
   return (
     <section ref={ref} className="py-16 md:py-24 px-4 md:px-6" aria-label="Focus modes">
@@ -24,65 +62,36 @@ export function FocusModesSection() {
         </div>
 
         <CursorZone label="Focus" color="#f59e0b" as="div" className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 max-w-3xl mx-auto">
-          <motion.div
-            className="card-lift rounded-xl border border-border bg-card p-4 md:p-5 shadow-card text-center"
-            initial={{ opacity: 0, y: 16 }}
-            animate={isInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.45, delay: 0, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="text-3xl mb-3 block" aria-hidden="true">🍅</span>
-            <h3 className="font-display text-sm font-medium text-foreground tracking-[-0.02em] mb-1">
-              Pomodoro
-            </h3>
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              Work/break cycles with auto-chime and session tracking.
-            </p>
-          </motion.div>
-
-          <motion.div
-            className="card-lift rounded-xl border border-border bg-card p-4 md:p-5 shadow-card text-center"
-            initial={{ opacity: 0, y: 16 }}
-            animate={isInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.45, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="text-3xl mb-3 block" aria-hidden="true">⏱️</span>
-            <h3 className="font-display text-sm font-medium text-foreground tracking-[-0.02em] mb-1">
-              Focus Timer
-            </h3>
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              Dedicated countdown linked to a specific task.
-            </p>
-          </motion.div>
-
-          <motion.div
-            className="card-lift rounded-xl border border-border bg-card p-4 md:p-5 shadow-card text-center"
-            initial={{ opacity: 0, y: 16 }}
-            animate={isInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.45, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="text-3xl mb-3 block" aria-hidden="true">⏳</span>
-            <h3 className="font-display text-sm font-medium text-foreground tracking-[-0.02em] mb-1">
-              Stopwatch
-            </h3>
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              Open-ended timing with lap support.
-            </p>
-          </motion.div>
-
-          <motion.div
-            className="card-lift rounded-xl border border-border bg-card p-4 md:p-5 shadow-card text-center"
-            initial={{ opacity: 0, y: 16 }}
-            animate={isInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.45, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="text-3xl mb-3 block" aria-hidden="true">🎧</span>
-            <h3 className="font-display text-sm font-medium text-foreground tracking-[-0.02em] mb-1">
-              Ambient Sounds
-            </h3>
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              Brown noise, rain, forest, and ocean — built in.
-            </p>
-          </motion.div>
+          {FOCUS_MODES.map((mode, i) => {
+            const hover = hovers[i]!;
+            return (
+              <motion.div
+                key={mode.lottieKey}
+                className="card-lift rounded-xl border border-border bg-card p-4 md:p-5 shadow-card text-center cursor-default"
+                initial={{ opacity: 0, y: 16 }}
+                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                transition={{ duration: 0.45, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+                onHoverStart={hover.onMouseEnter}
+                onHoverEnd={hover.onMouseLeave}
+              >
+                <div className="w-16 h-16 mx-auto mb-2" style={mode.iconStyle} aria-hidden="true">
+                  <LottieAnimation
+                    src={LOTTIES[mode.lottieKey].src}
+                    loop
+                    autoplay
+                    className="w-full h-full"
+                    dotLottieRefCallback={hover.setRef}
+                  />
+                </div>
+                <h3 className="font-display text-sm font-medium text-foreground tracking-[-0.02em] mb-1">
+                  {mode.label}
+                </h3>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  {mode.desc}
+                </p>
+              </motion.div>
+            );
+          })}
         </CursorZone>
       </div>
     </section>

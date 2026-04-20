@@ -23,9 +23,6 @@
  * point; swap them before shipping.
  */
 
-// Confirmed public URL — safe placeholder. Replace each LOTTIES.* entry.
-const DEMO_LOTTIE = 'https://lottie.host/4db68bbd-31f6-4cd8-84eb-189de081159a/IGmMCqhzpt.lottie';
-
 export interface LottieSlot {
   /** CDN URL or local path to the .lottie/.json file */
   src: string;
@@ -39,63 +36,88 @@ export interface LottieSlot {
 
 export const LOTTIES: Record<string, LottieSlot> = {
   hero: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/145dc8b8-116b-11ee-835a-cbdd4c613142/fnX8qkDXkL.lottie',
     intent: 'Floating calendar/planner dashboard that feels alive',
     searchTerm: 'calendar schedule planner dashboard',
     behavior: 'autoplay-loop',
   },
   featureCheck: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/b36cb88a-1150-11ee-8f49-9b6c0bfe85bb/Y50UE4gUwg.lottie',
     intent: 'Checkmark burst with sparkle — plays when feature card enters view',
     searchTerm: 'checkmark success task complete',
     behavior: 'once-on-view',
   },
   pomodoroRing: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/6c1b20e4-1177-11ee-9e89-778f350cc6b9/MFflSBATh0.lottie',
     intent: 'Circular progress ring filling up — pomodoro session complete',
     searchTerm: 'timer circle countdown progress',
     behavior: 'once-on-hover',
   },
   soundWaves: {
-    src: DEMO_LOTTIE,
-    intent: 'Sound waves / audio equalizer — continuous ambient motion',
-    searchTerm: 'sound wave audio equalizer',
+    src: 'https://assets-v2.lottiefiles.com/a/a73eb2d8-1179-11ee-83a9-8faaffe0d6a1/ICvcPGE56U.lottie',
+    intent: 'Headphones / sound waves — continuous ambient motion',
+    searchTerm: 'sound wave audio equalizer headphones',
     behavior: 'ambient-loop',
   },
   aiSparkle: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/6d1224de-1172-11ee-8e99-2f3c8126c19c/sOXidENOzm.lottie',
     intent: 'Brain with sparkle / lightbulb / magic wand — represents AI',
     searchTerm: 'AI brain sparkle lightbulb',
     behavior: 'autoplay-loop',
   },
   rocket: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/5de84460-a34a-11ee-b470-83e52242919a/SfozhTvKjU.lottie',
     intent: 'Rocket launching — synchronized with CountUp stats',
     searchTerm: 'rocket launch takeoff',
     behavior: 'once-on-view',
   },
   confetti: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/e7df6e94-1170-11ee-9640-1b85e6ca1c88/useeXXBWNy.lottie',
     intent: 'Confetti burst celebration — plays on CTA section entry + click',
     searchTerm: 'confetti celebration burst party',
     behavior: 'once-on-view',
   },
   navSparkle: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/362d1336-1166-11ee-b318-6fb6adbd5325/kovVpaslMa.lottie',
     intent: 'Tiny subtle sparkle on Get Started button',
     searchTerm: 'sparkle shine glint tiny',
     behavior: 'ambient-loop',
   },
   untangle: {
-    src: DEMO_LOTTIE,
-    intent: 'Tangled lines untangling — represents unifying scattered apps',
+    src: 'https://assets-v2.lottiefiles.com/a/ab5b0866-2155-11ef-93b3-63b32e34d0cf/IpM74ywaZF.lottie',
+    intent: 'Sparkle burst — represents unifying scattered apps',
     searchTerm: 'untangle lines organize simplify',
     behavior: 'once-on-view',
   },
   wave: {
-    src: DEMO_LOTTIE,
+    src: 'https://assets-v2.lottiefiles.com/a/91cc0ece-1150-11ee-b7cb-d3afb5c0c001/l07O4nRg7q.lottie',
     intent: 'Waving hand or beating heart — warmth in footer',
     searchTerm: 'wave hand greeting heartbeat',
+    behavior: 'ambient-loop',
+  },
+  // ── Focus modes section ──────────────────────────────────────────────────────
+  focusPomodoro: {
+    src: 'https://assets-v2.lottiefiles.com/a/a159ecda-116e-11ee-9e9f-dbb6d3359482/194g5Fuhjp.lottie',
+    intent: 'Tomato — the classic Pomodoro icon',
+    searchTerm: 'tomato pomodoro vegetable fruit',
+    behavior: 'ambient-loop',
+  },
+  focusTimer: {
+    src: 'https://assets-v2.lottiefiles.com/a/775b430e-116c-11ee-bee1-a3fd8ded352f/O6riMOS34g.lottie',
+    intent: 'Focus countdown timer — dedicated task timer',
+    searchTerm: 'countdown timer clock focus',
+    behavior: 'ambient-loop',
+  },
+  focusStopwatch: {
+    src: 'https://assets-v2.lottiefiles.com/a/c91df888-117d-11ee-9ee5-530c4c64fa7d/1dC9Gi1io0.lottie',
+    intent: 'Stopwatch with running seconds hand — open-ended timing',
+    searchTerm: 'stopwatch clock running timer',
+    behavior: 'ambient-loop',
+  },
+  focusSounds: {
+    src: 'https://assets-v2.lottiefiles.com/a/a73eb2d8-1179-11ee-83a9-8faaffe0d6a1/ICvcPGE56U.lottie',
+    intent: 'Headphones with sound waves — ambient audio',
+    searchTerm: 'headphones music sound ambient',
     behavior: 'ambient-loop',
   },
 } as const;
