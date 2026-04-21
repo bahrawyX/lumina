@@ -1,7 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { useEffect, useRef, useState, useLayoutEffect, useCallback } from 'react';
+import {
+  motion,
+  AnimatePresence,
+  useScroll,
+  useSpring,
+  useTransform,
+} from 'framer-motion';
 import { CursorZone } from './CursorZone';
 import { FeatureSlide } from './FeatureSlide';
 import { CalendarMockup } from './mockups/CalendarMockup';
@@ -11,6 +17,8 @@ import { FocusMockup } from './mockups/FocusMockup';
 import { GoalsMockup } from './mockups/GoalsMockup';
 import { DocsMockup } from './mockups/DocsMockup';
 import { ACCENT } from './mockups/tokens';
+
+/* ── Slide data — unchanged ───────────────────────────────────────────────── */
 
 type SlideDef = {
   key: string;
@@ -109,167 +117,119 @@ const SLIDES: SlideDef[] = [
   },
 ];
 
-const WHEEL_THRESHOLD = 30;
+/* ── Component ────────────────────────────────────────────────────────────── */
 
+/**
+ * Horizontal feature showcase driven by vertical scroll.
+ *
+ * Pattern adapted from Benjamin De Cock's sandbox
+ * (framer-motion-horizontal-scroll-by-scrolling-vertically-5crke):
+ *
+ * 1. A "ghost" spacer inside the section creates vertical scroll distance
+ *    equal to the horizontal track's total scrollWidth minus one viewport.
+ * 2. A sticky inner wrapper pins the viewport at top while the user scrolls
+ *    through that distance.
+ * 3. `useScroll({ target: sectionRef, offset: ['start start', 'end end'] })`
+ *    gives us a 0→1 progress value scoped to this section only (not the
+ *    whole page), which we transform into an `x` translation.
+ * 4. `useSpring` smooths the translation with physics.
+ *
+ * No wheel hijacking, no IntersectionObserver, no Lenis pause — the page's
+ * native (smooth) scroll flows through this section and out the other side.
+ */
 export function FeatureShowcase() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const wheelLockRef = useRef<boolean>(false);
+  const sectionRef = useRef<HTMLElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+
+  const [scrollRange, setScrollRange] = useState(0);
+  const [viewportW, setViewportW] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // ── Lenis pause/resume ────────────────────────────────────────────────────
-  // Lenis drives page scroll via its own RAF loop, so calling
-  // e.preventDefault() on wheel events is NOT sufficient to stop it.
-  // We pause Lenis while the showcase is actively hijacking the wheel, and
-  // resume it at slide boundaries so the page can scroll past naturally.
-  const lenisStoppedRef = useRef(false);
-  const updateLenisState = useCallback((shouldStop: boolean) => {
-    if (lenisStoppedRef.current === shouldStop) return; // no-op if already in that state
-    lenisStoppedRef.current = shouldStop;
-    window.dispatchEvent(new Event(shouldStop ? 'lumina:lenis-stop' : 'lumina:lenis-start'));
+  /* Measure the horizontal track's scrollWidth */
+  useLayoutEffect(() => {
+    if (!scrollRef.current) return;
+    setScrollRange(scrollRef.current.scrollWidth);
   }, []);
 
-  // Section-in-view gate for keyboard + wheel handlers.
-  //
-  // We observe a tiny sentinel placed at the vertical CENTER of the snap
-  // track (not the whole <section>). The section wrapper includes the
-  // heading + dots footer which add ~25vh of padding above/below the
-  // track — using the section itself caused the hijack to engage as
-  // soon as the heading peeked into the center strip, which felt early.
-  //
-  // With the sentinel + `-35% 0px -35% 0px`, the hijack only activates
-  // once the track's midpoint is inside the middle 30% of the viewport,
-  // i.e. the showcase is meaningfully centered on the screen.
-  const sectionInView = useInView(sentinelRef, {
-    margin: '-35% 0px -35% 0px',
-    once: false,
+  /* Track viewport width via ResizeObserver on the ghost element */
+  const onResize = useCallback((entries: ResizeObserverEntry[]) => {
+    for (const entry of entries) {
+      setViewportW(entry.contentRect.width);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!ghostRef.current) return;
+    const observer = new ResizeObserver((entries) => onResize(entries));
+    observer.observe(ghostRef.current);
+    return () => observer.disconnect();
+  }, [onResize]);
+
+  /* Re-measure scrollRange whenever the viewport width changes
+     (slide widths are viewport-relative) */
+  useLayoutEffect(() => {
+    if (!scrollRef.current) return;
+    setScrollRange(scrollRef.current.scrollWidth);
+  }, [viewportW]);
+
+  /* Scroll progress scoped to the section — 0 when section top hits
+     viewport top, 1 when section bottom hits viewport bottom */
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start start', 'end end'],
   });
 
-  // Navigate to a specific slide (horizontal on desktop, vertical on mobile).
-  // IMPORTANT: we do NOT call setActiveIndex here — that's owned solely by
-  // the IntersectionObserver below. Setting it here caused a flicker
-  // (optimistic set → observer re-fires for outgoing slide → set again).
-  const goToSlide = useCallback((index: number) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const clamped = Math.max(0, Math.min(index, SLIDES.length - 1));
-    const isHorizontal = window.matchMedia('(min-width: 768px)').matches;
-    if (isHorizontal) {
-      track.scrollTo({
-        left: track.clientWidth * clamped,
-        behavior: 'smooth',
-      });
-    } else {
-      track.scrollTo({
-        top: track.clientHeight * clamped,
-        behavior: 'smooth',
-      });
-    }
-    // Observer will set activeIndex once the new slide crosses the
-    // 60% visibility threshold. Single source of truth.
-  }, []);
+  const transform = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [0, -(scrollRange - viewportW)],
+  );
 
-  // Single source of truth for activeIndex: the slide that's >= 60%
-  // visible inside the track wins. Higher threshold prevents the brief
-  // "both slides visible" transition from firing for the wrong slide.
+  const spring = useSpring(transform, {
+    damping: 15,
+    mass: 0.27,
+    stiffness: 55,
+  });
+
+  /* Derive activeIndex from scroll progress so the dots + counter stay in
+     sync with the currently-visible slide */
   useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const idx = Number(
-            (entry.target as HTMLElement).dataset.slideIndex ?? '0',
-          );
-          setActiveIndex(idx);
-        }
-      },
-      { root: track, threshold: 0.6 },
-    );
-
-    slideRefs.current.forEach((el) => {
-      if (el) observer.observe(el);
+    const unsub = scrollYProgress.on('change', (v) => {
+      const idx = Math.max(
+        0,
+        Math.min(SLIDES.length - 1, Math.round(v * (SLIDES.length - 1))),
+      );
+      setActiveIndex(idx);
     });
+    return unsub;
+  }, [scrollYProgress]);
 
-    return () => observer.disconnect();
+  const activeSlide = SLIDES[activeIndex] ?? SLIDES[0]!;
+  const progress = (activeIndex + 1) / SLIDES.length;
+
+  /* Jump to a specific slide by scrolling the window to the equivalent
+     position inside the section */
+  const goToSlide = useCallback((index: number) => {
+    const section = sectionRef.current;
+    if (!section) return;
+    const clamped = Math.max(0, Math.min(index, SLIDES.length - 1));
+    const travel = section.offsetHeight - window.innerHeight;
+    if (travel <= 0) return;
+    const fraction = clamped / (SLIDES.length - 1);
+    const top = section.offsetTop + travel * fraction;
+    window.scrollTo({ top, behavior: 'smooth' });
   }, []);
 
-  // Stop Lenis while the showcase is engaged on desktop; restart at exit.
-  // Gated on md+ because mobile uses native vertical snap, not Lenis.
+  /* Arrow-key navigation — gated to when the section is on screen */
   useEffect(() => {
-    const isHorizontal = window.matchMedia('(min-width: 768px)').matches;
-    if (!isHorizontal) return;
-
-    if (!sectionInView) {
-      updateLenisState(false); // showcase left viewport — resume Lenis
-      return;
-    }
-    updateLenisState(true); // showcase entered viewport — pause Lenis
-    return () => {
-      updateLenisState(false); // safety cleanup on unmount
-    };
-  }, [sectionInView, updateLenisState]);
-
-  // Wheel handler: map vertical (or horizontal) wheel delta to slide nav.
-  // At the boundaries, we DON'T preventDefault so the page scrolls on to
-  // the next section. Uses a short lock to prevent rapid-fire advancement
-  // from a single high-momentum scroll.
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    if (!sectionInView) return;
-
-    // Mobile uses native vertical snap — no JS wheel hijacking
-    const isHorizontal = window.matchMedia('(min-width: 768px)').matches;
-    if (!isHorizontal) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      const delta =
-        Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-
-      const atStart = activeIndex === 0 && delta < -WHEEL_THRESHOLD;
-      const atEnd =
-        activeIndex === SLIDES.length - 1 && delta > WHEEL_THRESHOLD;
-
-      // At boundaries: release Lenis so the page scrolls naturally to the
-      // previous/next section.
-      if (atStart || atEnd) {
-        updateLenisState(false);
-        return;
-      }
-
-      if (Math.abs(delta) < WHEEL_THRESHOLD) return;
-
-      // User reversed direction from a boundary back into the showcase —
-      // re-engage the Lenis lock.
-      updateLenisState(true);
-
-      // Prevent page-level scroll while navigating between slides
-      e.preventDefault();
-
-      if (wheelLockRef.current) return;
-      wheelLockRef.current = true;
-      window.setTimeout(() => {
-        wheelLockRef.current = false;
-      }, 450);
-
-      if (delta > 0) goToSlide(activeIndex + 1);
-      else goToSlide(activeIndex - 1);
-    };
-
-    // passive: false is REQUIRED so preventDefault() works.
-    track.addEventListener('wheel', handleWheel, { passive: false });
-    return () => track.removeEventListener('wheel', handleWheel);
-  }, [activeIndex, sectionInView, goToSlide, updateLenisState]);
-
-  // Arrow keys (global) — gated by sectionInView, ignored inside inputs.
-  useEffect(() => {
-    if (!sectionInView) return;
     const handler = (e: KeyboardEvent) => {
+      const section = sectionRef.current;
+      if (!section) return;
+      const rect = section.getBoundingClientRect();
+      const onScreen = rect.top < window.innerHeight && rect.bottom > 0;
+      if (!onScreen) return;
+
       if (e.target instanceof HTMLInputElement) return;
       if (e.target instanceof HTMLTextAreaElement) return;
       if ((e.target as HTMLElement | null)?.isContentEditable) return;
@@ -288,134 +248,129 @@ export function FeatureShowcase() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeIndex, sectionInView, goToSlide]);
-
-  const activeSlide = SLIDES[activeIndex] ?? SLIDES[0]!;
-  const progress = (activeIndex + 1) / SLIDES.length;
+  }, [activeIndex, goToSlide]);
 
   return (
     <section
       ref={sectionRef}
       id="features"
       aria-label="Feature showcase"
-      className="relative md:h-screen md:flex md:flex-col"
+      className="relative"
     >
-      {/* Section heading */}
-      <div className="text-center pt-12 md:pt-10 pb-5 md:pb-4 px-4 md:flex-shrink-0">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
-          Everything you need
-        </p>
-        <h2 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em]">
-          Six views. One workspace.
-        </h2>
-      </div>
+      {/* Sticky viewport — pinned at top while the user scrolls through
+          the ghost's height below */}
+      <div className="sticky top-0 h-screen w-full overflow-hidden flex flex-col">
+        {/* Section heading */}
+        <div className="text-center pt-12 md:pt-10 pb-5 md:pb-4 px-4 flex-shrink-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
+            Everything you need
+          </p>
+          <h2 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em]">
+            Six views. One workspace.
+          </h2>
+        </div>
 
-      <CursorZone label="Swipe" color={activeSlide.accent} className="md:flex-1 md:min-h-0">
-        {/*
-          Wrapper that is NOT scrollable. The sentinel lives here, not
-          inside the track, because absolute-positioned children of the
-          scrolling track move with horizontal scroll — once you pass
-          slide ~3 the sentinel goes offscreen and useInView flips to
-          false, which kills the wheel handler. Keeping the sentinel
-          outside the scroll container fixes that.
-        */}
-        <div className="relative md:h-full">
-          <div
-            ref={sentinelRef}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-1/2 top-1/2 w-px h-px"
-          />
-          <div
-            ref={trackRef}
-            data-lenis-prevent
-            className="feature-snap-track"
-            role="region"
-            aria-roledescription="carousel"
-            aria-label="Lumina features"
-            tabIndex={0}
-          >
-          {SLIDES.map((slide, i) => (
-            <div
-              key={slide.key}
-              ref={(el) => {
-                slideRefs.current[i] = el;
-              }}
-              data-slide-index={i}
-              className="feature-snap-slide"
-              aria-roledescription="slide"
-              aria-label={`${i + 1} of ${SLIDES.length}: ${slide.title}`}
+        <CursorZone
+          label="Swipe"
+          color={activeSlide.accent}
+          className="flex-1 min-h-0"
+        >
+          <div className="relative h-full w-full overflow-hidden">
+            <motion.div
+              ref={scrollRef}
+              className="flex h-full"
+              style={{ x: spring }}
+              role="region"
+              aria-roledescription="carousel"
+              aria-label="Lumina features"
             >
-              <FeatureSlide
-                eyebrow={slide.eyebrow}
-                title={slide.title}
-                description={slide.description}
-                bullets={slide.bullets}
-                mockup={slide.mockup(i === activeIndex)}
-                active={i === activeIndex}
-                accent={slide.accent}
+              {SLIDES.map((slide, i) => (
+                <div
+                  key={slide.key}
+                  data-slide-index={i}
+                  className="flex-shrink-0 w-screen h-full"
+                  aria-roledescription="slide"
+                  aria-label={`${i + 1} of ${SLIDES.length}: ${slide.title}`}
+                >
+                  <FeatureSlide
+                    eyebrow={slide.eyebrow}
+                    title={slide.title}
+                    description={slide.description}
+                    bullets={slide.bullets}
+                    mockup={slide.mockup(i === activeIndex)}
+                    active={i === activeIndex}
+                    accent={slide.accent}
+                  />
+                </div>
+              ))}
+            </motion.div>
+          </div>
+        </CursorZone>
+
+        {/* Navigation: dots + progress + counter */}
+        <div className="flex flex-col items-center gap-3 pt-3 pb-10 md:pb-6 flex-shrink-0">
+          <div
+            className="flex items-center gap-2"
+            role="tablist"
+            aria-label="Slide navigation"
+          >
+            {SLIDES.map((slide, i) => (
+              <button
+                key={slide.key}
+                type="button"
+                role="tab"
+                aria-selected={i === activeIndex}
+                aria-label={`Go to slide ${i + 1}: ${slide.title}`}
+                onClick={() => goToSlide(i)}
+                className="relative h-2 rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                style={{
+                  width: i === activeIndex ? 28 : 8,
+                  background:
+                    i === activeIndex ? slide.accent : 'hsl(var(--border))',
+                }}
               />
-            </div>
-          ))}
+            ))}
+          </div>
+
+          <div className="w-40 md:w-56 h-0.5 rounded-full overflow-hidden bg-border">
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: activeSlide.accent, transformOrigin: 'left' }}
+              animate={{ scaleX: progress }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            />
+          </div>
+
+          <div className="flex items-baseline gap-1 font-mono text-xs">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={activeIndex}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2 }}
+                className="tabular-nums"
+                style={{ color: activeSlide.accent }}
+              >
+                {String(activeIndex + 1).padStart(2, '0')}
+              </motion.span>
+            </AnimatePresence>
+            <span className="text-muted-foreground/50">/</span>
+            <span className="text-muted-foreground/50 tabular-nums">
+              {String(SLIDES.length).padStart(2, '0')}
+            </span>
           </div>
         </div>
-      </CursorZone>
-
-      {/* Navigation: dots + progress + counter */}
-      <div className="flex flex-col items-center gap-3 pt-3 pb-10 md:pb-6 md:flex-shrink-0">
-        <div
-          className="flex items-center gap-2"
-          role="tablist"
-          aria-label="Slide navigation"
-        >
-          {SLIDES.map((slide, i) => (
-            <button
-              key={slide.key}
-              type="button"
-              role="tab"
-              aria-selected={i === activeIndex}
-              aria-label={`Go to slide ${i + 1}: ${slide.title}`}
-              onClick={() => goToSlide(i)}
-              className="relative h-2 rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              style={{
-                width: i === activeIndex ? 28 : 8,
-                background:
-                  i === activeIndex ? slide.accent : 'hsl(var(--border))',
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Progress bar */}
-        <div className="w-40 md:w-56 h-0.5 rounded-full overflow-hidden bg-border">
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: activeSlide.accent, transformOrigin: 'left' }}
-            animate={{ scaleX: progress }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          />
-        </div>
-
-        {/* Counter */}
-        <div className="flex items-baseline gap-1 font-mono text-xs">
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={activeIndex}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2 }}
-              className="tabular-nums"
-              style={{ color: activeSlide.accent }}
-            >
-              {String(activeIndex + 1).padStart(2, '0')}
-            </motion.span>
-          </AnimatePresence>
-          <span className="text-muted-foreground/50">/</span>
-          <span className="text-muted-foreground/50 tabular-nums">
-            {String(SLIDES.length).padStart(2, '0')}
-          </span>
-        </div>
       </div>
+
+      {/* Ghost — gives the section enough vertical height that scrolling
+          through it equals traversing the full horizontal track width */}
+      <div
+        ref={ghostRef}
+        aria-hidden="true"
+        style={{ height: scrollRange }}
+        className="w-full pointer-events-none"
+      />
     </section>
   );
 }

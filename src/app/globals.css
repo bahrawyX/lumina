@@ -599,53 +599,11 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   opacity: 0.8;
 }
 
-/* ── Feature snap-scroll showcase ───────────────────────── */
+/* ── Feature showcase ───────────────────────────────────── */
 /*
- * The feature showcase uses a horizontal CSS scroll-snap track on
- * desktop and a vertical stack on mobile. The container MUST have
- * overflow: scroll/auto for snap to work — overflow: hidden breaks it.
- * Scrollbars are hidden visually but the axis is still scrollable.
- *
- * On desktop (>=768px): horizontal track, wheel events are hijacked
- * in JS to page between slides. `data-lenis-prevent` on the element
- * stops Lenis from intercepting scroll.
- *
- * On mobile (<768px): vertical snap, native touch scroll handles it.
+ * The feature showcase uses a vertical-scroll-drives-horizontal-translation
+ * pattern implemented entirely in `FeatureShowcase.tsx` via framer-motion's
+ * `useScroll` + `useSpring`. No bespoke snap CSS required — the section
+ * itself gets a "ghost" spacer equal to the horizontal track's scrollWidth,
+ * and a sticky inner wrapper pins the viewport during traversal.
  */
-.feature-snap-track {
-  position: relative;
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: auto; /* allow page scroll chain at top/bottom boundaries on mobile */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.feature-snap-track::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
-.feature-snap-slide {
-  flex: 0 0 100%;
-  width: 100%;
-  height: 100%;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-}
-@media (min-width: 768px) {
-  .feature-snap-track {
-    height: 100%; /* fills the flex-1 parent; section is h-screen flex-col */
-    flex-direction: row;
-    overflow-x: scroll;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    overscroll-behavior-x: auto; /* allow page to continue scrolling after last slide */
-    overscroll-behavior-y: auto;
-  }
-}
