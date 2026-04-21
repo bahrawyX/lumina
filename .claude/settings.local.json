@@ -13,7 +13,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx next:*)",
       "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__list_deployments",
-      "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__get_project"
+      "mcp__aedfdf48-880b-4db4-9ad4-3a5166870303__get_project",
+      "Bash(npm test *)"
     ]
   }
 }
