@@ -56,7 +56,7 @@ export function CTASection() {
                 transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
               >
                 <LottieAnimation
-                  src={LOTTIES.hero.src}
+                  src={LOTTIES.ctaCalendar.src}
                   autoplay
                   loop
                   className="w-full h-full"

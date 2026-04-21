@@ -36,6 +36,14 @@ export interface LottieSlot {
 
 export const LOTTIES: Record<string, LottieSlot> = {
   hero: {
+    // Original square placeholder animation used in the hero section.
+    src: 'https://lottie.host/4db68bbd-31f6-4cd8-84eb-189de081159a/IGmMCqhzpt.lottie',
+    intent: 'Abstract square / geometric animation — hero accent',
+    searchTerm: 'abstract geometric shape square',
+    behavior: 'autoplay-loop',
+  },
+  ctaCalendar: {
+    // Calendar/planner dashboard shown in the CTA section (above the footer).
     src: 'https://assets-v2.lottiefiles.com/a/145dc8b8-116b-11ee-835a-cbdd4c613142/fnX8qkDXkL.lottie',
     intent: 'Floating calendar/planner dashboard that feels alive',
     searchTerm: 'calendar schedule planner dashboard',
