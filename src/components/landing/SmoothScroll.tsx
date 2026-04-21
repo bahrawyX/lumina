@@ -39,9 +39,19 @@ export function SmoothScroll() {
     };
     rafId = requestAnimationFrame(raf);
 
+    // FeatureShowcase fires these events to pause/resume Lenis while its own
+    // wheel hijack is active, preventing Lenis momentum from carrying the page
+    // scroll past the showcase section (especially when scrolling back up).
+    const onStop = () => lenis.stop();
+    const onStart = () => lenis.start();
+    window.addEventListener('lumina:lenis-stop', onStop);
+    window.addEventListener('lumina:lenis-start', onStart);
+
     return () => {
       cancelAnimationFrame(rafId);
       lenis.destroy();
+      window.removeEventListener('lumina:lenis-stop', onStop);
+      window.removeEventListener('lumina:lenis-start', onStart);
     };
   }, []);
 

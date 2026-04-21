@@ -119,6 +119,18 @@ export function FeatureShowcase() {
   const wheelLockRef = useRef<boolean>(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
+  // ── Lenis pause/resume ────────────────────────────────────────────────────
+  // Lenis drives page scroll via its own RAF loop, so calling
+  // e.preventDefault() on wheel events is NOT sufficient to stop it.
+  // We pause Lenis while the showcase is actively hijacking the wheel, and
+  // resume it at slide boundaries so the page can scroll past naturally.
+  const lenisStoppedRef = useRef(false);
+  const updateLenisState = useCallback((shouldStop: boolean) => {
+    if (lenisStoppedRef.current === shouldStop) return; // no-op if already in that state
+    lenisStoppedRef.current = shouldStop;
+    window.dispatchEvent(new Event(shouldStop ? 'lumina:lenis-stop' : 'lumina:lenis-start'));
+  }, []);
+
   // Section-in-view gate for keyboard + wheel handlers.
   //
   // We observe a tiny sentinel placed at the vertical CENTER of the snap
@@ -186,6 +198,22 @@ export function FeatureShowcase() {
     return () => observer.disconnect();
   }, []);
 
+  // Stop Lenis while the showcase is engaged on desktop; restart at exit.
+  // Gated on md+ because mobile uses native vertical snap, not Lenis.
+  useEffect(() => {
+    const isHorizontal = window.matchMedia('(min-width: 768px)').matches;
+    if (!isHorizontal) return;
+
+    if (!sectionInView) {
+      updateLenisState(false); // showcase left viewport — resume Lenis
+      return;
+    }
+    updateLenisState(true); // showcase entered viewport — pause Lenis
+    return () => {
+      updateLenisState(false); // safety cleanup on unmount
+    };
+  }, [sectionInView, updateLenisState]);
+
   // Wheel handler: map vertical (or horizontal) wheel delta to slide nav.
   // At the boundaries, we DON'T preventDefault so the page scrolls on to
   // the next section. Uses a short lock to prevent rapid-fire advancement
@@ -207,11 +235,18 @@ export function FeatureShowcase() {
       const atEnd =
         activeIndex === SLIDES.length - 1 && delta > WHEEL_THRESHOLD;
 
-      // At boundaries: release — let the page scroll naturally to the
+      // At boundaries: release Lenis so the page scrolls naturally to the
       // previous/next section.
-      if (atStart || atEnd) return;
+      if (atStart || atEnd) {
+        updateLenisState(false);
+        return;
+      }
 
       if (Math.abs(delta) < WHEEL_THRESHOLD) return;
+
+      // User reversed direction from a boundary back into the showcase —
+      // re-engage the Lenis lock.
+      updateLenisState(true);
 
       // Prevent page-level scroll while navigating between slides
       e.preventDefault();
@@ -229,7 +264,7 @@ export function FeatureShowcase() {
     // passive: false is REQUIRED so preventDefault() works.
     track.addEventListener('wheel', handleWheel, { passive: false });
     return () => track.removeEventListener('wheel', handleWheel);
-  }, [activeIndex, sectionInView, goToSlide]);
+  }, [activeIndex, sectionInView, goToSlide, updateLenisState]);
 
   // Arrow keys (global) — gated by sectionInView, ignored inside inputs.
   useEffect(() => {
