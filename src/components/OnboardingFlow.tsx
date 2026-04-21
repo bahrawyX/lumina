@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOnboardingStore, FocusPreference, FocusSessionLength, FocusGoal } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { usePomodoroStore } from '../store/usePomodoroStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { focusSessionSelectionToMinutes } from '../lib/focusSettings';
@@ -1547,11 +1548,27 @@ const OnboardingFlow: React.FC = () => {
     store.setFocusSessionLength(selection);
     const minutes = focusSessionSelectionToMinutes(selection, store.customFocusMinutes);
     setGlobalFocusSessionLength(minutes);
+    // Propagate to the Pomodoro store so the timer respects the user's
+    // onboarding choice. Break length has no DB field — it lives in the
+    // Pomodoro store (localStorage) and is pushed here explicitly.
+    const breakMins = selection === '25/5'
+      ? 5
+      : selection === '50/10'
+        ? 10
+        : selection === '90/20'
+          ? 20
+          : store.customBreakMinutes;
+    const pomo = usePomodoroStore.getState();
+    pomo.setWorkMins(minutes);
+    pomo.setShortBreakMins(breakMins);
   }, [setGlobalFocusSessionLength, store]);
 
   const handleCustomSessionLengthChange = useCallback((focusMinutes: number, breakMinutes: number) => {
     store.setFocusSessionLength('custom', focusMinutes, breakMinutes);
     setGlobalFocusSessionLength(focusSessionSelectionToMinutes('custom', focusMinutes));
+    const pomo = usePomodoroStore.getState();
+    pomo.setWorkMins(focusMinutes);
+    pomo.setShortBreakMins(breakMinutes);
   }, [setGlobalFocusSessionLength, store]);
 
   const goNext = useCallback(() => {

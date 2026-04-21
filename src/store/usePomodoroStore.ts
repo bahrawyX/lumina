@@ -239,7 +239,10 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
           sessionCount: nextSessionCount,
           phaseStartedAt: null,
           elapsedBeforePause: 0,
-          workSessionStartedAt: null,
+          // Preserve workSessionStartedAt when a work phase completes so the
+          // celebration useEffect in PomodoroView can still read it and POST
+          // the session to /api/focus-sessions. Cleared in dismissCelebration.
+          workSessionStartedAt: completedPhase === 'work' ? s.workSessionStartedAt : null,
           showCelebration: completedPhase === 'work',
         });
         persist(get());
@@ -271,7 +274,8 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
     },
 
     dismissCelebration: () => {
-      set({ showCelebration: false });
+      set({ showCelebration: false, workSessionStartedAt: null });
+      persist(get());
     },
   };
 });

@@ -871,6 +871,7 @@ const AppSidebar: React.FC = () => {
                   showTooltip={tooltipsReady}
                   href="/pomodoro"
                   onClick={() => router.push('/pomodoro')}
+                  dataTutorial="nav-pomodoro"
                 />
                 <WorkspaceItem
                   icon={InsightsIcon}
@@ -931,6 +932,7 @@ const AppSidebar: React.FC = () => {
                   showTooltip={tooltipsReady}
                   href="/shop"
                   onClick={() => router.push('/shop')}
+                  dataTutorial="nav-shop"
                   badge={coinBalance}
                 />
                 {/* Docs — with inline collapsible tree */}
@@ -939,6 +941,7 @@ const AppSidebar: React.FC = () => {
                     isActive={isDocsPage}
                     onClick={() => router.push('/docs')}
                     className="relative"
+                    data-tutorial="nav-docs"
                   >
                     <Link href="/docs" prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
                     {isDocsPage && (
@@ -1080,6 +1083,7 @@ const AppSidebar: React.FC = () => {
             <SidebarMenuButton
               onClick={() => useAmbientStore.getState().openDrawer()}
               className="rounded-xl hover:bg-accent/50 gap-2.5"
+              data-tutorial="ambient-sounds"
             >
               <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />

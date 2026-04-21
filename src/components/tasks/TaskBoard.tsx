@@ -50,6 +50,7 @@ import { TaskListView } from './TaskListView';
 import { AnimatePresence } from 'framer-motion';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useFocusStore } from '../../store/useFocusStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { Button } from '../ui/button';
 import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
@@ -423,17 +424,18 @@ export const TaskBoard: React.FC = () => {
 
   const router = useRouter();
   const startFocusSession = useFocusStore((s) => s.startSession);
+  const preferredFocusMinutes = useSettingsStore((s) => s.focusSessionLength);
   const handleFocus = useCallback((task: Task) => {
     if (task.status === 'todo') {
       updateTask(task.id, { status: 'doing' });
     }
-    const defaultFocusTime = 25 * 60;
+    const defaultFocusTime = preferredFocusMinutes * 60;
     const initialTime = task.remainingFocusTime && task.remainingFocusTime > 0
       ? task.remainingFocusTime
       : defaultFocusTime;
     startFocusSession(task.id, task.title, initialTime);
     router.push('/focus');
-  }, [startFocusSession, router, updateTask]);
+  }, [preferredFocusMinutes, startFocusSession, router, updateTask]);
 
   const handleAutoSchedule = useCallback((task: Task) => {
     const today = format(new Date(), 'yyyy-MM-dd');

@@ -25,7 +25,10 @@ const SESSION_MILESTONES = new Set([5, 10]);
 export interface PomodoroSessionData {
   startTime: string;
   endTime: string;
+  /** Seconds the user actually worked (minutes for coin calc server-side). */
   duration: number;
+  /** Intended session length in seconds. Server uses this to enforce the 75% completion gate. */
+  plannedDurationSecs?: number;
   taskId?: string;
   taskTitle?: string;
 }
@@ -62,70 +65,84 @@ const FocusPage: React.FC = () => {
           startTime: data.startTime,
           endTime: data.endTime,
           duration: data.duration,
+          plannedDurationSecs: data.plannedDurationSecs,
           taskId: data.taskId ?? null,
           taskTitle: data.taskTitle ?? null,
           timezone: userTimezone,
         }),
       });
 
-      if (res.ok) {
-        const result: FocusSessionResult = await res.json();
-        setLastSessionId(result.id);
-        applySessionResult(result);
+      if (!res.ok) {
+        // Surface the failure instead of silently swallowing it — the user
+        // otherwise sees confetti with no balance change and no explanation.
+        toast.error('Couldn\u2019t save this focus session. Your coins and streak are unchanged — please try again.');
+        return;
+      }
 
-        // Show coin earn toast
-        if (result.coinsEarned > 0) {
-          showCoinToast(result.coinsEarned, 'Focus session completed');
-          useCoinsStore.getState().addEarnedCoins(result.coinsEarned);
-        }
+      const result: FocusSessionResult = await res.json();
+      setLastSessionId(result.id);
 
-        // Streak milestone celebration overlay
-        if (STREAK_MILESTONES.has(result.dailyStreak) || SESSION_MILESTONES.has(result.sessionStreak)) {
-          setShowStreakFire(true);
-        }
+      // Under-threshold sessions are saved for history only. No coins, no
+      // streak bump, no confetti overlay — a neutral toast explains it.
+      if (result.underThreshold) {
+        toast('Session ended early \u2014 no coins earned this time.', { duration: 3500 });
+        return;
+      }
 
-        // Queue achievement modals
-        if (result.newAchievements.length > 0) {
-          achievementQueueRef.current = result.newAchievements.map((a) => a.type);
-          setCurrentAchievement(achievementQueueRef.current[0]);
-          setAchievementOpen(true);
-        }
+      applySessionResult(result);
 
-        // Add to focus store session history (with task info)
-        const session = {
-          id: result.id,
-          taskId: data.taskId ?? '',
-          taskTitle: data.taskTitle ?? '',
-          startTime: data.startTime,
-          endTime: data.endTime,
-          duration: data.duration,
-          completed: true,
-        };
-        useFocusStore.getState().sessionHistory.unshift(session);
+      // Show coin earn toast
+      if (result.coinsEarned > 0) {
+        showCoinToast(result.coinsEarned, 'Focus session completed');
+        useCoinsStore.getState().addEarnedCoins(result.coinsEarned);
+      }
 
-        // Send push notification if tab is in background
-        if (document.hidden) {
-          const mins = Math.round(data.duration / 60);
-          fetch('/api/push/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: 'Focus session complete',
-              body: `${mins} min session${data.taskTitle ? ` · ${data.taskTitle}` : ''} finished`,
-              tag: 'focus-complete',
-              url: '/focus',
-              notificationType: 'focus_complete',
-            }),
-          }).catch(() => { /* fire-and-forget */ });
-        }
+      // Streak milestone celebration overlay
+      if (STREAK_MILESTONES.has(result.dailyStreak) || SESSION_MILESTONES.has(result.sessionStreak)) {
+        setShowStreakFire(true);
+      }
 
-        // Prompt task completion if a task was linked
-        if (data.taskId && data.taskTitle) {
-          promptTaskCompletion(data.taskId, data.taskTitle);
-        }
+      // Queue achievement modals
+      if (result.newAchievements.length > 0) {
+        achievementQueueRef.current = result.newAchievements.map((a) => a.type);
+        setCurrentAchievement(achievementQueueRef.current[0]);
+        setAchievementOpen(true);
+      }
+
+      // Add to focus store session history (with task info)
+      const session = {
+        id: result.id,
+        taskId: data.taskId ?? '',
+        taskTitle: data.taskTitle ?? '',
+        startTime: data.startTime,
+        endTime: data.endTime,
+        duration: data.duration,
+        completed: true,
+      };
+      useFocusStore.getState().sessionHistory.unshift(session);
+
+      // Send push notification if tab is in background
+      if (document.hidden) {
+        const mins = Math.round(data.duration / 60);
+        fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'Focus session complete',
+            body: `${mins} min session${data.taskTitle ? ` · ${data.taskTitle}` : ''} finished`,
+            tag: 'focus-complete',
+            url: '/focus',
+            notificationType: 'focus_complete',
+          }),
+        }).catch(() => { /* fire-and-forget */ });
+      }
+
+      // Prompt task completion if a task was linked
+      if (data.taskId && data.taskTitle) {
+        promptTaskCompletion(data.taskId, data.taskTitle);
       }
     } catch {
-      // Fire-and-forget
+      toast.error('Couldn\u2019t save this focus session. Check your connection and try again.');
     }
   }, [applySessionResult, promptTaskCompletion, userTimezone]);
 

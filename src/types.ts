@@ -195,6 +195,8 @@ export interface FocusSessionResult {
   dailyStreak: number;
   sessionStreak: number;
   newAchievements: Pick<Achievement, 'type' | 'unlockedAt'>[];
+  /** True when the session ran for < 75% of its planned duration — no coins, no streak, no achievements. */
+  underThreshold?: boolean;
 }
 
 export type MoodValue = 'great' | 'good' | 'okay' | 'tired' | 'bad';

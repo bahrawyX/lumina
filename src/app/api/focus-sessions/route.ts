@@ -73,6 +73,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid timestamps' }, { status: 400 });
   }
 
+  // Wall-clock elapsed is the source of truth: the client cannot lie about
+  // how much real time has passed.
+  const wallSeconds = (endTs.getTime() - startTs.getTime()) / 1000;
+
+  // Planned duration is optional — only the Pomodoro flow sends it. The
+  // free-form focus timer and stopwatch leave it unset and bypass the
+  // completion threshold (there is no "planned" target to compare against).
+  const plannedDurationSecs = typeof body.plannedDurationSecs === 'number' && body.plannedDurationSecs > 0
+    ? body.plannedDurationSecs
+    : null;
+
+  // 75% completion gate — only rewards sessions that actually ran their course.
+  // A user who starts a 25-min Pomodoro and stops it after 10 seconds must not
+  // earn coins, streak credit, or achievements.
+  const underThreshold = plannedDurationSecs !== null && wallSeconds < 0.75 * plannedDurationSecs;
+
   const durationMinutes = Math.max(1, Math.round(duration / 60));
   const timezone = typeof body.timezone === 'string' ? body.timezone : 'UTC';
 
@@ -98,19 +114,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Compute streak + coin updates
+    // Compute streak + coin updates — skipped entirely when under threshold so
+    // a fractional session cannot move the streak forward or award coins.
     const previousCoins = userRow.coins;
-    const streakUpdate = computeStreakUpdate(
-      {
-        ...userRow,
-        lastFocusDate: userRow.lastFocusDate ?? null,
-        lastSessionAt: userRow.lastSessionAt ?? null,
-      },
-      durationMinutes,
-      timezone,
-    );
+    const streakUpdate = underThreshold
+      ? null
+      : computeStreakUpdate(
+          {
+            ...userRow,
+            lastFocusDate: userRow.lastFocusDate ?? null,
+            lastSessionAt: userRow.lastSessionAt ?? null,
+          },
+          durationMinutes,
+          timezone,
+        );
 
-    const coinsEarned = streakUpdate.coins - previousCoins;
+    const coinsEarned = streakUpdate ? streakUpdate.coins - previousCoins : 0;
 
     // Resolve task title before the transaction (read-only lookup)
     const rawTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
@@ -141,6 +160,12 @@ export async function POST(req: NextRequest) {
           coinsEarned,
         })
         .returning({ id: focusSessions.id });
+
+      // Under-threshold sessions are logged for history only — no streak bump,
+      // no coin award, no achievement unlocks.
+      if (!streakUpdate) {
+        return { sessionId: row.id, newAchievements: [] as { type: string; unlockedAt: string }[] };
+      }
 
       // Update user streak + coin fields
       await tx
@@ -188,45 +213,50 @@ export async function POST(req: NextRequest) {
 
     // Fire-and-forget: additional coin awards from the new earn rules engine.
     // These are ON TOP of the existing streak-based 1 coin/min from computeStreakUpdate.
-    void (async () => {
-      try {
-        // Lookup task priority for bonus
-        let taskPriority: string | undefined;
-        if (rawTaskId) {
-          const [t] = await db.select({ priority: tasks.priority }).from(tasks).where(eq(tasks.id, rawTaskId)).limit(1);
-          taskPriority = t?.priority;
-        }
-        // Check for focus boost consumable
-        const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
-        const consumables = (u?.consumables as Record<string, number>) ?? {};
-        const hasFocusBoost = (consumables.focusBoost ?? 0) > 0;
-
-        const awards = focusSessionAwards(durationMinutes, taskPriority, false, hasFocusBoost);
-        const streakAwards = streakMilestoneAwards(streakUpdate.dailyStreak, streakUpdate.sessionStreak);
-        const allAwards = [...awards, ...streakAwards];
-
-        if (allAwards.length > 0) {
-          await awardCoinsBatch(userId, allAwards);
-          // Decrement focus boost if used
-          if (hasFocusBoost) {
-            const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
-            updated.focusBoost = Math.max(0, (consumables.focusBoost ?? 0) - 1);
-            await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
+    // Skipped when under threshold — no bonus rewards for partial sessions.
+    if (streakUpdate) {
+      const streakSnapshot = streakUpdate;
+      void (async () => {
+        try {
+          // Lookup task priority for bonus
+          let taskPriority: string | undefined;
+          if (rawTaskId) {
+            const [t] = await db.select({ priority: tasks.priority }).from(tasks).where(eq(tasks.id, rawTaskId)).limit(1);
+            taskPriority = t?.priority;
           }
+          // Check for focus boost consumable
+          const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
+          const consumables = (u?.consumables as Record<string, number>) ?? {};
+          const hasFocusBoost = (consumables.focusBoost ?? 0) > 0;
+
+          const awards = focusSessionAwards(durationMinutes, taskPriority, false, hasFocusBoost);
+          const streakAwards = streakMilestoneAwards(streakSnapshot.dailyStreak, streakSnapshot.sessionStreak);
+          const allAwards = [...awards, ...streakAwards];
+
+          if (allAwards.length > 0) {
+            await awardCoinsBatch(userId, allAwards);
+            // Decrement focus boost if used
+            if (hasFocusBoost) {
+              const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
+              updated.focusBoost = Math.max(0, (consumables.focusBoost ?? 0) - 1);
+              await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
+            }
+          }
+        } catch (e) {
+          console.error('[focus-sessions] additional coin awards failed', e);
         }
-      } catch (e) {
-        console.error('[focus-sessions] additional coin awards failed', e);
-      }
-    })();
+      })();
+    }
 
     return NextResponse.json(
       {
         id: result.sessionId,
         coinsEarned,
-        newCoins: streakUpdate.coins,
-        dailyStreak: streakUpdate.dailyStreak,
-        sessionStreak: streakUpdate.sessionStreak,
+        newCoins: streakUpdate ? streakUpdate.coins : userRow.coins,
+        dailyStreak: streakUpdate ? streakUpdate.dailyStreak : userRow.dailyStreak,
+        sessionStreak: streakUpdate ? streakUpdate.sessionStreak : userRow.sessionStreak,
         newAchievements: result.newAchievements,
+        ...(underThreshold ? { underThreshold: true } : {}),
       },
       { status: 201 },
     );

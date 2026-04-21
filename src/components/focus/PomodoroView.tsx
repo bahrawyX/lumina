@@ -484,10 +484,13 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Sync work minutes from settings store on mount
+  // Sync work minutes from the settings store whenever the stored preference
+  // changes (e.g. after onboarding or a PATCH /api/users/preferences hydration).
+  // We only overwrite while the timer is idle so an in-progress session is
+  // never disrupted by a late preference update.
   useEffect(() => {
-    const current = usePomodoroStore.getState().workMins;
-    if (current === 25 && focusSessionLength !== 25) {
+    const { workMins, isRunning } = usePomodoroStore.getState();
+    if (!isRunning && workMins !== focusSessionLength) {
       usePomodoroStore.getState().setWorkMins(focusSessionLength);
     }
   }, [focusSessionLength]);
@@ -528,6 +531,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           startTime: workSessionStartedAt,
           endTime: new Date().toISOString(),
           duration: workMins * 60,
+          plannedDurationSecs: workMins * 60,
           taskId: focusTask?.id,
           taskTitle: focusTask?.title,
         });
@@ -617,6 +621,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         startTime: workSessionStartedAt,
         endTime: new Date().toISOString(),
         duration: elapsed,
+        plannedDurationSecs: workMins * 60,
         taskId: focusTask.id,
         taskTitle: focusTask.title,
       });
@@ -626,7 +631,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     storeReset();
     setDisplayElapsed(0);
     setFocusTask(null);
-  }, [focusTask, displayElapsed, workSessionStartedAt, updateTask, onSessionComplete, storeReset]);
+  }, [focusTask, displayElapsed, workMins, workSessionStartedAt, updateTask, onSessionComplete, storeReset]);
 
   // Interrupt: "Not yet"
   const handleInterruptPause = useCallback(() => {
@@ -647,6 +652,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         startTime: workSessionStartedAt,
         endTime: new Date().toISOString(),
         duration: elapsed,
+        plannedDurationSecs: workDurationSecs,
         taskId: focusTask.id,
         taskTitle: focusTask.title,
       });
@@ -693,6 +699,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
+        data-tutorial="pomodoro-view"
         className="relative w-full max-w-[900px] rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-[1fr_280px] min-h-[520px]"
       >
         {/* ── LEFT: Timer Column ────────────────────────────────────── */}

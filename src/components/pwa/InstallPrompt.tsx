@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 
@@ -11,44 +12,65 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────
+// ── Storage keys ───────────────────────────────────────────────────────────
+// Snooze holds an absolute timestamp (ms since epoch). If Date.now() < snooze,
+// the prompt stays hidden. "Not now" writes now + 3 days. Installed is a
+// permanent flag set on accept or on the window `appinstalled` event.
 
-const STORAGE_KEY = 'lumina-install-prompt';
-const DISMISSED_FLAG = 'lumina-pwa-dismissed';
-const MIN_VISITS = 3;
+const SNOOZE_KEY = 'lumina-pwa-snoozed';
+const INSTALLED_KEY = 'lumina-pwa-installed';
+const SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
+const DWELL_MS = 30 * 1000;
+const MIN_ROUTES = 2;
 
-function getInstallData(): { visits: number; dismissed: boolean; installed: boolean } {
-  if (typeof window === 'undefined') return { visits: 0, dismissed: false, installed: false };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return { visits: 0, dismissed: false, installed: false };
+// Stash the BIP event before React mounts — Chrome fires it early and will
+// not fire again this session.
+let deferredBip: BeforeInstallPromptEvent | null = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredBip = e as BeforeInstallPromptEvent;
+  });
+  window.addEventListener('appinstalled', () => {
+    try { localStorage.setItem(INSTALLED_KEY, 'true'); } catch { /* ignore */ }
+    deferredBip = null;
+  });
 }
 
-function saveInstallData(data: { visits: number; dismissed: boolean; installed: boolean }) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch { /* ignore */ }
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-function isDismissed(): boolean {
+function isInstalled(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return localStorage.getItem(DISMISSED_FLAG) === 'true';
+    if (localStorage.getItem(INSTALLED_KEY) === 'true') return true;
+  } catch { /* ignore */ }
+  return false;
+}
+
+function isSnoozed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem(SNOOZE_KEY);
+    if (!raw) return false;
+    const until = Number(raw);
+    if (!Number.isFinite(until)) return false;
+    return Date.now() < until;
   } catch {
     return false;
   }
 }
 
-function markDismissed(): void {
-  if (typeof window === 'undefined') return;
+function snoozeFor3Days(): void {
   try {
-    localStorage.setItem(DISMISSED_FLAG, 'true');
+    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
   } catch { /* ignore */ }
 }
 
-// ── Detect iOS ─────────────────────────────────────────────────────────────
+function markInstalled(): void {
+  try {
+    localStorage.setItem(INSTALLED_KEY, 'true');
+  } catch { /* ignore */ }
+}
 
 function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -67,62 +89,99 @@ function isStandalone(): boolean {
 
 export default function InstallPrompt() {
   const [show, setShow] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const pathname = usePathname();
+  const routesSeen = useRef<Set<string>>(new Set());
+  const mountedAt = useRef<number>(Date.now());
+  const readyRef = useRef<boolean>(false);
+
+  // Track distinct routes visited this session (for the "2+ routes" gate).
+  useEffect(() => {
+    if (pathname) routesSeen.current.add(pathname);
+  }, [pathname]);
 
   useEffect(() => {
-    // Fast-path: once dismissed, never show again for this browser profile.
-    if (isDismissed()) return;
+    // Eligibility gate — evaluated on mount and re-evaluated by tryShow().
+    if (isInstalled()) return;
+    if (isStandalone()) { markInstalled(); return; }
+    if (isSnoozed()) return;
 
-    // Already installed — never show
-    if (isStandalone()) return;
+    // On iOS there's no beforeinstallprompt — show the Share-sheet guide once
+    // the dwell/route threshold is met.
+    const iOSReady = isIOS();
 
-    // Track visit count
-    const data = getInstallData();
-    if (data.dismissed || data.installed) return;
+    const tryShow = () => {
+      if (readyRef.current) return;
+      if (isInstalled() || isStandalone() || isSnoozed()) return;
+      const dwellOk = Date.now() - mountedAt.current >= DWELL_MS;
+      const routesOk = routesSeen.current.size >= MIN_ROUTES;
+      if (!dwellOk && !routesOk) return;
 
-    data.visits += 1;
-    saveInstallData(data);
-
-    if (data.visits < MIN_VISITS) return;
-
-    // iOS — show custom instructions
-    if (isIOS()) {
-      setShowIOSGuide(true);
-      setShow(true);
-      return;
-    }
-
-    // Listen for beforeinstallprompt (Chrome, Edge, etc.)
-    // Chrome can re-fire this event, so guard against the dismissed flag
-    // that was set earlier this session to prevent the prompt reappearing
-    // after the user chose "Not now".
-    const handler = (e: Event) => {
-      e.preventDefault();
-      if (isDismissed()) return;
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setShow(true);
+      if (iOSReady) {
+        readyRef.current = true;
+        setShowIOSGuide(true);
+        setShow(true);
+        return;
+      }
+      if (deferredBip) {
+        readyRef.current = true;
+        setShow(true);
+      }
     };
 
-    window.addEventListener('beforeinstallprompt', handler);
+    // Re-check on BIP, on dwell timeout, and on route changes.
+    const onBip = (e: Event) => {
+      e.preventDefault();
+      deferredBip = e as BeforeInstallPromptEvent;
+      tryShow();
+    };
+    const onInstalled = () => {
+      markInstalled();
+      deferredBip = null;
+      setShow(false);
+    };
+    window.addEventListener('beforeinstallprompt', onBip);
+    window.addEventListener('appinstalled', onInstalled);
+    const dwellTimer = window.setTimeout(tryShow, DWELL_MS);
+    const routeTimer = window.setInterval(tryShow, 500);
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    // First attempt immediately (covers reloads where BIP fired pre-mount
+    // and the user already meets route/dwell criteria from a previous visit).
+    tryShow();
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBip);
+      window.removeEventListener('appinstalled', onInstalled);
+      window.clearTimeout(dwellTimer);
+      window.clearInterval(routeTimer);
+    };
   }, []);
 
   const handleInstall = useCallback(async () => {
-    if (!deferredPrompt) return;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      saveInstallData({ ...getInstallData(), installed: true });
+    const bip = deferredBip;
+    if (!bip) return;
+    try {
+      await bip.prompt();
+      const { outcome } = await bip.userChoice;
+      if (outcome === 'accepted') {
+        markInstalled();
+      } else {
+        snoozeFor3Days();
+      }
+    } catch {
+      snoozeFor3Days();
     }
-    setDeferredPrompt(null);
+    deferredBip = null;
     setShow(false);
-  }, [deferredPrompt]);
+  }, []);
 
-  const handleDismiss = useCallback(() => {
-    saveInstallData({ ...getInstallData(), dismissed: true });
-    markDismissed();
+  const handleSnooze = useCallback(() => {
+    snoozeFor3Days();
+    setShow(false);
+  }, []);
+
+  const handleIOSGotIt = useCallback(() => {
+    snoozeFor3Days();
     setShow(false);
   }, []);
 
@@ -158,7 +217,7 @@ export default function InstallPrompt() {
                   </div>
                 </div>
                 <div className="flex justify-end mt-3">
-                  <Button variant="ghost" size="sm" onClick={handleDismiss}>
+                  <Button variant="ghost" size="sm" onClick={handleIOSGotIt}>
                     Got it
                   </Button>
                 </div>
@@ -180,7 +239,7 @@ export default function InstallPrompt() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-3">
-                  <Button variant="ghost" size="sm" onClick={handleDismiss}>
+                  <Button variant="ghost" size="sm" onClick={handleSnooze}>
                     Not now
                   </Button>
                   <Button size="sm" onClick={() => void handleInstall()}>

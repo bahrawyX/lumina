@@ -175,6 +175,7 @@ export const DailyBriefCard: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6, height: 0 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
+        data-tutorial="daily-brief"
         className="mx-4 mt-4 mb-2 rounded-2xl border border-border/60 bg-card shadow-sm"
       >
         <div className="flex items-center gap-3 px-4 py-3">
