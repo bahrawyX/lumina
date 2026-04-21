@@ -221,7 +221,7 @@ const FocusPage: React.FC = () => {
         </div>
 
         {/* forceMount keeps timers alive across tab switches; hidden via data-[state=inactive] */}
-        <TabsContent value="focus" forceMount className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
+        <TabsContent value="focus" forceMount className="flex-1 min-h-0 mt-0 overflow-y-auto data-[state=inactive]:hidden">
           <FocusSessionView />
         </TabsContent>
 

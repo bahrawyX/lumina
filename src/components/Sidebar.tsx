@@ -1563,6 +1563,23 @@ const InlineDocItem: React.FC<{ node: TreeNode; depth: number }> = ({ node, dept
             >
               {node.title}
             </Link>
+            {node.isPinned && (
+              <span
+                className="flex-shrink-0 text-primary/60 group-hover:hidden"
+                title="Pinned"
+                aria-label="Pinned"
+              >
+                <svg
+                  width={9}
+                  height={9}
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M16 3a1 1 0 0 1 1 1v1.586l2.707 2.707A1 1 0 0 1 19 10h-5v7l-2 4-2-4v-7H5a1 1 0 0 1-.707-1.707L7 5.586V4a1 1 0 0 1 1-1h8Z" />
+                </svg>
+              </span>
+            )}
             <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"

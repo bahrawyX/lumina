@@ -14,6 +14,7 @@ interface BeforeInstallPromptEvent extends Event {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'lumina-install-prompt';
+const DISMISSED_FLAG = 'lumina-pwa-dismissed';
 const MIN_VISITS = 3;
 
 function getInstallData(): { visits: number; dismissed: boolean; installed: boolean } {
@@ -28,6 +29,22 @@ function getInstallData(): { visits: number; dismissed: boolean; installed: bool
 function saveInstallData(data: { visits: number; dismissed: boolean; installed: boolean }) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
+function isDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(DISMISSED_FLAG) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function markDismissed(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DISMISSED_FLAG, 'true');
   } catch { /* ignore */ }
 }
 
@@ -54,6 +71,9 @@ export default function InstallPrompt() {
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   useEffect(() => {
+    // Fast-path: once dismissed, never show again for this browser profile.
+    if (isDismissed()) return;
+
     // Already installed — never show
     if (isStandalone()) return;
 
@@ -74,8 +94,12 @@ export default function InstallPrompt() {
     }
 
     // Listen for beforeinstallprompt (Chrome, Edge, etc.)
+    // Chrome can re-fire this event, so guard against the dismissed flag
+    // that was set earlier this session to prevent the prompt reappearing
+    // after the user chose "Not now".
     const handler = (e: Event) => {
       e.preventDefault();
+      if (isDismissed()) return;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShow(true);
     };
@@ -98,6 +122,7 @@ export default function InstallPrompt() {
 
   const handleDismiss = useCallback(() => {
     saveInstallData({ ...getInstallData(), dismissed: true });
+    markDismissed();
     setShow(false);
   }, []);
 

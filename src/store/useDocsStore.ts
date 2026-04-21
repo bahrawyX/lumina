@@ -107,18 +107,19 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
     if (res.ok === false) {
       if (res.reason === 'unauthorized') {
-        toast.error('Sign in to create docs', {
+        toast.error("Couldn't create document", {
           description: 'Your session has expired. Please sign in again.',
         });
       } else if (res.reason === 'network') {
-        toast.error("Couldn't create doc", { description: 'Check your connection and try again.' });
+        toast.error("Couldn't create document", { description: 'Check your connection and try again.' });
       } else {
-        toast.error("Couldn't create doc", { description: `Server error (${res.status ?? 'unknown'})` });
+        toast.error("Couldn't create document", { description: `Server error (${res.status ?? 'unknown'})` });
       }
       return null;
     }
 
     const result = res.doc;
+    toast.success('Document created');
 
     const node: DocTreeNode = {
       id: result.id,
@@ -205,7 +206,20 @@ export const useDocsStore = create<DocsState>((set, get) => ({
       ),
     }));
 
-    docsPersistence.updateOne(id, { isPinned: pinned });
+    void docsPersistence
+      .updateOne(id, { isPinned: pinned })
+      .then(() => {
+        toast.success(pinned ? 'Pinned' : 'Unpinned');
+      })
+      .catch(() => {
+        // Roll back optimistic change on failure
+        set((state) => ({
+          docs: state.docs.map((d) =>
+            d.id === id ? { ...d, isPinned: !pinned } : d
+          ),
+        }));
+        toast.error(pinned ? "Couldn't pin" : "Couldn't unpin");
+      });
   },
 
   moveDoc: (id, parentId, position) => {

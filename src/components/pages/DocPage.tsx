@@ -165,6 +165,30 @@ export default function DocPage() {
 
       {/* Content area */}
       <div className="flex-1 px-4 md:px-8 py-6 md:py-10 max-w-3xl mx-auto w-full">
+        {/* Back to docs — small editorial link, mono-styled */}
+        <button
+          type="button"
+          onClick={() => router.push('/docs')}
+          className="mb-3 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 hover:text-foreground transition-colors"
+          aria-label="Back to Docs"
+        >
+          <svg
+            width={10}
+            height={10}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Docs
+        </button>
+
         {/* Breadcrumb + mobile menu */}
         <div className="flex items-center justify-between">
           <DocBreadcrumb docId={docId} />

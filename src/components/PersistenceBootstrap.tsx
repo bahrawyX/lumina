@@ -99,6 +99,44 @@ export default function PersistenceBootstrap() {
     }
   }, [session?.user?.id]);
 
+  // Cross-user data-isolation guard.
+  // If the authenticated user changed (e.g. sign-out → sign-in as someone
+  // else on the same browser), clear every persisted `lumina-*` store so
+  // the in-memory Zustand snapshots can't leak one user's data to the
+  // next. We then reload so each store re-initialises with the new user's
+  // canonical data from the DB.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const currentId = session?.user?.id;
+    if (!currentId) return; // wait for session to resolve
+
+    const USER_ID_KEY = 'lumina-user-id';
+    const storedId = localStorage.getItem(USER_ID_KEY);
+
+    if (!storedId) {
+      // First sign-in on this browser — stamp it and carry on.
+      localStorage.setItem(USER_ID_KEY, currentId);
+      return;
+    }
+
+    if (storedId === currentId) return;
+
+    // Different user — nuke every `lumina-*` key (except the id stamp
+    // itself) and reload so the fresh session picks up a clean slate.
+    const keysToClear: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('lumina-') && key !== USER_ID_KEY) {
+        keysToClear.push(key);
+      }
+    }
+    keysToClear.forEach((key) => {
+      try { localStorage.removeItem(key); } catch { /* ignore */ }
+    });
+    localStorage.setItem(USER_ID_KEY, currentId);
+    window.location.reload();
+  }, [session?.user?.id]);
+
   useEffect(() => {
     // Guard against double-run in StrictMode / remounts
     if (hasRun.current) return;
