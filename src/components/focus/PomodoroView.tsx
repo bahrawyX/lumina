@@ -403,7 +403,7 @@ const TaskSelector: React.FC<{
           className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
         />
         {open && filtered.length > 0 && (
-          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-y-auto max-h-48">
             {filtered.map((t) => (
               <button
                 key={t.id}

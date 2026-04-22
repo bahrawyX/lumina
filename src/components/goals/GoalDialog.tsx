@@ -205,7 +205,7 @@ export const GoalDialog: React.FC<{
         {/* Color */}
         <div>
           <Label className="text-xs mb-1.5">Color</Label>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 py-1.5 px-0.5">
             {GOAL_COLORS.map(c => {
               const cls = GOAL_COLOR_MAP[c];
               const selected = color === c;
@@ -214,7 +214,7 @@ export const GoalDialog: React.FC<{
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full transition-all ${
+                  className={`w-7 h-7 rounded-full transition-all flex-shrink-0 ${
                     selected ? 'ring-2 ring-offset-2 ring-offset-card scale-110' : 'opacity-70 hover:opacity-100 hover:scale-105'
                   }`}
                   style={{

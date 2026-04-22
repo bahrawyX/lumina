@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, lazy, Suspense } from 'react';
+import React, { useMemo, useState, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoalsStore, selectActiveGoals } from '@/store/useGoalsStore';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,44 @@ const GoalCard: React.FC<{
   const daysLeft = differenceInDays(endDate, new Date());
   const isOverdue = isPast(endDate) && goal.status === 'active';
 
+  const addTarget = useGoalsStore(s => s.addTarget);
+  const updateTargetProgress = useGoalsStore(s => s.updateTargetProgress);
+
+  // Auto-created progress target detection
+  const manualTarget = goal.targets.length === 1 && goal.targets[0].type === 'percentage' && goal.targets[0].title === 'Progress'
+    ? goal.targets[0]
+    : null;
+  const canEditProgress = goal.targets.length === 0 || manualTarget !== null;
+
+  const [editingProgress, setEditingProgress] = useState(false);
+  const [progressDraft, setProgressDraft] = useState(0);
+  const draftRef = useRef(progressDraft);
+  draftRef.current = progressDraft;
+
+  const handleProgressClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canEditProgress) return;
+    setProgressDraft(progress);
+    setEditingProgress(true);
+  };
+
+  const commitProgress = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProgress(false);
+    const value = draftRef.current;
+    if (manualTarget) {
+      updateTargetProgress(goal.id, manualTarget.id, value);
+    } else {
+      const target = addTarget(goal.id, { title: 'Progress', type: 'percentage', targetValue: 100 });
+      if (target) updateTargetProgress(goal.id, target.id, value);
+    }
+  };
+
+  const cancelProgress = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProgress(false);
+  };
+
   return (
     <motion.div
       layout
@@ -65,12 +103,12 @@ const GoalCard: React.FC<{
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4, scale: 0.97 }}
       transition={{ duration: 0.2 }}
-      className={`card-lift group relative rounded-xl border border-border/70 bg-card p-4 cursor-pointer border-l-[3px] ${colors.border} focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none`}
-      onClick={() => onSelect(goal)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(goal); } }}
+      className={`card-lift group relative rounded-xl border-2 ${colors.border} bg-card p-4 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none`}
+      onClick={() => !editingProgress && onSelect(goal)}
+      onKeyDown={(e) => { if (!editingProgress && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(goal); } }}
       tabIndex={0}
       role="button"
-      aria-label={`Goal: ${goal.title}, ${computeGoalProgress(goal)}% complete`}
+      aria-label={`Goal: ${goal.title}, ${progress}% complete`}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -111,22 +149,62 @@ const GoalCard: React.FC<{
       </div>
 
       {/* Progress */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`Goal progress: ${progress}%`}>
-          <motion.div
-            className="h-full rounded-full bg-primary"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
-          />
+      {editingProgress ? (
+        <div className="mb-3" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-2.5 mb-2">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={progressDraft}
+              onChange={e => setProgressDraft(Number(e.target.value))}
+              className="flex-1 h-1.5 accent-primary cursor-pointer"
+            />
+            <span className="text-sm font-bold tabular-nums text-foreground w-10 text-right">{progressDraft}%</span>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={cancelProgress}
+              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={commitProgress}
+              className="text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
+            >
+              Save
+            </button>
+          </div>
         </div>
-        <span className="text-sm font-bold tabular-nums text-foreground">{progress}%</span>
-      </div>
+      ) : (
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`Goal progress: ${progress}%`}>
+            <motion.div
+              className="h-full rounded-full bg-primary"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleProgressClick}
+            disabled={!canEditProgress}
+            title={canEditProgress ? 'Click to set progress' : undefined}
+            className={`text-sm font-bold tabular-nums text-foreground transition-colors ${canEditProgress ? 'hover:text-primary cursor-pointer' : 'cursor-default'}`}
+          >
+            {progress}%
+          </button>
+        </div>
+      )}
 
-      {/* Compact targets */}
-      {goal.targets.length > 0 && (
+      {/* Compact targets — hide manual "Progress" target since it's shown via the bar */}
+      {goal.targets.filter(t => !(t.title === 'Progress' && t.type === 'percentage')).length > 0 && (
         <div className="space-y-1.5 mb-3">
-          {goal.targets.slice(0, 3).map(target => {
+          {goal.targets.filter(t => !(t.title === 'Progress' && t.type === 'percentage')).slice(0, 3).map(target => {
             const tp = computeTargetProgress(target);
             return (
               <div key={target.id} className="flex items-center gap-2">
