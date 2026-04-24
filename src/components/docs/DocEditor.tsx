@@ -21,8 +21,10 @@ import { useTheme } from '@/components/theme-provider';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import '@blocknote/shadcn/style.css';
 import type { Block, BlockNoteEditor } from '@blocknote/core';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
+import AIPromptInput from './AIPromptInput';
 
 /** Loose shape of BlockNote document blocks at runtime */
 interface BlockLike {
@@ -66,6 +68,13 @@ const ColumnsIcon = () => (
   <svg {...iconProps}>
     <rect x="3" y="3" width="7" height="18" rx="1" />
     <rect x="14" y="3" width="7" height="18" rx="1" />
+  </svg>
+);
+const AIIcon = () => (
+  <svg {...iconProps}>
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <path d="M8 10h8" />
+    <path d="M8 14h5" />
   </svg>
 );
 
@@ -180,10 +189,22 @@ function getLuminaSlashMenuItems(
   callbacks: {
     openColumnPicker: () => void;
     createTask: (docId: string) => Promise<string | null>;
+    openAIPrompt: () => void;
     docId: string;
   },
 ): DefaultReactSuggestionItem[] {
   const defaults = getDefaultReactSlashMenuItems(editor);
+
+  const aiItem: DefaultReactSuggestionItem = {
+    title: 'Ask AI',
+    subtext: 'Generate with AI',
+    onItemClick: () => {
+      callbacks.openAIPrompt();
+    },
+    aliases: ['ai', 'ask', 'generate', 'assist', 'gemini'],
+    group: 'Lumina',
+    icon: <AIIcon />,
+  };
 
   const taskItem: DefaultReactSuggestionItem = {
     title: 'Task',
@@ -254,7 +275,7 @@ function getLuminaSlashMenuItems(
     icon: <DividerIcon />,
   };
 
-  return [...defaults, columnsItem, taskItem, calloutItem, dividerItem];
+  return [...defaults, aiItem, columnsItem, taskItem, calloutItem, dividerItem];
 }
 
 // ── Custom slash menu component ─────────────────────────────────────────────
@@ -351,6 +372,15 @@ export default function DocEditor({ docId, initialContent, onChange, className }
   const [columnPickerOpen, setColumnPickerOpen] = useState(false);
   const [columnPickerPos, setColumnPickerPos] = useState<{ top: number; left: number } | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
+
+  // ── AI prompt state ─────────────────────────────────────────────────────
+  // anchorBlockId: captured at the moment the slash command fires so that if
+  // the user keeps typing elsewhere before submit, we still anchor the
+  // response where they asked.
+  const [aiPrompt, setAIPrompt] = useState<{
+    position: { top: number; left: number };
+    anchorBlockId: string;
+  } | null>(null);
 
   // Track previous blocks for deletion detection
   const previousBlocksRef = useRef<BlockLike[]>([]);
@@ -544,9 +574,143 @@ export default function DocEditor({ docId, initialContent, onChange, className }
     };
   }, [columnPickerOpen]);
 
+  // ── AI prompt: open at current cursor block, stream result ─────────────
+  const openAIPrompt = useCallback(() => {
+    const block = editor.getTextCursorPosition().block;
+    const blockId = block.id;
+    // Defer so BlockNote's slash-menu close/teardown finishes before we read
+    // DOM rects. Without the defer, `[data-id=...]` often hasn't settled.
+    setTimeout(() => {
+      let top = 0;
+      let left = 0;
+      const el = document.querySelector(`[data-id="${blockId}"]`) as HTMLElement | null;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        top = rect.bottom + 4;
+        left = rect.left;
+      } else {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const rect = sel.getRangeAt(0).getBoundingClientRect();
+          top = rect.bottom + 4;
+          left = rect.left;
+        }
+      }
+      setAIPrompt({ position: { top, left }, anchorBlockId: blockId });
+    }, 30);
+  }, [editor]);
+
+  const cancelAIPrompt = useCallback(() => {
+    setAIPrompt(null);
+  }, []);
+
+  const handleAISubmit = useCallback(
+    async (prompt: string) => {
+      const state = aiPrompt;
+      setAIPrompt(null);
+      if (!state) return;
+
+      // Re-resolve the block at submit time — `getBlock` returns undefined if
+      // the user deleted the anchor since opening the prompt.
+      const anchor = editor.getBlock(state.anchorBlockId);
+      if (!anchor) {
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      // Insert a placeholder right after the anchor that doubles as a
+      // "thinking" indicator. We'll overwrite its content with streamed text
+      // as chunks arrive; on error/abort we remove it so the editor never
+      // ends up with a stale "Generating…" block.
+      const placeholderBlocks = editor.insertBlocks(
+        [
+          {
+            type: 'paragraph' as const,
+            content: [
+              { type: 'text' as const, text: '✨ Generating…', styles: { italic: true } },
+            ],
+          } as any,
+        ],
+        anchor,
+        'after',
+      );
+      const placeholder = placeholderBlocks[0];
+      if (!placeholder) {
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      const removePlaceholder = () => {
+        try { editor.removeBlocks([placeholder]); } catch { /* best-effort */ }
+      };
+
+      // Pass current doc text as context so the model can ground its answer.
+      const context = extractPlainText(editor.document as Block[]);
+
+      let res: Response;
+      try {
+        res = await fetch('/api/docs/ai-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ prompt, context }),
+        });
+      } catch {
+        removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      if (res.status === 429) {
+        removePlaceholder();
+        toast.error('AI assist limit reached. Try again in a minute.');
+        return;
+      }
+      if (!res.ok || !res.body) {
+        removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          if (!chunk) continue;
+          accumulated += chunk;
+          try {
+            editor.updateBlock(placeholder, {
+              type: 'paragraph' as const,
+              content: [{ type: 'text' as const, text: accumulated, styles: {} }],
+            } as any);
+          } catch {
+            /* block may have been removed by the user — bail silently */
+            return;
+          }
+        }
+      } catch {
+        if (!accumulated.trim()) removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      // Stream closed with no content: don't leave an empty placeholder.
+      if (!accumulated.trim()) {
+        removePlaceholder();
+        toast.error('AI assist unavailable');
+      }
+    },
+    [aiPrompt, editor],
+  );
+
   const slashMenuCallbacks = useMemo(
-    () => ({ openColumnPicker, createTask, docId }),
-    [openColumnPicker, createTask, docId],
+    () => ({ openColumnPicker, createTask, openAIPrompt, docId }),
+    [openColumnPicker, createTask, openAIPrompt, docId],
   );
 
   const slashMenuItems = useMemo(
@@ -579,6 +743,15 @@ export default function DocEditor({ docId, initialContent, onChange, className }
           }}
         />
       </BlockNoteView>
+
+      {/* AI prompt — floating inline input at cursor */}
+      {aiPrompt && (
+        <AIPromptInput
+          position={aiPrompt.position}
+          onSubmit={handleAISubmit}
+          onCancel={cancelAIPrompt}
+        />
+      )}
 
       {/* Column ratio picker popover */}
       {columnPickerOpen && (

@@ -47,6 +47,11 @@ export default function DocPage() {
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  // Tracks whether the current blur was triggered by an Escape-revert. The
+  // blur fires synchronously from e.currentTarget.blur(), before React has
+  // flushed the setTitle(previous-value) update, so handleTitleBlur would
+  // otherwise see the stale (user-typed) value and persist it.
+  const skipNextBlurRef = useRef(false);
 
   // Fetch full doc on mount
   useEffect(() => {
@@ -70,22 +75,43 @@ export default function DocPage() {
     return () => { cancelled = true; };
   }, [docId, setOpenDocContent, router]);
 
-  // Save title on blur
+  // Save title on blur. Empty input reverts to the previous value so the user
+  // never ends up staring at an empty title that wasn't persisted.
   const handleTitleBlur = useCallback(() => {
+    if (skipNextBlurRef.current) {
+      skipNextBlurRef.current = false;
+      if (openDocContent) setTitle(openDocContent.title);
+      return;
+    }
+    if (!openDocContent) return;
     const trimmed = title.trim();
-    if (trimmed && openDocContent && trimmed !== openDocContent.title) {
+    if (!trimmed) {
+      setTitle(openDocContent.title);
+      return;
+    }
+    if (trimmed !== openDocContent.title) {
       updateDoc(docId, { title: trimmed });
     }
   }, [title, openDocContent, docId, updateDoc]);
 
-  // Title Enter -> focus editor
-  const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  // Title Enter -> focus editor; Escape reverts to the last-saved value and
+  // drops focus.
+  const handleTitleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const editorEl = editorRef.current?.querySelector('[contenteditable]');
       if (editorEl instanceof HTMLElement) editorEl.focus();
+      return;
     }
-  }, []);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // Mark BEFORE blur so handleTitleBlur knows to skip persisting the
+      // stale typed-but-not-yet-reverted value.
+      skipNextBlurRef.current = true;
+      if (openDocContent) setTitle(openDocContent.title);
+      e.currentTarget.blur();
+    }
+  }, [openDocContent]);
 
   // Editor content change
   const handleEditorChange = useCallback(

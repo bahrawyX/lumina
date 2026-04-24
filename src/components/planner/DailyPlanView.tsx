@@ -447,6 +447,11 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   // ── Task Pool collapse (small screens only) ───────────────────────────────
   const [poolOpen, setPoolOpen] = useState(true);
 
+  // Mobile-only Pool|Timeline tab. On <md viewports we show one or the other
+  // (the desktop layout has them side-by-side via grid). Default to Timeline
+  // so the existing mobile behaviour is preserved.
+  const [mobileTab, setMobileTab] = useState<'pool' | 'timeline'>('timeline');
+
   const poolViewportRef = useRef<HTMLDivElement | null>(null);
   // Ref to DayCalendarTimeline's scroll container — used for pixel→minute on drop
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
@@ -541,6 +546,39 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
           isRollingOver={isRollingOver}
         />
 
+        {/* Mobile-only Pool|Timeline tab switcher */}
+        <div className="md:hidden flex items-center gap-1 p-0.5 rounded-xl border border-border/50 bg-muted/30 self-start" role="tablist" aria-label="Plan view">
+          {([
+            { id: 'pool', label: 'Pool', count: poolTasks.length },
+            { id: 'timeline', label: 'Timeline', count: visiblePlanItems.length },
+          ] as const).map((t) => {
+            const isActive = mobileTab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setMobileTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                  isActive
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold tabular-nums ${
+                    isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Mobile summary cards */}
         <div className="md:hidden -mx-1 px-1 overflow-x-auto no-scrollbar snap-x snap-mandatory flex gap-2 pb-1">
           <div className="w-[82vw] shrink-0 snap-start rounded-2xl border border-border/60 bg-muted/30 backdrop-blur-md p-3">
@@ -569,7 +607,11 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
             : 'grid-cols-1 md:grid-cols-[0px_1fr_200px] xl:grid-cols-[0px_1fr_220px]'
         }`}>
           {/* ── Left: Task Pool ───────────────────────────────────────────── */}
-          <div data-tutorial="plan-pool" className={`hidden md:flex flex-col min-h-0 overflow-hidden transition-all duration-200 pt-2 ${poolOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div data-tutorial="plan-pool" className={`${
+            mobileTab === 'pool' ? 'flex' : 'hidden'
+          } md:flex flex-col min-h-0 overflow-hidden transition-all duration-200 pt-2 ${
+            poolOpen ? 'md:opacity-100' : 'md:opacity-0 md:pointer-events-none'
+          }`}>
             {/* Pool header with + button */}
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 flex items-center gap-1.5">
@@ -716,7 +758,9 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
           </div>
 
           {/* ── Center: Timeline ──────────────────────────────────────────── */}
-          <div className="flex flex-col min-h-0 border border-border/50 rounded-2xl overflow-hidden bg-background">
+          <div className={`${
+            mobileTab === 'timeline' ? 'flex' : 'hidden'
+          } md:flex flex-col min-h-0 border border-border/50 rounded-2xl overflow-hidden bg-background`}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0">
               <div className="flex items-center gap-2">
                 {/* Toggle Task Pool — always shown */}

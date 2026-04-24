@@ -169,15 +169,29 @@ export async function createOne(params: {
   }
 }
 
-/** Update an existing doc. Returns true on success, 'conflict' on 409. */
+export type UpdateOneResult =
+  | { status: 'success'; updatedAt: string }
+  | { status: 'conflict' }
+  | { status: 'error' };
+
+/**
+ * Update an existing doc.
+ * Returns:
+ *   'success'  — HTTP 2xx
+ *   'conflict' — HTTP 409 (stale-write protection fired)
+ *   'error'    — HTTP 4xx/5xx (other) or network failure
+ *
+ * Callers may optionally await the result and roll back / toast on failure.
+ */
 export async function updateOne(
   id: string,
   patch: DocPatch & { updatedAt?: string }
-): Promise<true | 'conflict'> {
+): Promise<UpdateOneResult> {
   if (isGuestUser()) {
     const map = readGuestDocs();
     const existing = map[id];
-    if (!existing) return true;
+    const now = new Date().toISOString();
+    if (!existing) return { status: 'success', updatedAt: now };
     const wordCount =
       typeof patch.contentText === 'string'
         ? patch.contentText.split(/\s+/).filter(Boolean).length
@@ -186,23 +200,31 @@ export async function updateOne(
       ...existing,
       ...patch,
       wordCount,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     } as DocContent;
     writeGuestDocs(map);
-    return true;
+    return { status: 'success', updatedAt: now };
   }
   try {
     const res = await apiFetch(`/api/docs/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
-    if (res.status === 409) return 'conflict';
-    return true;
+    if (res.status === 409) return { status: 'conflict' };
+    if (!res.ok) return { status: 'error' };
+    let updatedAt = new Date().toISOString();
+    try {
+      const data = (await res.json()) as { updatedAt?: string };
+      if (typeof data?.updatedAt === 'string') updatedAt = data.updatedAt;
+    } catch {
+      /* fallback to local timestamp */
+    }
+    return { status: 'success', updatedAt };
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[docsPersistence] updateOne failed:', err);
     }
-    return true;
+    return { status: 'error' };
   }
 }
 

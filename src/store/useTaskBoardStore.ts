@@ -14,6 +14,55 @@ import { uid } from '@/lib/uid';
 
 const isDev = process.env.NODE_ENV === 'development';
 
+// ── Optimistic-id → DB-UUID resolver ─────────────────────────────────────────
+// addTask returns a synchronous Task with a non-UUID `uid()` id, then swaps to
+// the server's UUID once tasksPersistence.createOne resolves. Cross-table
+// writers (e.g. POST /api/planner-items, where taskId must be a UUID) need to
+// wait for that swap before persisting. This module-level registry is shared
+// state that lives outside the zustand store because resolution callers don't
+// need re-renders.
+const TASK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const optimisticIdResolveMap = new Map<string, string | null>();
+const optimisticIdWaiters = new Map<string, Array<(dbId: string | null) => void>>();
+
+function notifyOptimisticIdResolved(optimisticId: string, dbId: string | null) {
+  optimisticIdResolveMap.set(optimisticId, dbId);
+  const waiters = optimisticIdWaiters.get(optimisticId);
+  if (waiters) {
+    optimisticIdWaiters.delete(optimisticId);
+    for (const w of waiters) w(dbId);
+  }
+}
+
+/**
+ * Resolve a possibly-optimistic task id to a real DB UUID.
+ * - If the id is already a UUID, returns it immediately.
+ * - If the swap has already completed for this optimistic id, returns the
+ *   cached result.
+ * - Otherwise waits up to `timeoutMs` for the addTask DB-id swap.
+ *
+ * Returns `null` if persistence failed or the swap never arrived. Callers
+ * must rollback their optimistic state in that case.
+ */
+export function resolveTaskDbId(taskId: string, timeoutMs = 5000): Promise<string | null> {
+  if (TASK_UUID_RE.test(taskId)) return Promise.resolve(taskId);
+  const cached = optimisticIdResolveMap.get(taskId);
+  if (cached !== undefined) return Promise.resolve(cached);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (dbId: string | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(dbId);
+    };
+    const timer = setTimeout(() => settle(null), timeoutMs);
+    const waiters = optimisticIdWaiters.get(taskId) ?? [];
+    waiters.push((dbId) => { clearTimeout(timer); settle(dbId); });
+    optimisticIdWaiters.set(taskId, waiters);
+  });
+}
+
 /** Returns null when userId is unknown in production — callers must guard on null. */
 function storageKey(userId: string | null): string | null {
   if (userId) return `lumina_tasks_${userId}`;
@@ -248,14 +297,25 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       return { tasks: next };
     });
 
-    // Swap optimistic uid for the real DB UUID once the server responds
+    // Swap optimistic uid for the real DB UUID once the server responds.
+    // Notify the resolver registry on every outcome so any cross-table
+    // writer waiting on this swap (e.g. planner-items persistence) can
+    // unblock — either with the new UUID or with `null` to signal failure.
     void tasksPersistence.createOne(task).then((dbId) => {
-      if (!dbId || dbId === task.id) return;
+      if (!dbId) {
+        notifyOptimisticIdResolved(task.id, null);
+        return;
+      }
+      if (dbId === task.id) {
+        notifyOptimisticIdResolved(task.id, dbId);
+        return;
+      }
       set((state) => {
         const next = state.tasks.map(t => t.id === task.id ? { ...t, id: dbId } : t);
         saveTasks(next, state.userId);
         return { tasks: next };
       });
+      notifyOptimisticIdResolved(task.id, dbId);
     });
 
     return task;

@@ -121,10 +121,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       patch.linkedEventId = body.linkedEventId;
     }
 
-    await db
+    const [updated] = await db
       .update(docs)
       .set(patch)
-      .where(and(eq(docs.id, id), eq(docs.userId, userId)));
+      .where(and(eq(docs.id, id), eq(docs.userId, userId)))
+      .returning({ updatedAt: docs.updatedAt });
 
     // Award coins for 500+ word doc (fire-and-forget, dedupe by docId)
     if (typeof body.wordCount === 'number' && body.wordCount >= 500) {
@@ -143,7 +144,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       })();
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      updatedAt: updated?.updatedAt?.toISOString() ?? new Date().toISOString(),
+    });
   } catch (err) {
     console.error('[PATCH /api/docs/[id]]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

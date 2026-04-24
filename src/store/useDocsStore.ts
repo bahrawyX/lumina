@@ -3,8 +3,12 @@ import { toast } from 'sonner';
 import type { DocTreeNode, DocContent, DocPatch, DocSearchResult, CreateDocParams } from '@/types/doc';
 import * as docsPersistence from '@/lib/persistence/docsPersistence';
 
-// ── Debounce helper ──────────────────────────────────────────────────────────
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+// ── Per-doc debounce map ─────────────────────────────────────────────────────
+// A single module-level saveTimer shared across docs meant that switching from
+// Doc A → Doc B within the 1s debounce window cancelled A's pending save and
+// silently dropped A's unsaved edits. Keyed by docId so each doc's save runs
+// independently.
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface DocsState {
   docs: DocTreeNode[];
@@ -153,18 +157,54 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   },
 
   updateDoc: (id, patch) => {
+    // Capture pre-patch state for rollback
+    const prevDocs = get().docs;
+    const prevDoc = prevDocs.find((d) => d.id === id);
+
     // Optimistic update
     set((state) => ({
       docs: state.docs.map((d) =>
         d.id === id ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d
       ),
+      openDocContent: state.openDocContent?.id === id
+        ? { ...state.openDocContent, ...patch }
+        : state.openDocContent,
     }));
 
-    // Persist
-    docsPersistence.updateOne(id, patch);
+    // Persist — roll back on error so the UI never lies about what's saved.
+    void docsPersistence.updateOne(id, patch).then((result) => {
+      if (result.status === 'error' && prevDoc) {
+        set((state) => ({
+          docs: state.docs.map((d) => (d.id === id ? prevDoc : d)),
+        }));
+        toast.error("Couldn't save change", { description: 'Check your connection and try again.' });
+        return;
+      }
+      if (result.status === 'success') {
+        // Sync the server-confirmed updatedAt onto openDocContent so the next
+        // content save's stale-write baseline matches what the server just
+        // wrote. Without this, a title edit followed by a content edit
+        // produced a 409 because openDocContent.updatedAt was still the
+        // pre-title-edit value.
+        set((state) => ({
+          docs: state.docs.map((d) =>
+            d.id === id ? { ...d, updatedAt: result.updatedAt } : d
+          ),
+          openDocContent: state.openDocContent?.id === id
+            ? { ...state.openDocContent, updatedAt: result.updatedAt }
+            : state.openDocContent,
+        }));
+      }
+    });
   },
 
   archiveDoc: (id) => {
+    // Snapshot pre-archive state for rollback on failure.
+    const prev = get();
+    const affectedIds = new Set(
+      prev.docs.filter((d) => d.id === id || d.parentId === id).map((d) => d.id)
+    );
+
     set((state) => ({
       docs: state.docs.map((d) => {
         if (d.id === id || d.parentId === id) {
@@ -176,7 +216,14 @@ export const useDocsStore = create<DocsState>((set, get) => ({
       openDocContent: state.openDocId === id ? null : state.openDocContent,
     }));
 
-    docsPersistence.updateOne(id, { isArchived: true });
+    void docsPersistence.updateOne(id, { isArchived: true }).then((result) => {
+      if (result.status !== 'error') return;
+      // Roll back archived flag on every locally-affected doc.
+      set((state) => ({
+        docs: state.docs.map((d) => (affectedIds.has(d.id) ? { ...d, isArchived: false } : d)),
+      }));
+      toast.error("Couldn't archive", { description: 'Check your connection and try again.' });
+    });
   },
 
   restoreDoc: (id) => {
@@ -208,11 +255,13 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
     void docsPersistence
       .updateOne(id, { isPinned: pinned })
-      .then(() => {
-        toast.success(pinned ? 'Pinned' : 'Unpinned');
-      })
-      .catch(() => {
-        // Roll back optimistic change on failure
+      .then((result) => {
+        if (result.status === 'success') {
+          toast.success(pinned ? 'Pinned' : 'Unpinned');
+          return;
+        }
+        // Roll back optimistic change on error — updateOne no longer throws,
+        // so we must check the return value explicitly.
         set((state) => ({
           docs: state.docs.map((d) =>
             d.id === id ? { ...d, isPinned: !pinned } : d
@@ -238,7 +287,10 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   },
 
   saveContent: (id, content, contentText, wordCount) => {
-    // Update local state immediately
+    // Optimistically update the local view of this doc. Note we only touch
+    // `docs[id].updatedAt` for the "last edited" display — we intentionally
+    // do NOT overwrite `openDocContent.updatedAt`, because that value is the
+    // server-confirmed baseline used for stale-write detection.
     set((state) => ({
       docs: state.docs.map((d) =>
         d.id === id
@@ -250,29 +302,56 @@ export const useDocsStore = create<DocsState>((set, get) => ({
         : state.openDocContent,
     }));
 
-    // Debounced save to server (1000ms)
-    if (saveTimer) clearTimeout(saveTimer);
+    // Debounced save to server (1000ms), per-doc so fast doc switching doesn't
+    // drop in-flight edits.
+    const existing = saveTimers.get(id);
+    if (existing) clearTimeout(existing);
     set({ isSaving: true });
 
-    saveTimer = setTimeout(async () => {
-      const state = get();
-      const doc = state.docs.find((d) => d.id === id);
+    const timer = setTimeout(async () => {
+      saveTimers.delete(id);
+      // Use the server-confirmed baseline for stale-write protection — if we
+      // sent the optimistic `docs[id].updatedAt` the server would always see
+      // our own just-written timestamp and the 409 guard would never fire.
+      const openDoc = get().openDocContent;
+      const baseline = openDoc?.id === id ? openDoc.updatedAt : undefined;
+
       const result = await docsPersistence.updateOne(id, {
         content,
         contentText,
         wordCount,
-        ...(doc ? { updatedAt: doc.updatedAt } : {}),
+        ...(baseline ? { updatedAt: baseline } : {}),
       });
 
-      if (result === 'conflict') {
+      if (result.status === 'conflict') {
         set({ isSaving: false });
-        // The consumer (DocPage) should handle conflict via toast
-        console.warn('[useDocsStore] Save conflict for doc', id);
+        toast.error("Changes not saved", {
+          description: 'This doc was updated elsewhere. Reload to see the latest version.',
+        });
+        return;
+      }
+      if (result.status === 'error') {
+        set({ isSaving: false });
+        toast.error("Couldn't save", { description: 'Check your connection — your edits are still in this window.' });
         return;
       }
 
-      set({ isSaving: false, lastSavedAt: new Date().toISOString() });
+      // Success — bump openDocContent.updatedAt to the server-confirmed value
+      // so the next save's stale-write baseline matches what the server just
+      // wrote. The `docs[id].updatedAt` we optimistically set earlier remains
+      // as the display timestamp.
+      set((state) => ({
+        isSaving: false,
+        lastSavedAt: result.updatedAt,
+        docs: state.docs.map((d) =>
+          d.id === id ? { ...d, updatedAt: result.updatedAt } : d
+        ),
+        openDocContent: state.openDocContent?.id === id
+          ? { ...state.openDocContent, updatedAt: result.updatedAt }
+          : state.openDocContent,
+      }));
     }, 1000);
+    saveTimers.set(id, timer);
   },
 
   // ── Inline tasks ───────────────────────────────────────────────────────────
