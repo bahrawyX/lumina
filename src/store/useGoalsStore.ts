@@ -3,6 +3,7 @@ import type { Goal, GoalTarget, GoalStatus, GoalTimeframe, GoalColor, TargetType
 import { computeGoalProgress, computeTargetProgress } from '../types/goal';
 import * as goalsPersistence from '@/lib/persistence/goalsPersistence';
 import { uid } from '@/lib/uid';
+import { toast } from 'sonner';
 
 // ── Store interface ──────────────────────────────────────────────────────────
 
@@ -168,6 +169,9 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
 
   updateTarget: (goalId, targetId, patch) => {
     const now = new Date().toISOString();
+    // Snapshot the target before optimistic update for potential rollback
+    const snap = get().goals.find(g => g.id === goalId)?.targets.find(t => t.id === targetId);
+
     set(s => ({
       goals: s.goals.map(g =>
         g.id === goalId
@@ -181,7 +185,20 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
           : g
       ),
     }));
-    goalsPersistence.updateTarget(goalId, targetId, patch);
+
+    void goalsPersistence.updateTarget(goalId, targetId, patch).catch(() => {
+      // Rollback to snapshot on failure
+      if (snap) {
+        set(s => ({
+          goals: s.goals.map(g =>
+            g.id === goalId
+              ? { ...g, targets: g.targets.map(t => (t.id === targetId ? snap : t)) }
+              : g
+          ),
+        }));
+      }
+      toast.error('Failed to save goal progress');
+    });
   },
 
   deleteTarget: (goalId, targetId) => {

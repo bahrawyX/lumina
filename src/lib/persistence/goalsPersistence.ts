@@ -76,14 +76,11 @@ export async function addTarget(goalId: string, target: Partial<GoalTarget> & { 
 }
 
 export async function updateTarget(goalId: string, targetId: string, patch: Partial<GoalTarget>): Promise<void> {
-  try {
-    await apiFetch(`/api/goals/${goalId}/targets/${targetId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    });
-  } catch (err) {
-    if (isDev) console.error('[goalsPersistence.updateTarget]', err);
-  }
+  const res = await apiFetch(`/api/goals/${goalId}/targets/${targetId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`[goalsPersistence.updateTarget] HTTP ${res.status}`);
 }
 
 export async function deleteTarget(goalId: string, targetId: string): Promise<void> {

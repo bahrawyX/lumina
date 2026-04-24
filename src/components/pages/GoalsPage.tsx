@@ -255,6 +255,7 @@ export default function GoalsPage() {
   const goals = useGoalsStore(s => s.goals);
   const dbHydrated = useGoalsStore(s => s.dbHydrated);
   const updateGoal = useGoalsStore(s => s.updateGoal);
+  const updateTargetProgress = useGoalsStore(s => s.updateTargetProgress);
   const archiveGoal = useGoalsStore(s => s.archiveGoal);
   const deleteGoal = useGoalsStore(s => s.deleteGoal);
 
@@ -274,6 +275,12 @@ export default function GoalsPage() {
 
   const handleEdit = (goal: Goal) => { setEditingGoal(goal); setDialogOpen(true); };
   const handleComplete = (goal: Goal) => {
+    // Push every measurable target to its full value before marking complete
+    goal.targets.forEach(t => {
+      if (t.type !== 'task_completion') {
+        updateTargetProgress(goal.id, t.id, t.targetValue);
+      }
+    });
     updateGoal(goal.id, { status: 'completed' });
     setShowGoalTrophy(true);
     showCoinToast(100, 'Goal completed!');

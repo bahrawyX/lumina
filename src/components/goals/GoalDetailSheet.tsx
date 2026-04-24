@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useGoalsStore } from '@/store/useGoalsStore';
@@ -151,9 +151,17 @@ export const GoalDetailSheet: React.FC<{
   onClose: () => void;
   onEdit: (goal: Goal) => void;
 }> = ({ goal, open, onClose, onEdit }) => {
+  // State — must come before any early return
+  const [ringEditing, setRingEditing] = useState(false);
+  const [ringDraft, setRingDraft] = useState('');
+  const ringInputRef = useRef<HTMLInputElement>(null);
+
+  // Store selectors
   const updateTarget = useGoalsStore(s => s.updateTarget);
   const deleteTarget = useGoalsStore(s => s.deleteTarget);
   const updateTargetProgress = useGoalsStore(s => s.updateTargetProgress);
+  const addTarget = useGoalsStore(s => s.addTarget);
+  const updateGoal = useGoalsStore(s => s.updateGoal);
   const allTasks = useTaskBoardStore(s => s.tasks);
 
   // Re-read the goal from store so it stays reactive
@@ -172,6 +180,64 @@ export const GoalDetailSheet: React.FC<{
   const timeProgress = totalDays > 0 ? Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100)) : 100;
   const isOverdue = isPast(endDate) && liveGoal.status === 'active';
 
+  // Determine which target (if any) to edit from the ring.
+  // Editable when: 0 targets (null → will create), or exactly 1 non-task_completion target.
+  // Not editable (undefined) when multiple targets or only task_completion targets.
+  const editableRingTarget =
+    liveGoal.targets.length === 0
+      ? null
+      : liveGoal.targets.length === 1 && liveGoal.targets[0].type !== 'task_completion'
+        ? liveGoal.targets[0]
+        : undefined;
+  const ringEditable = editableRingTarget !== undefined;
+
+  const handleRingClick = () => {
+    if (!ringEditable) return;
+    setRingDraft(String(progress));
+    setRingEditing(true);
+  };
+
+  const handleRingCommit = () => {
+    setRingEditing(false);
+    const raw = parseInt(ringDraft, 10);
+    if (isNaN(raw)) return;
+    const pct = Math.max(0, Math.min(100, raw));
+
+    if (editableRingTarget === null) {
+      // No targets yet — create a percentage "Progress" target, then set it
+      const t = addTarget(liveGoal.id, { title: 'Progress', type: 'percentage', targetValue: 100 });
+      if (t) updateTargetProgress(liveGoal.id, t.id, pct);
+    } else {
+      // Map entered percentage back to the target's currentValue domain
+      let newValue: number;
+      switch (editableRingTarget.type) {
+        case 'percentage':
+          newValue = pct;
+          break;
+        case 'number':
+          newValue = parseFloat(((pct / 100) * editableRingTarget.targetValue).toFixed(4));
+          break;
+        case 'boolean':
+          newValue = pct >= 50 ? 1 : 0;
+          break;
+        default:
+          return;
+      }
+      updateTargetProgress(liveGoal.id, editableRingTarget.id, newValue);
+    }
+  };
+
+  const handleMarkComplete = () => {
+    // Push every measurable target to its full value (= 100% progress)
+    liveGoal.targets.forEach(t => {
+      if (t.type !== 'task_completion') {
+        updateTargetProgress(liveGoal.id, t.id, t.targetValue);
+      }
+    });
+    updateGoal(liveGoal.id, { status: 'completed' });
+    onClose();
+  };
+
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <SheetContent side="right" className="w-full p-0 sm:w-[480px] sm:max-w-[480px] flex flex-col">
@@ -189,6 +255,15 @@ export const GoalDetailSheet: React.FC<{
               }`}>
                 {liveGoal.status.charAt(0).toUpperCase() + liveGoal.status.slice(1)}
               </span>
+              {liveGoal.status === 'active' && (
+                <button
+                  type="button"
+                  onClick={handleMarkComplete}
+                  className="h-7 px-2 rounded-md text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                >
+                  ✓ Complete
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => { onClose(); setTimeout(() => onEdit(liveGoal), 150); }}
@@ -205,13 +280,46 @@ export const GoalDetailSheet: React.FC<{
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
           {/* Progress ring */}
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             <div className="relative">
               <ProgressRing progress={progress} size={120} strokeWidth={8} />
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-2xl font-bold tabular-nums text-foreground">{progress}%</span>
+                {ringEditing ? (
+                  <div className="flex items-center gap-0.5">
+                    <input
+                      ref={ringInputRef}
+                      autoFocus
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={ringDraft}
+                      onChange={e => setRingDraft(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); handleRingCommit(); }
+                        if (e.key === 'Escape') { e.preventDefault(); setRingEditing(false); }
+                      }}
+                      onBlur={handleRingCommit}
+                      className="w-12 text-center text-xl font-bold tabular-nums bg-transparent border-b-2 border-primary outline-none text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      aria-label="Edit goal progress percentage"
+                    />
+                    <span className="text-base font-bold text-foreground">%</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleRingClick}
+                    disabled={!ringEditable}
+                    title={ringEditable ? 'Click to edit progress' : 'Progress reflects multiple targets — edit each below'}
+                    className={`text-2xl font-bold tabular-nums text-foreground leading-none transition-colors ${ringEditable ? 'hover:text-primary cursor-pointer' : 'cursor-default'}`}
+                  >
+                    {progress}%
+                  </button>
+                )}
               </div>
             </div>
+            {ringEditable && !ringEditing && (
+              <p className="text-[10px] text-muted-foreground/60">click to edit</p>
+            )}
           </div>
 
           {/* Timeframe */}
