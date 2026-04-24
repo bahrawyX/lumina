@@ -4,12 +4,14 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { CalendarEvent } from '../../types';
 import type { Task, TaskPriority, TaskDifficulty, TaskStatus } from '../../types/task';
+
 import { useTaskBoardStore, type ListSortColumn, type ListGroupBy } from '../../store/useTaskBoardStore';
 import { filterTasks, hasActiveFilters } from '../../utils/taskFilters';
 import { toast } from 'sonner';
 import { highlightText } from '../../utils/highlightText';
 import { Button } from '../ui/button';
 import { PRIORITY_META, DIFFICULTY_META, PRIORITY_ORDER, DIFFICULTY_ORDER, STATUS_ORDER } from '../../utils/taskBadges';
+import { DifficultyBadge } from './DifficultyBadge';
 import { getDueDatePresentation } from '../../utils/taskBoard';
 import {
   Popover,
@@ -64,12 +66,12 @@ const GroupChevronIcon: React.FC<{ open: boolean }> = ({ open }) => (
 export interface TaskListViewProps {
   tasks: Task[];
   subtaskMap: Record<string, Task[]>;
-  linkedEvents: Record<string, CalendarEvent | undefined>;
+  /** Linked event map is reserved for future column rendering; keep in the
+      API so call-sites stay stable (N8). */
+  linkedEvents?: Record<string, CalendarEvent | undefined>;
   focusTimeMap: Record<string, number>;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
-  onPriorityChange: (task: Task, priority: TaskPriority) => void;
-  onToggleSubtaskDone: (taskId: string) => void;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
   onAddTask: (status: TaskStatus) => void;
 }
@@ -184,6 +186,12 @@ const StatusPopover: React.FC<{
       <PopoverTrigger asChild>
         <button
           type="button"
+          // Defence-in-depth against Bug #2: prevent click/pointer bubble into the row's
+          // onClick (edit dialog) and outer <Link>-ish ancestors. Wrapper already has
+          // stopPropagation on click, but keyboard activation bypasses that wrapper.
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
           className="flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md border border-border/50 bg-muted/40 text-foreground hover:bg-muted transition-colors"
         >
           <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} />
@@ -221,8 +229,8 @@ const TaskListRow: React.FC<{
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
-  onToggleSubtaskDone: (taskId: string) => void;
-}> = React.memo(({ task, subtasks, focusTime, isSubtask = false, searchQuery = '', onEdit, onDelete, onStatusChange, onToggleSubtaskDone }) => {
+  // onToggleSubtaskDone removed (N7): row uses onStatusChange directly.
+}> = React.memo(({ task, subtasks, focusTime, isSubtask = false, searchQuery = '', onEdit, onDelete, onStatusChange }) => {
   const [expanded, setExpanded] = useState(false);
   const hasSubtasks = subtasks.length > 0 && !isSubtask;
   const isDone = task.status === 'done';
@@ -240,8 +248,21 @@ const TaskListRow: React.FC<{
         className={`flex items-center gap-0 border-b border-border/50 transition-colors group/row cursor-pointer ${
           isSubtask ? 'h-10 pl-8' : 'h-11'
         } ${isDone ? 'opacity-60' : ''} ${justDuplicated ? 'bg-primary/10 transition-[background-color] duration-[600ms]' : ''} hover:bg-muted/50`}
-        onClick={() => onEdit(task)}
-        onKeyDown={(e) => { if (e.key === 'Enter') onEdit(task); }}
+        onClick={(e) => {
+          // Ignore clicks that originated from interactive descendants (Bug #2).
+          if (e.target !== e.currentTarget) {
+            const target = e.target as HTMLElement;
+            if (target.closest('button,[role="menu"],[role="menuitem"],input,a')) return;
+          }
+          onEdit(task);
+        }}
+        onKeyDown={(e) => {
+          // Only Enter on the row itself opens edit; Enter on a focused
+          // child control (e.g. status popover trigger) is ignored (Bug #2).
+          if (e.key !== 'Enter') return;
+          if (e.target !== e.currentTarget) return;
+          onEdit(task);
+        }}
         tabIndex={0}
         role="row"
         aria-label={`Task: ${task.title}`}
@@ -290,11 +311,9 @@ const TaskListRow: React.FC<{
           </span>
         </div>
 
-        {/* Difficulty (hidden on mobile) */}
+        {/* Difficulty (hidden on mobile) — uses DifficultyBadge to disambiguate from priority (Bug #1) */}
         <div className="w-20 flex-shrink-0 px-1 hidden md:flex">
-          <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${DIFFICULTY_META[task.difficulty ?? 'medium'].className}`}>
-            {DIFFICULTY_META[task.difficulty ?? 'medium'].label}
-          </span>
+          <DifficultyBadge difficulty={task.difficulty} size="sm" />
         </div>
 
         {/* Due date */}
@@ -375,7 +394,6 @@ const TaskListRow: React.FC<{
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onStatusChange={onStatusChange}
-                onToggleSubtaskDone={onToggleSubtaskDone}
               />
             ))}
           </motion.div>
@@ -389,8 +407,8 @@ TaskListRow.displayName = 'TaskListRow';
 // ── Main TaskListView ───────────────────────────────────────────────────────
 
 export const TaskListView: React.FC<TaskListViewProps> = ({
-  tasks, subtaskMap, linkedEvents, focusTimeMap,
-  onEdit, onDelete, onPriorityChange, onToggleSubtaskDone, onStatusChange, onAddTask,
+  tasks, subtaskMap, focusTimeMap,
+  onEdit, onDelete, onStatusChange, onAddTask,
 }) => {
   const sortColumn = useTaskBoardStore(s => s.listSortColumn);
   const sortDirection = useTaskBoardStore(s => s.listSortDirection);
@@ -561,7 +579,6 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
                         onEdit={onEdit}
                         onDelete={onDelete}
                         onStatusChange={onStatusChange}
-                        onToggleSubtaskDone={onToggleSubtaskDone}
                       />
                     ))}
                   </motion.div>

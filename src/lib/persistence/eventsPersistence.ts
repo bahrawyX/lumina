@@ -118,11 +118,16 @@ export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
   }
 }
 
-/** Persist a new event to the DB. Fire-and-forget safe. */
-export async function createOne(event: CalendarEvent): Promise<void> {
+/**
+ * Persist a new event to the DB.
+ * Returns true on success, false on HTTP or network failure — callers that want
+ * to roll back an optimistic mutation can await this and branch on the result.
+ * Fire-and-forget callers can still ignore the return value.
+ */
+export async function createOne(event: CalendarEvent): Promise<boolean> {
   try {
     const provider = mapUiToCanonicalProvider(event);
-    await apiFetch('/api/events', {
+    const res = await apiFetch('/api/events', {
       method: 'POST',
       body: JSON.stringify({
         ...event,
@@ -131,10 +136,12 @@ export async function createOne(event: CalendarEvent): Promise<void> {
         externalEventId: event.outlookId ?? undefined,
       }),
     });
+    return res.ok;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[eventsPersistence] createOne failed:', err);
     }
+    return false;
   }
 }
 

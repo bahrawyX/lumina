@@ -9,6 +9,7 @@ import { useCalendar } from '@/hooks/useCalendar';
 import MonthView from '@/components/MonthView';
 import WeekView from '@/components/WeekView';
 import DayView from '@/components/DayView';
+import MobileCalendar from '@/components/calendar/mobile/MobileCalendar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,6 +80,12 @@ const CalendarPage: React.FC = () => {
   useEffect(() => {
     setNavDirection(0);
   }, [view]);
+
+  // Mobile: render the native-iOS-style two-panel layout instead of the
+  // desktop header + view stack. Desktop markup below is untouched.
+  if (isMobile) {
+    return <MobileCalendar />;
+  }
 
   return (
     <>
@@ -200,22 +207,40 @@ const CalendarPage: React.FC = () => {
       <DailyBriefStrip />
 
       <div className="flex-1 min-h-0 relative overflow-y-auto no-scrollbar">
-        <AnimatePresence mode="wait" custom={navDirection}>
-          <motion.div 
-            key={`${view}-${currentDate.toISOString()}`}
-            custom={navDirection}
-            initial={animationVariants.initial}
-            animate={animationVariants.animate}
-            exit={animationVariants.exit}
-            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }} 
-            className="h-full w-full"
-            onAnimationComplete={() => setNavDirection(0)}
-          >
+        {/*
+          View-switching used to live inside <AnimatePresence mode="wait"> with
+          a 0.3s transition, meaning the outgoing grid had to finish its exit
+          animation before the incoming grid even mounted. Together with the
+          synchronous per-day useMemo work in WeekView (eventsByDay /
+          overlapMaps / hourOccupancyMaps / dayDensityMap) this added up to a
+          visible 1–3s blank after clicking Week or Day. We now animate only
+          date navigation — view-switch swaps the grid immediately so the
+          shell appears in the same frame the tab is clicked.
+        */}
+        {navDirection === 0 ? (
+          <div className="h-full w-full">
             {view === ViewType.MONTH && <MonthView events={filteredInstances} />}
             {view === ViewType.WEEK && <WeekView events={filteredInstances} />}
             {view === ViewType.DAY && <DayView events={filteredInstances} />}
-          </motion.div>
-        </AnimatePresence>
+          </div>
+        ) : (
+          <AnimatePresence custom={navDirection}>
+            <motion.div
+              key={`${view}-${currentDate.toISOString()}`}
+              custom={navDirection}
+              initial={animationVariants.initial}
+              animate={animationVariants.animate}
+              exit={animationVariants.exit}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="h-full w-full"
+              onAnimationComplete={() => setNavDirection(0)}
+            >
+              {view === ViewType.MONTH && <MonthView events={filteredInstances} />}
+              {view === ViewType.WEEK && <WeekView events={filteredInstances} />}
+              {view === ViewType.DAY && <DayView events={filteredInstances} />}
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
     </>
   );

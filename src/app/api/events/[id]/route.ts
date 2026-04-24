@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
-import { eq, and, gte } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import type { EditScope } from '@/types';
 
 interface RouteContext {
@@ -385,19 +385,13 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ ok: true });
     }
 
-    // Handle deletion of 'this' for a real exception event
+    // Handle deletion of 'this' for a real exception event.
+    // The exdate was already appended to the master's recurrence when the
+    // exception was created, so we only need to remove the exception row.
     if (editScope === 'this') {
       await db
         .delete(events)
         .where(and(eq(events.id, id), eq(events.userId, userId)));
-      // If the exception was replacing an occurrence, add exdate to master
-      const existingRows = await db
-        .select()
-        .from(events)
-        .where(and(eq(events.id, id), eq(events.userId, userId)))
-        .limit(1);
-      // Event already deleted above, so this is a no-op for the exdate.
-      // The exdate was already set when the exception was created.
       return NextResponse.json({ ok: true });
     }
 

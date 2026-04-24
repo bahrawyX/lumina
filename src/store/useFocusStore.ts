@@ -45,6 +45,14 @@ interface FocusActions {
   resumeSession: () => void;
   finishSession: () => void;
   cancelSession: () => void;
+  /**
+   * Drop an orphaned activeSession without logging. Used when a persisted
+   * `lumina_focus_active_session` is restored but the pomodoro timer that
+   * should be driving it isn't running — e.g. after a reload on a different
+   * tab, or after the pomodoro was stopped in a sibling store. Does NOT write
+   * a sessionHistory record; the session is treated as never-happened.
+   */
+  clearActiveSession: () => void;
   /** Read-only — called by the timer component to get current elapsed seconds without setState */
   getElapsedSecs: () => number;
 }
@@ -250,6 +258,12 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
       set({ activeSession: null, timerState: 'idle' });
       saveActiveSession(null, 'idle');
     }
+  },
+
+  clearActiveSession() {
+    if (!get().activeSession) return;
+    set({ activeSession: null, timerState: 'idle' });
+    saveActiveSession(null, 'idle');
   },
 
   getElapsedSecs() {

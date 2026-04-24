@@ -1,12 +1,20 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { motion } from 'framer-motion';
+
+// Route-scoped preload for the streak-fire Lottie used on /performance.
+// Replaces the global preload in app/layout (see Bug #4).
+if (typeof window !== 'undefined') {
+  ReactDOM.preload('/animations/streak-fire.json', { as: 'fetch', crossOrigin: 'anonymous' });
+}
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isWithinInterval, parseISO } from 'date-fns';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useStreakStore } from '@/store/useStreakStore';
+import { useCoinsStore, selectCoinBalance } from '@/store/useCoinsStore';
 import { timeToMinutes } from '@/utils/time/timeUtils';
 import { computeBestDay } from '@/utils/performance/bestDay';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
@@ -91,7 +99,10 @@ function getAchievementMeta(type: string) {
 // ── Streak stats row ──────────────────────────────────────────────────────────
 
 const StreakStatsRow: React.FC = () => {
-  const { dailyStreak, sessionStreak, coins, bestDailyStreak } = useStreakStore();
+  const { dailyStreak, sessionStreak, bestDailyStreak } = useStreakStore();
+  // Coin balance is owned by useCoinsStore — the DB-backed single source of
+  // truth. useStreakStore no longer duplicates it.
+  const coins = useCoinsStore(selectCoinBalance);
   const focusHistory = useFocusStore((s) => s.sessionHistory);
   const best = useMemo(() => computeBestDay(focusHistory), [focusHistory]);
   const [recoveryOpen, setRecoveryOpen] = useState(false);

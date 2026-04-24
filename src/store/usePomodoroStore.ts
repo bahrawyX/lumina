@@ -36,13 +36,15 @@ export interface PomodoroState {
   resume: () => void;
   skip: () => void;
   reset: () => void;
+  /** Stop the current timer but keep cycle progress (phase + sessionCount). */
+  softReset: () => void;
   tick: () => { completed: boolean; phase: PomodoroPhase };
   setWorkMins: (mins: number) => void;
   setShortBreakMins: (mins: number) => void;
   setLongBreakMins: (mins: number) => void;
   setSessionsPerCycle: (n: number) => void;
   dismissCelebration: () => void;
-  hydrateFromDb: (shortBreakMins: number, longBreakMins: number, sessionsPerCycle: number) => void;
+  hydrateFromDb: (shortBreakMins: number, longBreakMins: number, sessionsPerCycle: number, workMins?: number) => void;
 
   // Derived helpers
   getElapsedSecs: () => number;
@@ -205,6 +207,24 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
     },
 
     /**
+     * Stop the current timer but keep phase + sessionCount intact.
+     * Used by the "Stop session" button so a user on session 3 of 4 doesn't
+     * lose cycle progress when they stop a single work phase. A full cycle
+     * reset is still available via reset().
+     */
+    softReset: () => {
+      set({
+        isRunning: false,
+        isPaused: false,
+        phaseStartedAt: null,
+        elapsedBeforePause: 0,
+        workSessionStartedAt: null,
+        showCelebration: false,
+      });
+      persist(get());
+    },
+
+    /**
      * Called every second by the active ticker (PomodoroView or FloatingWidget).
      * Returns whether the phase just completed.
      */
@@ -255,8 +275,18 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
     },
 
     setWorkMins: (mins: number) => {
-      set({ workMins: Math.max(1, Math.min(240, mins)) });
+      const clamped = Math.max(1, Math.min(240, mins));
+      set({ workMins: clamped });
       persist(get());
+      // Work-duration is stored server-side as `focusSessionLength` — keep this
+      // setter symmetric with setShortBreakMins / setLongBreakMins / setSessionsPerCycle
+      // so any caller can rely on "set here → persist to DB" without needing
+      // to separately call useSettingsStore.setFocusSessionLength.
+      void fetch('/api/users/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focusSessionLength: clamped }),
+      }).catch(() => {});
     },
 
     setShortBreakMins: (mins: number) => {
@@ -292,13 +322,19 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
       }).catch(() => {});
     },
 
-    hydrateFromDb: (shortBreakMins, longBreakMins, sessionsPerCycle) => {
+    hydrateFromDb: (shortBreakMins, longBreakMins, sessionsPerCycle, workMins) => {
       const s = get();
       if (s.isRunning) return;
       set({
         shortBreakMins: Math.max(1, Math.min(30, shortBreakMins)),
         longBreakMins: Math.max(5, Math.min(60, longBreakMins)),
         sessionsPerCycle: Math.max(1, Math.min(10, sessionsPerCycle)),
+        // When the preferences API provides a canonical focusSessionLength, prefer
+        // it over whatever localStorage restored so the user sees one number
+        // across devices. Only applied when timer is idle (guard above).
+        ...(typeof workMins === 'number'
+          ? { workMins: Math.max(1, Math.min(240, workMins)) }
+          : {}),
       });
       persist(get());
     },

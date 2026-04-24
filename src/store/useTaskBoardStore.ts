@@ -57,14 +57,10 @@ interface ViewPrefs {
   listSortDirection: ListSortDirection;
   listGroupBy: ListGroupBy;
   listCollapsedGroups: string[];
-  // Filter state
-  searchQuery: string;
-  priorityFilter: TaskPriority[];
-  difficultyFilter: TaskDifficulty[];
-  dueDateFilter: DueDateFilter;
 }
 
-const VALID_DUE_DATE_FILTERS: DueDateFilter[] = ['all', 'overdue', 'today', 'this_week', 'next_week', 'no_date', 'has_date'];
+// Filters are deliberately NOT persisted to localStorage — stale filters
+// on reload caused empty-board confusion (Bug #5).
 
 function loadViewPrefs(): ViewPrefs {
   try {
@@ -77,10 +73,6 @@ function loadViewPrefs(): ViewPrefs {
       listSortDirection: parsed.listSortDirection === 'desc' ? 'desc' : 'asc',
       listGroupBy: ['status','priority','difficulty','dueDate','none'].includes(parsed.listGroupBy) ? parsed.listGroupBy : 'status',
       listCollapsedGroups: Array.isArray(parsed.listCollapsedGroups) ? parsed.listCollapsedGroups : [],
-      searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
-      priorityFilter: Array.isArray(parsed.priorityFilter) ? parsed.priorityFilter.filter((p: unknown) => p === 'low' || p === 'medium' || p === 'high') : [],
-      difficultyFilter: Array.isArray(parsed.difficultyFilter) ? parsed.difficultyFilter.filter((d: unknown) => d === 'easy' || d === 'medium' || d === 'hard') : [],
-      dueDateFilter: VALID_DUE_DATE_FILTERS.includes(parsed.dueDateFilter) ? parsed.dueDateFilter : 'all',
     };
   } catch { return defaultViewPrefs(); }
 }
@@ -92,10 +84,6 @@ function defaultViewPrefs(): ViewPrefs {
     listSortDirection: 'asc',
     listGroupBy: 'status',
     listCollapsedGroups: [],
-    searchQuery: '',
-    priorityFilter: [],
-    difficultyFilter: [],
-    dueDateFilter: 'all',
   };
 }
 
@@ -165,8 +153,13 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   userId: null,
   recentlyDuplicatedId: null,
 
-  // List view preferences (hydrated from localStorage immediately)
+  // List view preferences (hydrated from localStorage immediately).
+  // Filters are explicitly initialised fresh — NOT from storage (Bug #5).
   ...loadViewPrefs(),
+  searchQuery: '',
+  priorityFilter: [],
+  difficultyFilter: [],
+  dueDateFilter: 'all',
 
   setViewMode: (mode) => {
     set({ viewMode: mode });
@@ -190,26 +183,12 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     saveViewPrefs({ ...loadViewPrefs(), listCollapsedGroups: next });
   },
 
-  setSearchQuery: (q) => {
-    set({ searchQuery: q });
-    saveViewPrefs({ ...loadViewPrefs(), searchQuery: q });
-  },
-  setPriorityFilter: (p) => {
-    set({ priorityFilter: p });
-    saveViewPrefs({ ...loadViewPrefs(), priorityFilter: p });
-  },
-  setDifficultyFilter: (d) => {
-    set({ difficultyFilter: d });
-    saveViewPrefs({ ...loadViewPrefs(), difficultyFilter: d });
-  },
-  setDueDateFilter: (f) => {
-    set({ dueDateFilter: f });
-    saveViewPrefs({ ...loadViewPrefs(), dueDateFilter: f });
-  },
-  clearAllFilters: () => {
-    set({ searchQuery: '', priorityFilter: [], difficultyFilter: [], dueDateFilter: 'all' });
-    saveViewPrefs({ ...loadViewPrefs(), searchQuery: '', priorityFilter: [], difficultyFilter: [], dueDateFilter: 'all' });
-  },
+  // Filters live in-memory only — never persisted.
+  setSearchQuery: (q) => set({ searchQuery: q }),
+  setPriorityFilter: (p) => set({ priorityFilter: p }),
+  setDifficultyFilter: (d) => set({ difficultyFilter: d }),
+  setDueDateFilter: (f) => set({ dueDateFilter: f }),
+  clearAllFilters: () => set({ searchQuery: '', priorityFilter: [], difficultyFilter: [], dueDateFilter: 'all' }),
 
   setUserId: (userId) => {
     set({ userId });

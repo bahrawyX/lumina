@@ -1,7 +1,22 @@
 'use client';
 
+/**
+ * MobileBottomSheet
+ *
+ * Bottom sheet on mobile, centred modal on desktop. Built on Radix Dialog
+ * primitive so:
+ *  - Focus is trapped and restored on close
+ *  - Outer page is marked `aria-hidden` consistently, preventing the
+ *    Chromium "Blocked aria-hidden on an element because its descendant
+ *    retained focus" warning when child `<Select>` / `<Popover>` portals
+ *    open inside the sheet (Bug #3).
+ *  - Escape + outside-click dismiss are handled for free.
+ *
+ * Drag-to-dismiss on mobile is layered on top via framer-motion.
+ */
 import React from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { motion } from 'framer-motion';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 
@@ -31,24 +46,40 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
   const isMobile = useIsMobile();
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay asChild>
           <motion.div
-            key="sheet-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-[2px]"
-            onClick={closeOnBackdrop ? onClose : undefined}
           />
+        </DialogPrimitive.Overlay>
 
-          <div className="fixed inset-0 z-[121] flex items-end md:items-center justify-center pointer-events-none p-0 md:p-4">
+        <DialogPrimitive.Content
+          aria-label={title}
+          onInteractOutside={(e) => {
+            if (!closeOnBackdrop) e.preventDefault();
+          }}
+          onOpenAutoFocus={(e) => {
+            // Prevent Radix from auto-focusing the first focusable element —
+            // we want the sheet itself to be focused so child popovers
+            // (Select/DropdownMenu) don't race the autofocus.
+            e.preventDefault();
+          }}
+          className="fixed inset-0 z-[121] flex items-end md:items-center justify-center outline-none p-0 md:p-4"
+          asChild
+        >
+          <div>
             <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-label={title}
+              role="presentation"
               initial={isMobile ? { y: '100%' } : { opacity: 0, y: 12, scale: 0.97 }}
               animate={isMobile ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
               exit={isMobile ? { y: '100%' } : { opacity: 0, y: 8, scale: 0.97 }}
@@ -73,14 +104,19 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
                 <div className="w-12 h-1.5 bg-muted-foreground/25 rounded-full mx-auto mt-3" />
               )}
 
+              {/* Title + Description are needed for Radix a11y; keep them visually
+                  hidden so callers can render their own heading without duplication. */}
+              <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Description className="sr-only">{title} dialog</DialogPrimitive.Description>
+
               <div className={cn('px-4 md:px-6 py-4 md:py-6 pb-[max(1rem,env(safe-area-inset-bottom))]', contentClassName)}>
                 {children}
               </div>
             </motion.div>
           </div>
-        </>
-      )}
-    </AnimatePresence>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 };
 

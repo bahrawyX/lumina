@@ -4,7 +4,9 @@ import type { Achievement, FocusSessionResult } from '@/types';
 import * as streakPersistence from '@/lib/persistence/streakPersistence';
 
 interface StreakState {
-  coins: number;
+  // NOTE: `coins` is NOT tracked here. Coin balance lives in useCoinsStore as
+  // the single source of truth, rehydrated from GET /api/coins. Two stores
+  // holding the same value produced divergent reads after a session.
   dailyStreak: number;
   bestDailyStreak: number;
   sessionStreak: number;
@@ -24,7 +26,6 @@ interface StreakActions {
 export const useStreakStore = create<StreakState & StreakActions>()(
   persist(
     (set, get) => ({
-      coins: 0,
       dailyStreak: 0,
       bestDailyStreak: 0,
       sessionStreak: 0,
@@ -37,7 +38,6 @@ export const useStreakStore = create<StreakState & StreakActions>()(
         const data = await streakPersistence.fetchStreakData();
         if (data) {
           set({
-            coins: data.coins,
             dailyStreak: data.dailyStreak,
             bestDailyStreak: data.bestDailyStreak,
             sessionStreak: data.sessionStreak,
@@ -58,8 +58,8 @@ export const useStreakStore = create<StreakState & StreakActions>()(
           seen: false,
         }));
 
+        // Coin balance intentionally NOT updated here — see useCoinsStore.
         set((s) => ({
-          coins: result.newCoins,
           dailyStreak: result.dailyStreak,
           sessionStreak: result.sessionStreak,
           bestDailyStreak: Math.max(s.bestDailyStreak, result.dailyStreak),
@@ -85,8 +85,19 @@ export const useStreakStore = create<StreakState & StreakActions>()(
     }),
     {
       name: 'lumina-streaks',
+      // v1 drops `coins` — see migrate(). Any lingering `coins` from an older
+      // persisted payload is stripped so it can't silently rehydrate a stale
+      // local balance that disagrees with the DB-backed useCoinsStore.
+      version: 1,
+      migrate: (persistedState, version) => {
+        if (version < 1 && persistedState && typeof persistedState === 'object') {
+          const { coins: _coins, ...rest } = persistedState as Record<string, unknown> & { coins?: unknown };
+          void _coins;
+          return rest as typeof persistedState;
+        }
+        return persistedState;
+      },
       partialize: (s) => ({
-        coins: s.coins,
         dailyStreak: s.dailyStreak,
         bestDailyStreak: s.bestDailyStreak,
         sessionStreak: s.sessionStreak,

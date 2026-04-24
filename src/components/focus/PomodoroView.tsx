@@ -171,6 +171,7 @@ const Pill: React.FC<PillProps> = ({ label, active, disabled, onClick }) => (
 interface SessionConfigProps {
   workMins: number;
   shortBreakMins: number;
+  longBreakMins: number;
   sessionsPerCycle: number;
   isRunning: boolean;
   phase: string;
@@ -180,10 +181,9 @@ interface SessionConfigProps {
 }
 
 const SessionConfig: React.FC<SessionConfigProps> = ({
-  workMins, shortBreakMins, sessionsPerCycle, isRunning, phase,
+  workMins, shortBreakMins, longBreakMins, sessionsPerCycle, isRunning, phase,
   onWorkChange, onBreakChange, onSessionsChange,
 }) => {
-  const longBreak = sessionsPerCycle * 5;
 
   return (
     <div>
@@ -216,8 +216,9 @@ const SessionConfig: React.FC<SessionConfigProps> = ({
             ))}
           </div>
         </div>
-        {/* Long break computed */}
-        <p className="text-xs text-muted-foreground">Long break &middot; {longBreak}m</p>
+        {/* Long break — displays the actual stored value (was previously a computed
+            sessionsPerCycle * 5, which mis-reported after the auto-couple was removed). */}
+        <p className="text-xs text-muted-foreground">Long break &middot; {longBreakMins}m</p>
       </div>
     </div>
   );
@@ -439,6 +440,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const sessionCount = usePomodoroStore((s) => s.sessionCount);
   const workMins = usePomodoroStore((s) => s.workMins);
   const shortBreakMins = usePomodoroStore((s) => s.shortBreakMins);
+  const longBreakMins = usePomodoroStore((s) => s.longBreakMins);
   const sessionsPerCycle = usePomodoroStore((s) => s.sessionsPerCycle);
   const showCelebration = usePomodoroStore((s) => s.showCelebration);
   const workSessionStartedAt = usePomodoroStore((s) => s.workSessionStartedAt);
@@ -448,6 +450,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const storeResume = usePomodoroStore((s) => s.resume);
   const storeSkip = usePomodoroStore((s) => s.skip);
   const storeReset = usePomodoroStore((s) => s.reset);
+  const storeSoftReset = usePomodoroStore((s) => s.softReset);
   const storeTick = usePomodoroStore((s) => s.tick);
   const getElapsedSecs = usePomodoroStore((s) => s.getElapsedSecs);
   const getPhaseDurationSecs = usePomodoroStore((s) => s.getPhaseDurationSecs);
@@ -463,10 +466,22 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const completionHandledRef = useRef(false);
 
   // ── FIX 1: Sync with useFocusStore on mount ──────────────────────────────
-  // If a task was started from TaskBoard "Start focus", pre-populate the selector
+  // If a task was started from TaskBoard "Start focus", pre-populate the selector.
+  // If the persisted activeSession is orphaned (no pomodoro timer is running),
+  // clear it — otherwise the Start-focus linkage silently latches to a stale
+  // task across reloads.
   useEffect(() => {
     const activeSession = useFocusStore.getState().activeSession;
-    if (activeSession && activeSession.taskId) {
+    if (!activeSession) return;
+
+    const pomodoroRunning = usePomodoroStore.getState().isRunning;
+    if (!pomodoroRunning) {
+      // Orphan: persisted activeSession with no live timer. Drop it silently.
+      useFocusStore.getState().clearActiveSession();
+      return;
+    }
+
+    if (activeSession.taskId) {
       // Find the task in the task board
       const task = useTaskBoardStore.getState().tasks.find((t) => t.id === activeSession.taskId);
       if (task) {
@@ -603,10 +618,12 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
       setShowInterruptPrompt(true);
       return;
     }
-    // No task linked or not in work phase — just reset
-    storeReset();
+    // No task linked or not in work phase — stop the timer but keep cycle
+    // progress (phase + sessionCount). A full reset is intentionally reserved
+    // for a future explicit "Reset cycle" action.
+    storeSoftReset();
     setDisplayElapsed(0);
-  }, [focusTask, isRunning, phase, displayElapsed, storePause, storeReset]);
+  }, [focusTask, isRunning, phase, displayElapsed, storePause, storeSoftReset]);
 
   // Interrupt: "Yes, mark done"
   const handleInterruptDone = useCallback(() => {
@@ -628,10 +645,10 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     }
 
     setShowInterruptPrompt(false);
-    storeReset();
+    storeSoftReset();
     setDisplayElapsed(0);
     setFocusTask(null);
-  }, [focusTask, displayElapsed, workMins, workSessionStartedAt, updateTask, onSessionComplete, storeReset]);
+  }, [focusTask, displayElapsed, workMins, workSessionStartedAt, updateTask, onSessionComplete, storeSoftReset]);
 
   // Interrupt: "Not yet"
   const handleInterruptPause = useCallback(() => {
@@ -659,9 +676,9 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
     }
 
     setShowInterruptPrompt(false);
-    storeReset();
+    storeSoftReset();
     setDisplayElapsed(0);
-  }, [focusTask, displayElapsed, workMins, workSessionStartedAt, updateTask, onSessionComplete, storeReset]);
+  }, [focusTask, displayElapsed, workMins, workSessionStartedAt, updateTask, onSessionComplete, storeSoftReset]);
 
   // ── Settings handlers ──────────────────────────────────────────────────────
   const handleWorkChange = useCallback((m: number) => {
@@ -674,8 +691,10 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   }, []);
 
   const handleSessionsChange = useCallback((n: number) => {
+    // Intentionally do NOT touch longBreakMins here — a user who has deliberately
+    // set a 30 min long break shouldn't have it silently clobbered when they
+    // tweak the cycle length. Long-break duration is an independent setting.
     usePomodoroStore.getState().setSessionsPerCycle(n);
-    usePomodoroStore.getState().setLongBreakMins(n * 5);
   }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -827,6 +846,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
           <SessionConfig
             workMins={workMins}
             shortBreakMins={shortBreakMins}
+            longBreakMins={longBreakMins}
             sessionsPerCycle={sessionsPerCycle}
             isRunning={isRunning}
             phase={phase}

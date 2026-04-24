@@ -130,9 +130,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             },
           }}
         />
-        {/* Preload frequently-used Lottie animations */}
-        <link rel="preload" href="/animations/pomodoro-complete.json" as="fetch" crossOrigin="anonymous" />
-        <link rel="preload" href="/animations/streak-fire.json" as="fetch" crossOrigin="anonymous" />
+        {/* Route-specific Lottie preloads are declared in the pages that use them
+            (FocusPage, PerformancePage, PomodoroView) to avoid wasted bandwidth on
+            unrelated routes such as /tasks. */}
         {/* PWA: Apple touch icon */}
         <link rel="apple-touch-icon" href="/icons/pwa-192.png" />
       </head>

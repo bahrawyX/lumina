@@ -1,7 +1,15 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+// Route-scoped preload for the streak-fire + pomodoro-complete Lotties used on /focus.
+// Replaces the global preload in app/layout (see Bug #4).
+if (typeof window !== 'undefined') {
+  ReactDOM.preload('/animations/streak-fire.json', { as: 'fetch', crossOrigin: 'anonymous' });
+  ReactDOM.preload('/animations/pomodoro-complete.json', { as: 'fetch', crossOrigin: 'anonymous' });
+}
 import { FocusSessionView } from '@/components/focus/FocusSessionView';
 import PomodoroView from '@/components/focus/PomodoroView';
 import StopwatchView from '@/components/focus/StopwatchView';
@@ -94,8 +102,13 @@ const FocusPage: React.FC = () => {
       // Show coin earn toast
       if (result.coinsEarned > 0) {
         showCoinToast(result.coinsEarned, 'Focus session completed');
-        useCoinsStore.getState().addEarnedCoins(result.coinsEarned);
       }
+
+      // DB is the single source of truth for the coin balance — refetch from
+      // GET /api/coins so useCoinsStore reflects streakUpdate.coins plus any
+      // async awardCoinsBatch bonuses. Do NOT optimistically add here or the
+      // balance diverges from the server.
+      void useCoinsStore.getState().refetchBalance();
 
       // Streak milestone celebration overlay
       if (STREAK_MILESTONES.has(result.dailyStreak) || SESSION_MILESTONES.has(result.sessionStreak)) {

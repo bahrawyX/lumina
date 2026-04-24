@@ -125,15 +125,50 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
       return;
     }
     const { events, history, historyIndex, userId } = get();
+    const prevEvents = events;
+    const prevHistory = history;
+    const prevHistoryIndex = historyIndex;
     const newEvents = [...events, event];
     const newHistory = [...history.slice(0, historyIndex + 1), { events: newEvents }].slice(-50);
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
-    // Fire-and-forget DB persistence
-    eventsPersistence.createOne(event);
     const timeRange = event.startTime && event.endTime ? ` (${event.startTime}–${event.endTime})` : '';
     notify(`Event created: ${event.title}${timeRange}`);
+    // DB persistence with rollback on failure — matches the error-handling
+    // pattern used by the recurring-'this' update/delete paths.
+    eventsPersistence.createOne(event)
+      .then((ok) => {
+        if (ok) return;
+        // Roll back the optimistic mutation only if this event is still the
+        // most recent addition — a later mutation may have already
+        // superseded our history entry.
+        const current = get();
+        if (!current.events.some((e) => e.id === event.id)) return;
+        const restoredEvents = current.events.filter((e) => e.id !== event.id);
+        saveState(restoredEvents, current.userId);
+        set({
+          events: restoredEvents,
+          history: prevHistory,
+          historyIndex: prevHistoryIndex,
+        });
+        triggerIntelligence();
+        void prevEvents; // reserved for future full-state rollback if needed
+        notify(`Couldn't save "${event.title}" — please try again.`);
+      })
+      .catch(() => {
+        const current = get();
+        if (!current.events.some((e) => e.id === event.id)) return;
+        const restoredEvents = current.events.filter((e) => e.id !== event.id);
+        saveState(restoredEvents, current.userId);
+        set({
+          events: restoredEvents,
+          history: prevHistory,
+          historyIndex: prevHistoryIndex,
+        });
+        triggerIntelligence();
+        notify(`Couldn't save "${event.title}" — check your connection and try again.`);
+      });
   },
 
   addEventOptimistic: (event) => {
@@ -163,12 +198,20 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...event, editScope: 'this' }),
-      }).then(() => {
-        // Remove the virtual instance and refresh
-        set({ recurringInstances: get().recurringInstances.filter((e) => e.id !== event.id) });
-        notify(`Instance updated: ${event.title}`);
-        triggerIntelligence();
-      });
+      })
+        .then((res) => {
+          if (!res.ok) {
+            notify(`Couldn't update this occurrence — please try again.`);
+            return;
+          }
+          // Remove the virtual instance (a real exception event will appear on next expand fetch)
+          set({ recurringInstances: get().recurringInstances.filter((e) => e.id !== event.id) });
+          notify(`Instance updated: ${event.title}`);
+          triggerIntelligence();
+        })
+        .catch(() => {
+          notify(`Couldn't update this occurrence — check your connection and try again.`);
+        });
       return;
     }
 
@@ -211,11 +254,19 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
   deleteEvent: (id, editScope) => {
     // For recurring instance deletion with 'this' scope
     if (editScope === 'this' && id.includes(':')) {
-      fetch(`/api/events/${id}?editScope=this`, { method: 'DELETE' }).then(() => {
-        set({ recurringInstances: get().recurringInstances.filter((e) => e.id !== id) });
-        triggerIntelligence();
-        notify('Instance removed');
-      });
+      fetch(`/api/events/${id}?editScope=this`, { method: 'DELETE' })
+        .then((res) => {
+          if (!res.ok) {
+            notify(`Couldn't delete this occurrence — please try again.`);
+            return;
+          }
+          set({ recurringInstances: get().recurringInstances.filter((e) => e.id !== id) });
+          triggerIntelligence();
+          notify('Instance removed');
+        })
+        .catch(() => {
+          notify(`Couldn't delete this occurrence — check your connection and try again.`);
+        });
       return;
     }
 

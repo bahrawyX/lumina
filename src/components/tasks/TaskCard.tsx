@@ -22,7 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
-import { PRIORITY_META, DIFFICULTY_META, PRIORITY_OPTIONS } from '../../utils/taskBadges';
+import { PRIORITY_META, PRIORITY_OPTIONS } from '../../utils/taskBadges';
+import { DifficultyBadge } from './DifficultyBadge';
 
 // ── More icon ─────────────────────────────────────────────────────────────────
 
@@ -516,9 +517,9 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                 </DropdownMenu>
               </div>
             )}
-            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${DIFFICULTY_META[task.difficulty ?? 'medium'].className}`}>
-              {DIFFICULTY_META[task.difficulty ?? 'medium'].label}
-            </span>
+            <DifficultyBadge difficulty={task.difficulty} />
+            {/* Difficulty badge differs from Priority via a signal-bars icon + distinct
+                label format (see Bug #1). */}
             {linkedEvent && (
               <span className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary dark:border-primary/25 dark:bg-primary/15 dark:text-primary-foreground/90">
                 Scheduled

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, memo, useCallback, useState } from 'react';
-import { CalendarEvent } from '../types';
+import { CalendarEvent, EventInstance } from '../types';
 import { getDaysInMonth, isSameDay, formatDateISO } from '../utils/dateUtils';
 import { DAYS } from '../constants';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -210,27 +210,39 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
   const moveEvent   = useCalendarEventsStore(s => s.moveEvent);
   const today = new Date();
 
-  const gridDays = useMemo<MonthGridDay[]>(() => {
-    const raw = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
-    return raw.map((date) => ({
-      date,
-      dateStr: formatDateISO(date),
-      isCurrentMonth: date.getMonth() === currentDate.getMonth(),
-      isToday: isSameDay(date, today),
-      eventsCount: events.filter((e) => e.date === formatDateISO(date)).length,
-    }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate.getFullYear(), currentDate.getMonth(), events]);
+  // Virtual instances from recurrence expansion keep the master's `.date`
+  // (the series DTSTART) and expose their real per-occurrence date on
+  // `.instanceDate`. Bucket by `instanceDate` so each occurrence lands in its
+  // own cell; otherwise every expanded instance stacks on the master date
+  // and produces phantom "+N more" duplicates.
+  const bucketKey = (e: CalendarEvent): string =>
+    (e as Partial<EventInstance>).instanceDate ?? e.date;
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const e of events) {
-      const arr = map.get(e.date) ?? [];
+      const key = bucketKey(e);
+      const arr = map.get(key) ?? [];
       arr.push(e);
-      map.set(e.date, arr);
+      map.set(key, arr);
     }
     return map;
   }, [events]);
+
+  const gridDays = useMemo<MonthGridDay[]>(() => {
+    const raw = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+    return raw.map((date) => {
+      const dateStr = formatDateISO(date);
+      return {
+        date,
+        dateStr,
+        isCurrentMonth: date.getMonth() === currentDate.getMonth(),
+        isToday: isSameDay(date, today),
+        eventsCount: eventsByDate.get(dateStr)?.length ?? 0,
+      };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate.getFullYear(), currentDate.getMonth(), eventsByDate]);
 
   const handleDayClick = useCallback(
     (dateStr: string, _hasEvents: boolean) => {

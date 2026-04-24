@@ -384,16 +384,17 @@ export const TaskBoard: React.FC = () => {
 
   // ── Confetti + coin toast on task completion ─────────────────────────────
   const activeCosmetics = useCoinsStore(selectActiveCosmetics);
-  const addEarnedCoins = useCoinsStore(s => s.addEarnedCoins);
 
   const onTaskCompleted = useCallback((task: Task) => {
     // Confetti if owned + active
     if (activeCosmetics.confetti) void triggerConfetti();
-    // Estimated coin toast (exact amount computed server-side)
+    // Show the estimated-base toast for instant feedback. The authoritative
+    // balance update is performed server-side in the task PATCH handler,
+    // which pushes the true value back via coins persistence — we no longer
+    // increment the local balance here (N3: avoid double-award / drift).
     const base = task.difficulty === 'hard' ? 10 : 5;
     showCoinToast(base, task.difficulty === 'hard' ? 'Hard task completed' : 'Task completed');
-    addEarnedCoins(base);
-  }, [activeCosmetics.confetti, addEarnedCoins]);
+  }, [activeCosmetics.confetti]);
 
   const handleToggleSubtaskDone = useCallback((taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
@@ -927,8 +928,6 @@ export const TaskBoard: React.FC = () => {
               focusTimeMap={focusTimeMap}
               onEdit={openEditDialog}
               onDelete={handleDelete}
-              onPriorityChange={handlePriorityChange}
-              onToggleSubtaskDone={handleToggleSubtaskDone}
               onStatusChange={handleStatusChange}
               onAddTask={openCreateDialog}
             />
@@ -956,8 +955,6 @@ export const TaskBoard: React.FC = () => {
               focusTimeMap={focusTimeMap}
               onEdit={openEditDialog}
               onDelete={handleDelete}
-              onPriorityChange={handlePriorityChange}
-              onToggleSubtaskDone={handleToggleSubtaskDone}
               onStatusChange={handleStatusChange}
               onAddTask={openCreateDialog}
             />

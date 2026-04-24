@@ -7,6 +7,7 @@ import AchievementModal from '@/components/focus/AchievementModal';
 import MoodAnalysisCard from '@/components/focus/MoodAnalysisCard';
 import { useStreakStore } from '@/store/useStreakStore';
 import { useFocusStore } from '@/store/useFocusStore';
+import { useCoinsStore } from '@/store/useCoinsStore';
 import { useLinkStore } from '@/store/useLinkStore';
 import { useOnboardingStore } from '@/store/useOnboardingStore';
 import * as moodPersistence from '@/lib/persistence/moodPersistence';
@@ -65,6 +66,10 @@ export default function PomodoroPage() {
       }
 
       applySessionResult(result);
+
+      // Refetch canonical coin balance from DB — useCoinsStore is the single
+      // source of truth; useStreakStore no longer tracks `coins`.
+      void useCoinsStore.getState().refetchBalance();
 
       if (result.newAchievements.length > 0) {
         achievementQueueRef.current = result.newAchievements.map((a) => a.type);

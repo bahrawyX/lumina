@@ -27,6 +27,14 @@ interface CoinsState {
   purchaseItem: (itemId: string) => Promise<boolean>;
   activateCosmetic: (patch: Partial<ActiveCosmetics>) => Promise<boolean>;
   addEarnedCoins: (amount: number, tx?: CoinTransaction) => void;
+  /**
+   * Re-pull the canonical coin balance + transactions from GET /api/coins.
+   * Called after a focus session finishes so the UI reflects the DB-side
+   * total (streakUpdate.coins + any async awardCoinsBatch bonuses) instead
+   * of a best-guess delta. useCoinsStore is the single source of truth —
+   * useStreakStore no longer tracks `coins`.
+   */
+  refetchBalance: () => Promise<void>;
 
   // Selectors
   ownsItem: (itemId: string) => boolean;
@@ -110,6 +118,22 @@ export const useCoinsStore = create<CoinsState>((set, get) => ({
       balance: s.balance + amount,
       transactions: tx ? [tx, ...s.transactions.slice(0, 49)] : s.transactions,
     }));
+  },
+
+  refetchBalance: async () => {
+    try {
+      const data = await coinsPersistence.fetchCoinsData();
+      set({
+        balance: data.balance,
+        transactions: data.transactions,
+        consumables: data.consumables,
+        ownedItems: data.ownedItems,
+        activeCosmetics: data.activeCosmetics,
+      });
+    } catch {
+      // Swallow — keep optimistic state if the refetch fails. The next
+      // PersistenceBootstrap cycle or a subsequent session will retry.
+    }
   },
 
   ownsItem: (itemId) => get().ownedItems.includes(itemId),

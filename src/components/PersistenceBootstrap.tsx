@@ -173,7 +173,9 @@ export default function PersistenceBootstrap() {
                 workStart: prefs.workStart,
                 workEnd: prefs.workEnd,
               });
-              // Hydrate pomodoro break settings from DB
+              // Hydrate pomodoro break settings from DB — including workMins so
+              // the pomodoro store has a canonical value without relying on the
+              // side-channel sync via settingsStore.focusSessionLength.
               if (
                 typeof prefs.shortBreakMins === 'number' &&
                 typeof prefs.longBreakMins === 'number' &&
@@ -183,6 +185,7 @@ export default function PersistenceBootstrap() {
                   prefs.shortBreakMins,
                   prefs.longBreakMins,
                   prefs.sessionsPerCycle,
+                  typeof prefs.focusSessionLength === 'number' ? prefs.focusSessionLength : undefined,
                 );
               }
               // Hydrate ambient track from DB (only fills in if localStorage has nothing)
