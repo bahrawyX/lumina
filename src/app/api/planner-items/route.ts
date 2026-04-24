@@ -20,6 +20,8 @@ const createSchema = z.object({
 
 // ── GET /api/planner-items ────────────────────────────────────────────────────
 
+const DATE_PARAM_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
@@ -27,12 +29,36 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
 
+  // Optional ?date=YYYY-MM-DD filter — narrows the result to a single local
+  // calendar day. The DB stores timestamps in UTC; we compute the day's bounds
+  // in the server's local timezone (matches how the API already serializes
+  // start/end times), which is consistent with how the client groups items
+  // into plansByDate.
+  const url = new URL(req.url);
+  const dateParam = url.searchParams.get('date');
+  let startBound: Date | null = null;
+  let endBound: Date | null = null;
+  if (dateParam) {
+    if (!DATE_PARAM_RE.test(dateParam)) {
+      return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
+    }
+    const [y, m, d] = dateParam.split('-').map(Number);
+    startBound = new Date(y, m - 1, d, 0, 0, 0, 0);
+    endBound = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+  }
+
   try {
     const db = getDatabase();
+    const conditions = [eq(plannerItems.userId, userId)];
+    if (startBound && endBound) {
+      conditions.push(sql`${plannerItems.startTime} >= ${startBound}`);
+      conditions.push(sql`${plannerItems.startTime} < ${endBound}`);
+    }
+
     const rows = await db
       .select()
       .from(plannerItems)
-      .where(eq(plannerItems.userId, userId))
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
       .orderBy(plannerItems.startTime);
 
     const mapped = rows.map((row) => ({

@@ -24,9 +24,18 @@ interface DailyPlanState {
   /** True once the store has been hydrated from the DB (or marked as failed). */
   dbHydrated: boolean;
 
+  /**
+   * Which date the planner UI is currently focused on (YYYY-MM-DD).
+   * Defaults to today; session-only — never persisted to localStorage or DB.
+   */
+  viewDate: string;
+
   // ── Hydration ─────────────────────────────────────────────────────────────
   hydrateFromDb: (items: PlannedTaskItem[]) => void;
   hydrateFromDbFailed: () => void;
+
+  // ── View date ────────────────────────────────────────────────────────────
+  setViewDate: (planDate: string) => void;
 
   // ── Actions ───────────────────────────────────────────────────────────────
   addPlanItem: (taskId: string, planDate: string, startTime: string, endTime: string) => PlannedTaskItem | null;
@@ -80,6 +89,13 @@ function isGuestUser(): boolean {
 export const useDailyPlanStore = create<DailyPlanState>((set, get) => ({
   plansByDate: {},
   dbHydrated: false,
+  viewDate: format(new Date(), 'yyyy-MM-dd'),
+
+  // ── View date ────────────────────────────────────────────────────────────
+  setViewDate: (planDate) => {
+    if (!isValidDate(planDate)) return;
+    set({ viewDate: planDate });
+  },
 
   // ── Hydration ─────────────────────────────────────────────────────────────
 

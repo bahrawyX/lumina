@@ -12,6 +12,9 @@ import { DayCalendarTimeline } from '../calendar/DayCalendarTimeline';
 // -- Main TodayTimeline --------------------------------------------------------
 
 interface TodayTimelineProps {
+  /** Day the timeline is rendering (YYYY-MM-DD). Defaults to today for callers
+   *  that haven't been migrated to date navigation yet. */
+  viewDate?: string;
   todayEvents: CalendarEvent[];
   planItems: PlannedTaskItem[];
   taskMap: Map<string, Task>;
@@ -25,7 +28,7 @@ interface TodayTimelineProps {
 }
 
 export const TodayTimeline: React.FC<TodayTimelineProps> = React.memo(({
-  todayEvents, planItems, taskMap, revealPlanItemDelays, onRemovePlanItem, onMarkTaskDone, onUpdatePlanItemTime,
+  viewDate, todayEvents, planItems, taskMap, revealPlanItemDelays, onRemovePlanItem, onMarkTaskDone, onUpdatePlanItemTime,
   scrollContainerRef,
   gridBodyRef,
 }) => {
@@ -34,11 +37,11 @@ export const TodayTimeline: React.FC<TodayTimelineProps> = React.memo(({
     data: { type: 'timeline' },
   });
 
-  const dateStr = format(new Date(), 'yyyy-MM-dd');
+  const dateStr = viewDate ?? format(new Date(), 'yyyy-MM-dd');
 
   const calendarEvents = React.useMemo(
-    () => todayEvents.map((ev): EventInstance => ({ ...ev, instanceDate: ev.date })),
-    [todayEvents]
+    () => todayEvents.map((ev): EventInstance => ({ ...ev, instanceDate: dateStr })),
+    [todayEvents, dateStr]
   );
 
   return (

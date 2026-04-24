@@ -13,7 +13,7 @@ import {
   closestCenter,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { addDays } from 'date-fns';
 import { toast } from 'sonner';
 import { CompactEmojiPicker } from '../ui/CompactEmojiPicker';
@@ -66,8 +66,23 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   useEffect(() => { setMounted(true); }, []);
   const dbHydrated = useDailyPlanStore((s) => s.dbHydrated);
 
+  // The wall-clock "today" — used for the Today-button visibility check, the
+  // eyebrow label, and the auto-plan start-time computation. `viewDate` is
+  // the date the planner is focused on; it can be any day past or future.
   const today = todayKey();
-  const todayDate = useMemo(() => new Date(), []);
+  const viewDate = useDailyPlanStore((s) => s.viewDate);
+  const setViewDate = useDailyPlanStore((s) => s.setViewDate);
+  const isViewingToday = viewDate === today;
+  const viewDateAsDate = useMemo(() => parseISO(viewDate), [viewDate]);
+
+  const navigateDay = useCallback((delta: number) => {
+    const next = addDays(parseISO(viewDate), delta);
+    setViewDate(format(next, 'yyyy-MM-dd'));
+  }, [viewDate, setViewDate]);
+
+  const goToToday = useCallback(() => {
+    setViewDate(todayKey());
+  }, [setViewDate]);
 
   // ── Calendar store (scoped selectors) ────────────────────────────────────
   const allEvents = useCalendarEventsStore((s) => s.events);
@@ -89,19 +104,19 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
-  // Today's calendar events
-  const todayEvents = useMemo(
-    () => allEvents.filter((e) => e.date === today),
-    [allEvents, today]
+  // Calendar events on the focused day
+  const viewDateEvents = useMemo(
+    () => allEvents.filter((e) => e.date === viewDate),
+    [allEvents, viewDate]
   );
 
-  // Today's plan items
+  // Plan items on the focused day
   const planItems = useMemo(
-    () => (plansByDate[today] ?? []).slice().sort((a, b) => a.order - b.order),
-    [plansByDate, today]
+    () => (plansByDate[viewDate] ?? []).slice().sort((a, b) => a.order - b.order),
+    [plansByDate, viewDate]
   );
 
-  // Set of task ids already planned for today
+  // Set of task ids already planned for the focused day
   const plannedTaskIds = useMemo(
     () => new Set(planItems.map((i) => i.taskId)),
     [planItems]
@@ -121,32 +136,35 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
 
   // Summary (derived — not stored)
   const summary = useMemo(
-    () => computePlanSummary(planItems, todayEvents, poolTasks.length),
-    [planItems, todayEvents, poolTasks.length]
+    () => computePlanSummary(planItems, viewDateEvents, poolTasks.length),
+    [planItems, viewDateEvents, poolTasks.length]
   );
 
   const busyRanges = useMemo(
     () => [
-      ...todayEvents.map((e) => ({ startTime: e.startTime, endTime: e.endTime })),
+      ...viewDateEvents.map((e) => ({ startTime: e.startTime, endTime: e.endTime })),
       ...planItems.map((i) => ({ startTime: i.startTime, endTime: i.endTime })),
     ],
-    [todayEvents, planItems],
+    [viewDateEvents, planItems],
   );
 
-  // ── Auto-sync: tasks with today's due date + scheduled times → plan ─────────
+  // ── Auto-sync: tasks scheduled for the focused day → plan ───────────────────
+  // Tasks have a wall-clock scheduledStart/End set elsewhere (e.g. /tasks
+  // schedule dialog). When the user lands on the day matching their dueDate,
+  // surface those scheduled times as plan items so the timeline reflects them.
   useEffect(() => {
-    const todayScheduled = allTasks.filter(
+    const scheduledForView = allTasks.filter(
       (t) =>
         t.status !== 'done' &&
-        t.dueDate === today &&
+        t.dueDate === viewDate &&
         t.scheduledStart &&
         t.scheduledEnd &&
         !plannedTaskIds.has(t.id),
     );
-    for (const task of todayScheduled) {
-      addPlanItem(task.id, today, task.scheduledStart as string, task.scheduledEnd as string);
+    for (const task of scheduledForView) {
+      addPlanItem(task.id, viewDate, task.scheduledStart as string, task.scheduledEnd as string);
     }
-  }, [allTasks, today, plannedTaskIds, addPlanItem]);
+  }, [allTasks, viewDate, plannedTaskIds, addPlanItem]);
 
   // ── Drag state (local) ────────────────────────────────────────────────────
   const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
@@ -159,9 +177,18 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   const [revealPlanItemDelays, setRevealPlanItemDelays] = useState<Map<string, number>>(new Map());
   const [rollingOutTaskIds, setRollingOutTaskIds] = useState<Set<string>>(new Set());
 
+  // Rollover candidates are explicitly today's tasks — independent of which
+  // date the planner is currently focused on. Roll Over only fires when
+  // viewing today (button is hidden otherwise), but anchoring this set to
+  // wall-clock today avoids any chance of pulling a future day's plan items
+  // into the rollover set.
+  const todayPlannedTaskIds = useMemo(
+    () => new Set((plansByDate[today] ?? []).map((i) => i.taskId)),
+    [plansByDate, today],
+  );
   const rolloverCandidates = useMemo(
-    () => allTasks.filter((task) => task.status !== 'done' && (task.dueDate === today || plannedTaskIds.has(task.id))),
-    [allTasks, plannedTaskIds, today],
+    () => allTasks.filter((task) => task.status !== 'done' && (task.dueDate === today || todayPlannedTaskIds.has(task.id))),
+    [allTasks, todayPlannedTaskIds, today],
   );
 
   const visiblePlanItems = useMemo(
@@ -176,9 +203,14 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
     setPlanningPhase('planning');
     setRevealPlanItemDelays(new Map());
     try {
-      const now = new Date();
-      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const dayStartTime = currentTime > '09:00' ? currentTime : '09:00';
+      // For today: start from "now" (or 9 AM if it's still early morning).
+      // For any other day: 9 AM, since "now" doesn't apply outside today.
+      let dayStartTime = '09:00';
+      if (isViewingToday) {
+        const now = new Date();
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        dayStartTime = currentTime > '09:00' ? currentTime : '09:00';
+      }
 
       const assignments = autoScheduleTasks(poolTasks, dayStartTime).map((item) => ({
         taskId: item.id,
@@ -191,13 +223,13 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
       });
 
       if (assignments.length === 0) {
-        notify('No unscheduled tasks fit the remaining time today.');
+        notify('No unscheduled tasks fit the remaining time.');
         return;
       }
 
-      const added = batchAddPlanItems(today, assignments);
+      const added = batchAddPlanItems(viewDate, assignments);
       if (added.length === 0) {
-        notify('No unscheduled tasks fit the remaining time today.');
+        notify('No unscheduled tasks fit the remaining time.');
         return;
       }
 
@@ -219,25 +251,38 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
         }
       }
 
-      notify(`Scheduled ${added.length} task${added.length === 1 ? '' : 's'} for today \u2728`);
+      const dayLabel = isViewingToday ? 'today' : format(viewDateAsDate, 'MMM d');
+      notify(`Scheduled ${added.length} task${added.length === 1 ? '' : 's'} for ${dayLabel} \u2728`);
       setPlanningPhase('planning');
     } finally {
       setIsPlanningDay(false);
       setPlanningPhase('planning');
     }
-  }, [isPlanningDay, poolTasks, today, batchAddPlanItems, updateTask]);
+  }, [isPlanningDay, poolTasks, viewDate, viewDateAsDate, isViewingToday, batchAddPlanItems, updateTask]);
 
   const handleRollOverTasks = useCallback(async () => {
-    if (isRollingOver || rolloverCandidates.length === 0) return;
+    if (isRollingOver) return;
+
+    // Empty-state messaging: tell the user explicitly rather than silently
+    // doing nothing — previously this branch was indistinguishable from a
+    // dropped click.
+    if (rolloverCandidates.length === 0) {
+      toast('Nothing to roll over');
+      return;
+    }
 
     const tomorrow = format(addDays(new Date(today), 1), 'yyyy-MM-dd');
     const taskIds = rolloverCandidates.map((task) => task.id);
     const taskIdSet = new Set(taskIds);
-    const planItemsToRemove = planItems.filter((item) => taskIdSet.has(item.taskId));
+    // Pull the items to delete from today's plan specifically — not from
+    // `planItems` (which is keyed by viewDate); the button is gated to
+    // viewing today, but anchoring this to the literal `today` plan keeps
+    // the operation correct under any future relaxation of that gate.
+    const todayPlanItems = plansByDate[today] ?? [];
+    const planItemsToRemove = todayPlanItems.filter((item) => taskIdSet.has(item.taskId));
 
     setIsRollingOver(true);
     setRollingOutTaskIds(taskIdSet);
-    toast(`Rolling over ${rolloverCandidates.length} tasks to tomorrow...`);
 
     try {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 260));
@@ -260,17 +305,17 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
 
       const failed = results.filter((r) => !r.ok);
       if (failed.length > 0) {
-        toast.error(`Rolled over with ${failed.length} sync failure${failed.length === 1 ? '' : 's'}.`);
+        toast.error(`Pushed with ${failed.length} sync failure${failed.length === 1 ? '' : 's'}.`);
       } else {
-        toast.success(`Rolled over ${taskIds.length} task${taskIds.length === 1 ? '' : 's'} to tomorrow.`);
+        toast.success(`${taskIds.length} task${taskIds.length === 1 ? '' : 's'} pushed to tomorrow`);
       }
     } catch {
-      toast.error('Failed to roll over tasks.');
+      toast.error("Couldn't push tasks to tomorrow.");
     } finally {
       setRollingOutTaskIds(new Set());
       setIsRollingOver(false);
     }
-  }, [isRollingOver, rolloverCandidates, planItems, rollOverTasks, removePlanItem, today]);
+  }, [isRollingOver, rolloverCandidates, plansByDate, rollOverTasks, removePlanItem, today]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -359,7 +404,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
       }
 
       const endTime = addMinsToTime(startTime, duration);
-      const added = addPlanItem(taskId, today, startTime, endTime);
+      const added = addPlanItem(taskId, viewDate, startTime, endTime);
 
       // Promote 'todo' → 'doing' when a task is first planned
       if (added && task && task.status === 'todo') {
@@ -380,13 +425,13 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
       if (oldIndex === -1 || newIndex === -1) return;
 
       const reordered = arrayMove(ids, oldIndex, newIndex) as string[];
-      reorderPlanItems(today, reordered);
+      reorderPlanItems(viewDate, reordered);
     }
-  }, [today, busyRanges, planItems, taskMap, addPlanItem, reorderPlanItems, updateTask]);
+  }, [viewDate, busyRanges, planItems, taskMap, addPlanItem, reorderPlanItems, updateTask]);
 
   const handleRemovePlanItem = useCallback((planItemId: string) => {
-    removePlanItem(planItemId, today);
-  }, [removePlanItem, today]);
+    removePlanItem(planItemId, viewDate);
+  }, [removePlanItem, viewDate]);
 
   const handleMarkTaskDone = useCallback((taskId: string) => {
     const task = taskMap.get(taskId);
@@ -395,8 +440,8 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
   }, [updateTask, taskMap]);
 
   const handleUpdatePlanItemTime = useCallback((planItemId: string, startTime: string, endTime: string) => {
-    updatePlanItem(planItemId, today, { startTime, endTime });
-  }, [updatePlanItem, today]);
+    updatePlanItem(planItemId, viewDate, { startTime, endTime });
+  }, [updatePlanItem, viewDate]);
 
   // ── Quick-add task (pool) ─────────────────────────────────────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -534,11 +579,15 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
       <div className="flex flex-col h-full gap-5">
         {/* Header */}
         <DailyPlanHeader
-          date={todayDate}
+          date={viewDateAsDate}
+          isViewingToday={isViewingToday}
+          onPrevDay={() => navigateDay(-1)}
+          onNextDay={() => navigateDay(+1)}
+          onGoToToday={goToToday}
           plannedCount={visiblePlanItems.length}
           unplannedCount={poolTasks.length}
           rolloverCount={rolloverCandidates.length}
-          onRollOver={handleRollOverTasks}
+          onRollOver={isViewingToday ? handleRollOverTasks : undefined}
           onAutoPlan={handleAutoPlanDay}
           onToggleInsights={onToggleInsights}
           insightsOpen={insightsOpen}
@@ -794,7 +843,8 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
             </div>
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-2 md:px-3 py-2">
               <TodayTimeline
-                todayEvents={todayEvents}
+                viewDate={viewDate}
+                todayEvents={viewDateEvents}
                 planItems={visiblePlanItems}
                 taskMap={taskMap}
                 revealPlanItemDelays={revealPlanItemDelays}

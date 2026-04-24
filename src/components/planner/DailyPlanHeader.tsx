@@ -1,9 +1,16 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { RollOverButton } from './RollOverButton';
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
 
 interface DailyPlanHeaderProps {
   date: Date;
+  /** True when `date` matches today's wall-clock day. Drives the eyebrow
+   *  label, the visibility of the Today button, and tooltip wording. */
+  isViewingToday?: boolean;
+  onPrevDay?: () => void;
+  onNextDay?: () => void;
+  onGoToToday?: () => void;
   plannedCount: number;
   unplannedCount: number;
   rolloverCount?: number;
@@ -29,23 +36,52 @@ const SunIcon: React.FC = () => (
   </svg>
 );
 
-export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ date, plannedCount, unplannedCount, rolloverCount = 0, onAutoPlan, onRollOver, onToggleInsights, insightsOpen, isPlanning, isRollingOver }) => {
+export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({
+  date, isViewingToday = true, onPrevDay, onNextDay, onGoToToday,
+  plannedCount, unplannedCount, rolloverCount = 0,
+  onAutoPlan, onRollOver, onToggleInsights, insightsOpen, isPlanning, isRollingOver,
+}) => {
   const dayLabel = format(date, 'EEEE');
   const dateLabel = format(date, 'MMMM d, yyyy');
+  const eyebrowLabel = isViewingToday ? 'PLAN · TODAY' : `PLAN · ${format(date, 'MMM d').toUpperCase()}`;
+
+  const NavArrow: React.FC<{ direction: 'prev' | 'next'; onClick?: () => void }> = ({ direction, onClick }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={direction === 'prev' ? 'Previous day' : 'Next day'}
+      className="flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
+    >
+      {direction === 'prev' ? <ChevronLeftIcon size={14} /> : <ChevronRightIcon size={14} />}
+    </button>
+  );
 
   return (
     <div className="flex flex-col gap-3 pb-4 border-b border-border/50 md:flex-row md:items-center md:justify-between md:gap-0">
       {/* Row 1: date info */}
       <div className="flex items-center justify-between md:justify-start md:gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10 text-primary flex-shrink-0">
             <SunIcon />
           </div>
-          <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1">Plan · Today</p>
-            <h1 className="font-display text-lg md:text-xl font-medium tracking-[-0.025em] text-foreground leading-none">
-              {dayLabel}
-            </h1>
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1">{eyebrowLabel}</p>
+            <div className="flex items-center gap-1.5">
+              <NavArrow direction="prev" onClick={onPrevDay} />
+              <h1 className="font-display text-lg md:text-xl font-medium tracking-[-0.025em] text-foreground leading-none truncate">
+                {dayLabel}
+              </h1>
+              <NavArrow direction="next" onClick={onNextDay} />
+              {!isViewingToday && onGoToToday && (
+                <button
+                  type="button"
+                  onClick={onGoToToday}
+                  className="ml-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
+                >
+                  Today
+                </button>
+              )}
+            </div>
             <p className="text-[11px] text-muted-foreground/80 mt-1 italic">{dateLabel}</p>
           </div>
         </div>
@@ -84,9 +120,11 @@ export const DailyPlanHeader: React.FC<DailyPlanHeaderProps> = React.memo(({ dat
           </button>
         )}
         {onRollOver && (
+          // Stay clickable at rolloverCount === 0 so the empty-state toast
+          // fires from the handler instead of the click silently no-op'ing.
           <RollOverButton
             onClick={onRollOver}
-            disabled={Boolean(isRollingOver) || rolloverCount === 0}
+            disabled={Boolean(isRollingOver)}
             isRolling={isRollingOver}
             rolloverCount={rolloverCount}
           />
