@@ -15,6 +15,7 @@ import { Skeleton } from 'boneyard-js/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LottieAnimation, STREAK_FIRE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { FireIcon, LightningIcon, TrophyIcon, CoinIcon, GemIcon } from '@/components/ui/AnimatedIcons';
+import { useAchievementsStore } from '@/store/useAchievementsStore';
 
 // ── Metric card ───────────────────────────────────────────────────────────────
 
@@ -66,6 +67,24 @@ const ContextPill: React.FC<{ name: string; count: number; total: number }> = ({
     </div>
   );
 };
+
+// ── Achievement metadata ──────────────────────────────────────────────────────
+
+const ACHIEVEMENT_META: Record<string, { label: string; emoji: string; description: string }> = {
+  first_session:        { label: 'First Focus',      emoji: '🎯', description: 'Completed your first focus session' },
+  streak_3:             { label: '3-Day Streak',      emoji: '🔥', description: 'Maintained a 3-day daily streak' },
+  streak_7:             { label: 'Week Warrior',      emoji: '⚡', description: 'Maintained a 7-day daily streak' },
+  streak_30:            { label: 'Month Master',      emoji: '🏆', description: 'Maintained a 30-day daily streak' },
+  session_streak_5:     { label: 'On a Roll',         emoji: '🌊', description: 'Completed 5 sessions in a row' },
+  session_streak_10:    { label: 'Flow State',        emoji: '💎', description: 'Completed 10 sessions in a row' },
+  coins_100:            { label: 'First 100',         emoji: '🪙', description: 'Earned 100 coins total' },
+  coins_1000:           { label: 'High Roller',       emoji: '💰', description: 'Earned 1 000 coins total' },
+  coins_10000:          { label: 'Coin Hoarder',      emoji: '🏦', description: 'Earned 10 000 coins total' },
+};
+
+function getAchievementMeta(type: string) {
+  return ACHIEVEMENT_META[type] ?? { label: type, emoji: '🏅', description: 'Achievement unlocked' };
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -167,6 +186,47 @@ const StreakStatsRow: React.FC = () => {
         </DialogContent>
       </Dialog>
     </>
+  );
+};
+
+// ── Achievements section ──────────────────────────────────────────────────────
+
+const AchievementsSection: React.FC = () => {
+  const { achievements, markSeen } = useAchievementsStore();
+
+  useEffect(() => {
+    const unseen = achievements.filter((a) => !a.seen).map((a) => a.id);
+    if (unseen.length > 0) markSeen(unseen);
+  }, [achievements, markSeen]);
+
+  if (achievements.length === 0) return null;
+
+  return (
+    <div>
+      <h3 className="font-display text-sm font-semibold text-foreground mb-3">
+        Achievements
+        <span className="ml-2 text-[10px] font-semibold tabular-nums text-muted-foreground bg-muted rounded-full px-2 py-0.5 border border-border/50">
+          {achievements.length}
+        </span>
+      </h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {achievements.map((a) => {
+          const meta = getAchievementMeta(a.type);
+          return (
+            <div
+              key={a.id}
+              className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border shadow-sm"
+            >
+              <span className="text-2xl leading-none flex-shrink-0">{meta.emoji}</span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground truncate">{meta.label}</p>
+                <p className="text-[10px] text-muted-foreground/60 truncate">{meta.description}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 };
 
@@ -379,6 +439,9 @@ const PerformancePage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* ── Achievements ──────────────────────────────────────── */}
+              <AchievementsSection />
 
               {/* ── Completed tasks list ───────────────────────────────── */}
               {completedTasks.length > 0 && (

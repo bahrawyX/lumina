@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         description: original.description,
         status: 'todo',                   // always reset
         priority: original.priority,
-        difficulty: original.difficulty,
+        difficulty: original.difficulty ?? 'medium',
         estimatedMinutes: original.estimatedMinutes,
         dueDate: original.dueDate,
         scheduledStart: null,

@@ -35,7 +35,7 @@ export async function awardCoins(
     // Atomically update user balance
     const [updated] = await tx
       .update(users)
-      .set({ coins: sql`${users.coins} + ${amount}` })
+      .set({ coins: sql`COALESCE(${users.coins}, 0) + ${amount}` })
       .where(eq(users.id, userId))
       .returning({ coins: users.coins });
 
@@ -76,7 +76,7 @@ export async function awardCoinsBatch(
     // Atomically update user balance with total
     const [updated] = await tx
       .update(users)
-      .set({ coins: sql`${users.coins} + ${totalAmount}` })
+      .set({ coins: sql`COALESCE(${users.coins}, 0) + ${totalAmount}` })
       .where(eq(users.id, userId))
       .returning({ coins: users.coins });
 

@@ -20,7 +20,6 @@
  * - Hydrates only once (guarded by useRef + store.dbHydrated flag)
  * - Runs in parallel — no sequential blocking
  * - No polling, no refetch loops, no hot-path interference
- * - Hydrates useDailyPlanStore from /api/planner-items
  */
 
 import { useEffect, useRef } from 'react';
@@ -33,6 +32,9 @@ import { useStreakStore } from '@/store/useStreakStore';
 import { useDocsStore } from '@/store/useDocsStore';
 import { useGoalsStore } from '@/store/useGoalsStore';
 import { useCoinsStore } from '@/store/useCoinsStore';
+import { useAchievementsStore } from '@/store/useAchievementsStore';
+import { useAmbientStore } from '@/store/useAmbientStore';
+import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { authClient } from '@/lib/auth-client';
 import { useGuestStore } from '@/store/useGuestStore';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
@@ -82,17 +84,19 @@ export default function PersistenceBootstrap() {
   const hydrateCoinsFailed = useCoinsStore((s) => s.hydrateFromDbFailed);
   const coinsHydrated = useCoinsStore((s) => s.dbHydrated);
 
+  const hydrateAchievements = useAchievementsStore((s) => s.hydrateFromDb);
+  const hydrateAchievementsFailed = useAchievementsStore((s) => s.hydrateFromDbFailed);
+  const achievementsHydrated = useAchievementsStore((s) => s.dbHydrated);
+
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
   const preferencesHydrated = useSettingsStore((s) => s.preferencesHydrated);
-  const hydrateFocusSessionLengthFromDb = useSettingsStore((s) => s.hydrateFocusSessionLengthFromDb);
+  const hydratePreferencesFromDb = useSettingsStore((s) => s.hydratePreferencesFromDb);
 
   const { data: session } = authClient.useSession();
 
   // Clear stale guest flag when a real session is present.
-  // Prevents the GuestBanner from showing after a user signs in on
-  // a browser that previously used guest mode.
   useEffect(() => {
     if (session?.user?.id && useGuestStore.getState().isGuest) {
       useGuestStore.getState().clearGuestSession();
@@ -100,29 +104,21 @@ export default function PersistenceBootstrap() {
   }, [session?.user?.id]);
 
   // Cross-user data-isolation guard.
-  // If the authenticated user changed (e.g. sign-out → sign-in as someone
-  // else on the same browser), clear every persisted `lumina-*` store so
-  // the in-memory Zustand snapshots can't leak one user's data to the
-  // next. We then reload so each store re-initialises with the new user's
-  // canonical data from the DB.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const currentId = session?.user?.id;
-    if (!currentId) return; // wait for session to resolve
+    if (!currentId) return;
 
     const USER_ID_KEY = 'lumina-user-id';
     const storedId = localStorage.getItem(USER_ID_KEY);
 
     if (!storedId) {
-      // First sign-in on this browser — stamp it and carry on.
       localStorage.setItem(USER_ID_KEY, currentId);
       return;
     }
 
     if (storedId === currentId) return;
 
-    // Different user — nuke every `lumina-*` key (except the id stamp
-    // itself) and reload so the fresh session picks up a clean slate.
     const keysToClear: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -138,12 +134,10 @@ export default function PersistenceBootstrap() {
   }, [session?.user?.id]);
 
   useEffect(() => {
-    // Guard against double-run in StrictMode / remounts
     if (hasRun.current) return;
     if (eventsHydrated && tasksHydrated && focusHydrated && plannerHydrated) return;
     hasRun.current = true;
 
-    // Propagate userId to stores so localStorage writes are namespaced.
     const userId = session?.user?.id ?? null;
     if (userId) {
       setEventsUserId(userId);
@@ -151,22 +145,48 @@ export default function PersistenceBootstrap() {
       setFocusUserId(userId);
     }
 
-    // Run all fetches in parallel — no sequential blocking.
-    // Always call hydrateFromDb (even with empty array) so dbHydrated becomes
-    // true and the stores never fall back to localStorage as a live data source.
-    // Use allSettled so one failure doesn't prevent other stores from hydrating
     void Promise.allSettled([
+      // User preferences — expands to include timezone, notification prefs,
+      // work hours, pomodoro settings, and ambient track
       preferencesHydrated
         ? Promise.resolve()
         : fetch('/api/users/preferences')
             .then(async (res) => {
               if (!res.ok) throw new Error(`Preferences fetch failed (${res.status})`);
-              return res.json() as Promise<{ focusSessionLength?: number }>;
+              return res.json() as Promise<{
+                focusSessionLength?: number;
+                timezone?: string;
+                notificationPreferences?: Record<string, boolean>;
+                workStart?: string;
+                workEnd?: string;
+                shortBreakMins?: number;
+                longBreakMins?: number;
+                sessionsPerCycle?: number;
+                ambientTrack?: string | null;
+              }>;
             })
             .then((prefs) => {
-              if (typeof prefs.focusSessionLength === 'number') {
-                hydrateFocusSessionLengthFromDb(prefs.focusSessionLength);
+              hydratePreferencesFromDb({
+                focusSessionLength: prefs.focusSessionLength,
+                timezone: prefs.timezone,
+                notificationPreferences: prefs.notificationPreferences as Parameters<typeof hydratePreferencesFromDb>[0]['notificationPreferences'],
+                workStart: prefs.workStart,
+                workEnd: prefs.workEnd,
+              });
+              // Hydrate pomodoro break settings from DB
+              if (
+                typeof prefs.shortBreakMins === 'number' &&
+                typeof prefs.longBreakMins === 'number' &&
+                typeof prefs.sessionsPerCycle === 'number'
+              ) {
+                usePomodoroStore.getState().hydrateFromDb(
+                  prefs.shortBreakMins,
+                  prefs.longBreakMins,
+                  prefs.sessionsPerCycle,
+                );
               }
+              // Hydrate ambient track from DB (only fills in if localStorage has nothing)
+              useAmbientStore.getState().hydrateTrackFromDb(prefs.ambientTrack ?? null);
             })
             .catch(() => {
               // Keep local persisted settings if DB prefs are unavailable.
@@ -204,7 +224,6 @@ export default function PersistenceBootstrap() {
               hydratePlannerFailed();
             }),
 
-      // Hydrate docs store
       docsHydrated
         ? Promise.resolve()
         : docsPersistence.fetchAll()
@@ -213,7 +232,6 @@ export default function PersistenceBootstrap() {
               if (isDev) hydrateDocsFailed();
             }),
 
-      // Hydrate goals store
       goalsHydrated
         ? Promise.resolve()
         : goalsPersistence.fetchAllForCurrentUser()
@@ -222,7 +240,6 @@ export default function PersistenceBootstrap() {
               if (isDev) hydrateGoalsFailed();
             }),
 
-      // Hydrate coins/economy store
       coinsHydrated
         ? Promise.resolve()
         : coinsPersistence.fetchCoinsData()
@@ -231,7 +248,18 @@ export default function PersistenceBootstrap() {
               if (isDev) hydrateCoinsFailed();
             }),
 
-      // Hydrate streak store from API
+      achievementsHydrated
+        ? Promise.resolve()
+        : fetch('/api/achievements')
+            .then(async (res) => {
+              if (!res.ok) throw new Error(`Achievements fetch failed (${res.status})`);
+              return res.json();
+            })
+            .then((data) => hydrateAchievements(Array.isArray(data) ? data : []))
+            .catch(() => {
+              if (isDev) hydrateAchievementsFailed();
+            }),
+
       useStreakStore.getState().hydrateFromAPI().catch(() => {}),
     ]).then((results) => {
       if (isDev) {

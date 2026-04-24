@@ -42,6 +42,7 @@ export interface PomodoroState {
   setLongBreakMins: (mins: number) => void;
   setSessionsPerCycle: (n: number) => void;
   dismissCelebration: () => void;
+  hydrateFromDb: (shortBreakMins: number, longBreakMins: number, sessionsPerCycle: number) => void;
 
   // Derived helpers
   getElapsedSecs: () => number;
@@ -259,17 +260,46 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
     },
 
     setShortBreakMins: (mins: number) => {
-      set({ shortBreakMins: Math.max(1, Math.min(30, mins)) });
+      const clamped = Math.max(1, Math.min(30, mins));
+      set({ shortBreakMins: clamped });
       persist(get());
+      void fetch('/api/users/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortBreakMins: clamped }),
+      }).catch(() => {});
     },
 
     setLongBreakMins: (mins: number) => {
-      set({ longBreakMins: Math.max(1, Math.min(60, mins)) });
+      const clamped = Math.max(5, Math.min(60, mins));
+      set({ longBreakMins: clamped });
       persist(get());
+      void fetch('/api/users/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ longBreakMins: clamped }),
+      }).catch(() => {});
     },
 
     setSessionsPerCycle: (n: number) => {
-      set({ sessionsPerCycle: n });
+      const clamped = Math.max(1, Math.min(10, n));
+      set({ sessionsPerCycle: clamped });
+      persist(get());
+      void fetch('/api/users/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionsPerCycle: clamped }),
+      }).catch(() => {});
+    },
+
+    hydrateFromDb: (shortBreakMins, longBreakMins, sessionsPerCycle) => {
+      const s = get();
+      if (s.isRunning) return;
+      set({
+        shortBreakMins: Math.max(1, Math.min(30, shortBreakMins)),
+        longBreakMins: Math.max(5, Math.min(60, longBreakMins)),
+        sessionsPerCycle: Math.max(1, Math.min(10, sessionsPerCycle)),
+      });
       persist(get());
     },
 

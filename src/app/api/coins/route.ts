@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       .limit(50);
 
     return NextResponse.json({
-      balance: user.coins,
+      balance: user.coins ?? 0,
       transactions: txs.map(t => ({
         id: t.id,
         amount: t.amount,

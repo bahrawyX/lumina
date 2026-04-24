@@ -52,21 +52,25 @@ export async function fetchAllForCurrentUser(): Promise<Task[]> {
   }
 }
 
-/** Persist a new task to the DB. Fire-and-forget safe. */
-export async function createOne(task: Task): Promise<void> {
+/** Persist a new task to the DB. Returns the DB-assigned UUID, or null on failure. */
+export async function createOne(task: Task): Promise<string | null> {
   try {
     const payload = {
       ...task,
       status: mapUiStatusToDb(task.status),
     };
-    await apiFetch('/api/tasks', {
+    const res = await apiFetch('/api/tasks', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.id === 'string' ? data.id : null;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[tasksPersistence] createOne failed:', err);
     }
+    return null;
   }
 }
 

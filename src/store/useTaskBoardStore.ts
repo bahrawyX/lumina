@@ -268,8 +268,17 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       saveTasks(next, state.userId);
       return { tasks: next };
     });
-    // Fire-and-forget DB persistence
-    tasksPersistence.createOne(task);
+
+    // Swap optimistic uid for the real DB UUID once the server responds
+    void tasksPersistence.createOne(task).then((dbId) => {
+      if (!dbId || dbId === task.id) return;
+      set((state) => {
+        const next = state.tasks.map(t => t.id === task.id ? { ...t, id: dbId } : t);
+        saveTasks(next, state.userId);
+        return { tasks: next };
+      });
+    });
+
     return task;
   },
 
