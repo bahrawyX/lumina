@@ -91,6 +91,23 @@ function loadPersisted(): Partial<PomodoroState> | null {
   }
 }
 
+/**
+ * PATCH /api/users/preferences with the given partial body. On HTTP failure
+ * or network error, run the supplied rollback so the store + localStorage
+ * cache revert to the prior value. Used by all four pomodoro setters so the
+ * UI never silently diverges from the DB.
+ */
+function patchPreferenceWithRollback(body: Record<string, unknown>, rollback: () => void): void {
+  if (typeof window === 'undefined') return;
+  void fetch('/api/users/preferences', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+    .then((res) => { if (!res.ok) rollback(); })
+    .catch(() => rollback());
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const usePomodoroStore = create<PomodoroState>((set, get) => {
@@ -276,50 +293,46 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
 
     setWorkMins: (mins: number) => {
       const clamped = Math.max(1, Math.min(240, mins));
+      const previous = get().workMins;
       set({ workMins: clamped });
       persist(get());
-      // Work-duration is stored server-side as `focusSessionLength` — keep this
-      // setter symmetric with setShortBreakMins / setLongBreakMins / setSessionsPerCycle
-      // so any caller can rely on "set here → persist to DB" without needing
-      // to separately call useSettingsStore.setFocusSessionLength.
-      void fetch('/api/users/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focusSessionLength: clamped }),
-      }).catch(() => {});
+      patchPreferenceWithRollback({ focusSessionLength: clamped }, () => {
+        set({ workMins: previous });
+        persist(get());
+      });
     },
 
     setShortBreakMins: (mins: number) => {
       const clamped = Math.max(1, Math.min(30, mins));
+      const previous = get().shortBreakMins;
       set({ shortBreakMins: clamped });
       persist(get());
-      void fetch('/api/users/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shortBreakMins: clamped }),
-      }).catch(() => {});
+      patchPreferenceWithRollback({ shortBreakMins: clamped }, () => {
+        set({ shortBreakMins: previous });
+        persist(get());
+      });
     },
 
     setLongBreakMins: (mins: number) => {
       const clamped = Math.max(5, Math.min(60, mins));
+      const previous = get().longBreakMins;
       set({ longBreakMins: clamped });
       persist(get());
-      void fetch('/api/users/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ longBreakMins: clamped }),
-      }).catch(() => {});
+      patchPreferenceWithRollback({ longBreakMins: clamped }, () => {
+        set({ longBreakMins: previous });
+        persist(get());
+      });
     },
 
     setSessionsPerCycle: (n: number) => {
       const clamped = Math.max(1, Math.min(10, n));
+      const previous = get().sessionsPerCycle;
       set({ sessionsPerCycle: clamped });
       persist(get());
-      void fetch('/api/users/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionsPerCycle: clamped }),
-      }).catch(() => {});
+      patchPreferenceWithRollback({ sessionsPerCycle: clamped }, () => {
+        set({ sessionsPerCycle: previous });
+        persist(get());
+      });
     },
 
     hydrateFromDb: (shortBreakMins, longBreakMins, sessionsPerCycle, workMins) => {

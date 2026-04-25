@@ -27,7 +27,7 @@ const ContributionGrid: React.FC<ContributionGridProps> = ({ data }) => {
   }, [data.weeks]);
 
   return (
-    <div className="overflow-x-auto no-scrollbar -mx-2 px-2">
+    <div className="overflow-x-auto -mx-2 px-2 pb-1" data-testid="contrib-scroll">
     <div className="min-w-max">
       <div
         className="ml-8 grid mb-2"

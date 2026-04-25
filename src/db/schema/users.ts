@@ -48,6 +48,8 @@ export const users = pgTable(
     }),
     workStart: varchar('work_start', { length: 5 }).default('09:00'),
     workEnd: varchar('work_end', { length: 5 }).default('17:00'),
+    /** User-defined calendar contexts (custom categories) */
+    customCategories: jsonb('custom_categories').$type<Array<{ name: string; color: string }>>().default([]),
     shortBreakMins: integer('short_break_mins').notNull().default(5),
     longBreakMins: integer('long_break_mins').notNull().default(20),
     sessionsPerCycle: integer('sessions_per_cycle').notNull().default(4),

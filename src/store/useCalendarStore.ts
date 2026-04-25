@@ -39,6 +39,7 @@ interface CalendarState {
   searchQuery: string;
   timezone: string;
   customCategories: Array<{ name: string; color: string }>;
+  customCategoriesHydrated: boolean;
 
   profile: UserProfile;
   insights: SmartInsight[];
@@ -66,6 +67,7 @@ interface CalendarState {
   updateContext: (contextId: string, updates: { name: string; color: string }) => boolean;
   deleteContext: (contextId: string) => boolean;
   removeCustomCategory: (name: string) => void;
+  hydrateCustomCategoriesFromDb: (cats: Array<{ name: string; color: string }>) => void;
 
 
   setView: (view: ViewType) => void;
@@ -121,14 +123,35 @@ function getGoals(profile: UserProfile): UserGoal[] {
   return Array.isArray(profile.goals) ? profile.goals : [];
 }
 
+/**
+ * Push the current custom-categories list to the DB. On failure, run the
+ * rollback so the store reverts to the prior state and a toast can fire.
+ * Used by add/update/delete category actions to keep UI optimistic while
+ * remaining DB-as-source-of-truth.
+ */
+function persistCustomCategories(
+  list: Array<{ name: string; color: string }>,
+  rollback: () => void,
+): void {
+  if (typeof window === 'undefined') return;
+  void fetch('/api/users/preferences', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customCategories: list }),
+  })
+    .then((res) => { if (!res.ok) rollback(); })
+    .catch(() => rollback());
+}
+
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   activeFilters: [],
   searchQuery: '',
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  customCategories: (() => {
-    const parsed = readStorageJSON<unknown>('lumina_custom_categories', []);
-    return Array.isArray(parsed) ? parsed : [];
-  })(),
+  // DB is the source of truth — start empty and hydrate from
+  // /api/users/preferences via PersistenceBootstrap. No localStorage read here
+  // so the previous user's contexts cannot leak into a new session.
+  customCategories: [],
+  customCategoriesHydrated: false,
   profile: (() => {
     const stored = readStorageJSON<Partial<UserProfile>>('lumina_profile', defaultProfile);
     // Migration guard: ensure all fields have correct shape regardless of stored schema version
@@ -165,9 +188,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       || reservedNames.has(trimmedName.toLowerCase());
     if (exists) return false;
 
-    const newCategories = [...state.customCategories, { name: trimmedName, color }];
-    setStorageItem('lumina_custom_categories', JSON.stringify(newCategories));
+    const previous = state.customCategories;
+    const newCategories = [...previous, { name: trimmedName, color }];
     set({ customCategories: newCategories });
+    persistCustomCategories(newCategories, () => set({ customCategories: previous }));
     return true;
   },
 
@@ -185,17 +209,19 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     );
     if (duplicate || reservedNames.has(trimmedName.toLowerCase())) return false;
 
-    const newCategories = state.customCategories.map((category) =>
+    const previous = state.customCategories;
+    const previousFilters = state.activeFilters;
+    const newCategories = previous.map((category) =>
       category.name === contextId
         ? { ...category, name: trimmedName, color: updates.color }
         : category
     );
-    setStorageItem('lumina_custom_categories', JSON.stringify(newCategories));
 
-    const nextFilters = state.activeFilters.map((filter) => filter === contextId ? trimmedName : filter);
+    const nextFilters = previousFilters.map((filter) => filter === contextId ? trimmedName : filter);
     useTaskBoardStore.getState().renameContextReference(contextId, trimmedName);
 
     set({ customCategories: newCategories, activeFilters: nextFilters });
+    persistCustomCategories(newCategories, () => set({ customCategories: previous, activeFilters: previousFilters }));
     return true;
   },
 
@@ -204,16 +230,25 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     const exists = state.customCategories.some((category) => category.name === contextId);
     if (!exists) return false;
 
-    const newCategories = state.customCategories.filter((category) => category.name !== contextId);
-    const nextFilters = state.activeFilters.filter((filter) => filter !== contextId);
-    setStorageItem('lumina_custom_categories', JSON.stringify(newCategories));
+    const previous = state.customCategories;
+    const previousFilters = state.activeFilters;
+    const newCategories = previous.filter((category) => category.name !== contextId);
+    const nextFilters = previousFilters.filter((filter) => filter !== contextId);
     useTaskBoardStore.getState().clearContextReference(contextId);
     set({ customCategories: newCategories, activeFilters: nextFilters });
+    persistCustomCategories(newCategories, () => set({ customCategories: previous, activeFilters: previousFilters }));
     return true;
   },
 
   removeCustomCategory: (name) => {
     get().deleteContext(name);
+  },
+
+  hydrateCustomCategoriesFromDb: (cats) => {
+    const sanitized = (cats ?? [])
+      .filter((c) => c && typeof c.name === 'string' && typeof c.color === 'string')
+      .map((c) => ({ name: c.name, color: c.color }));
+    set({ customCategories: sanitized, customCategoriesHydrated: true });
   },
 
 

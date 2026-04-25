@@ -997,6 +997,7 @@ const OnboardingFlow: React.FC = () => {
   const router = useRouter();
   const store = useOnboardingStore();
   const setGlobalFocusSessionLength = useSettingsStore((s) => s.setFocusSessionLength);
+  const setGlobalWorkHours = useSettingsStore((s) => s.setWorkHours);
   const calStore = useCalendarStore();
   const plannerStore = usePlannerStore();
   const authClient = useLuminaAuthClient();
@@ -1009,7 +1010,11 @@ const OnboardingFlow: React.FC = () => {
     refetch: refetchAuthSession,
   } = authClient.useSession();
   const [direction, setDirection] = useState<number>(1);
-  const [step, setStep] = useState<number>(0);
+  // Source of truth for current step lives in the onboarding zustand so a
+  // refresh mid-flow resumes at the same screen. The store action is the only
+  // setter; no local copy is kept to keep state single-direction.
+  const step = useOnboardingStore((s) => Math.max(0, Math.min(8, s.step)));
+  const setStep = useOnboardingStore((s) => s.setStep);
   const [outlookLoading, setOutlookLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('signin');
@@ -1534,8 +1539,8 @@ const OnboardingFlow: React.FC = () => {
   const handleContinueAsGuest = useCallback(() => {
     setGuest(true);
     setDirection(1);
-    setStep((s) => s + 1);
-  }, [setGuest]);
+    setStep(step + 1);
+  }, [setGuest, setStep, step]);
 
   const canContinue = useCallback((): boolean => {
     if (step === 1) return authStatus === 'logged in' || isGuest;
@@ -1573,6 +1578,17 @@ const OnboardingFlow: React.FC = () => {
 
   const goNext = useCallback(() => {
     if (!canContinue()) return;
+    // Step 2 = About You. Persist the entered name to DB so it survives
+    // sign-out / new device. Fire-and-forget — failure here only means the
+    // localStorage copy is the only source of truth, which the rest of the
+    // app already tolerates.
+    if (step === 2 && store.userName.trim().length >= 2) {
+      void fetch('/api/users/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: store.userName.trim() }),
+      }).catch(() => {});
+    }
     if (step === 8) {
       // Completion — save name + role to calendar profile, then mark done
       calStore.updateProfile({
@@ -1584,14 +1600,14 @@ const OnboardingFlow: React.FC = () => {
       return;
     }
     setDirection(1);
-    setStep((s) => s + 1);
-  }, [step, canContinue, store, calStore, router]);
+    setStep(step + 1);
+  }, [step, canContinue, store, calStore, router, setStep]);
 
   const goBack = useCallback(() => {
     if (step === 0) return;
     setDirection(-1);
-    setStep((s) => s - 1);
-  }, [step]);
+    setStep(step - 1);
+  }, [step, setStep]);
 
   // Keyboard enter / arrow nav (not on inputs)
   React.useEffect(() => {
@@ -1648,7 +1664,13 @@ const OnboardingFlow: React.FC = () => {
             workStart={store.workStart}
             workEnd={store.workEnd}
             timezone={store.timezone}
-            onChange={(s, e) => store.setWorkSchedule(s, e)}
+            onChange={(s, e) => {
+              store.setWorkSchedule(s, e);
+              // Persist to DB via the canonical settings store. setWorkHours
+              // PATCHes /api/users/preferences and updates the same fields
+              // (work_start / work_end) that planner + intelligence read.
+              setGlobalWorkHours(s, e);
+            }}
           />
         );
       case 4:

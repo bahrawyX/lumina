@@ -9,8 +9,10 @@ import {
 import {
   ContributionDay,
   ContributionWeek,
+  ContributionWeights,
   ContributionYear,
   DailyContributionInputs,
+  DEFAULT_CONTRIBUTION_WEIGHTS,
 } from '../../types/performance';
 import { computeContributionScoreForDay } from './computeContributionScoreForDay';
 import { getContributionLevel } from './getContributionLevel';
@@ -19,6 +21,7 @@ import { getMonthLabels } from './getMonthLabels';
 const EMPTY_COUNTS: DailyContributionInputs = {
   completedTasks: 0,
   focusSessions: 0,
+  focusMinutes: 0,
   completedEvents: 0,
   completedPlannerItems: 0,
   scheduledEvents: 0,
@@ -26,7 +29,8 @@ const EMPTY_COUNTS: DailyContributionInputs = {
 
 export function buildContributionCalendar(
   year: number,
-  dayInputMap: Map<string, DailyContributionInputs>
+  dayInputMap: Map<string, DailyContributionInputs>,
+  weights: ContributionWeights = DEFAULT_CONTRIBUTION_WEIGHTS,
 ): ContributionYear {
   const yearStart = startOfYear(new Date(year, 0, 1));
   const yearEnd = endOfYear(yearStart);
@@ -50,7 +54,7 @@ export function buildContributionCalendar(
 
       const dateKey = format(date, 'yyyy-MM-dd');
       const input = dayInputMap.get(dateKey) ?? EMPTY_COUNTS;
-      const score = computeContributionScoreForDay(input);
+      const score = computeContributionScoreForDay(input, weights);
       const level = getContributionLevel(score);
 
       const day: ContributionDay = {
@@ -59,6 +63,7 @@ export function buildContributionCalendar(
         level,
         completedTasks: input.completedTasks,
         focusSessions: input.focusSessions,
+        focusMinutes: input.focusMinutes ?? 0,
         completedEvents: input.completedEvents,
         completedPlannerItems: input.completedPlannerItems,
         scheduledEvents: input.scheduledEvents ?? 0,

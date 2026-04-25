@@ -62,40 +62,52 @@ export const useSettingsStore = create<SettingsState>()(
 
       setFocusSessionLength: (minutes) => {
         const clamped = clampFocusMinutes(minutes);
+        const previous = get().focusSessionLength;
         set({ focusSessionLength: clamped, preferencesHydrated: true });
         void fetch('/api/users/preferences', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ focusSessionLength: clamped }),
-        }).catch(() => {});
+        })
+          .then((res) => { if (!res.ok) set({ focusSessionLength: previous }); })
+          .catch(() => set({ focusSessionLength: previous }));
       },
 
       setTimezone: (tz) => {
+        const previous = get().timezone;
         set({ timezone: tz, preferencesHydrated: true });
         void fetch('/api/users/notification-preferences', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ timezone: tz }),
-        }).catch(() => {});
+        })
+          .then((res) => { if (!res.ok) set({ timezone: previous }); })
+          .catch(() => set({ timezone: previous }));
       },
 
       setNotificationPreferences: (partial) => {
-        const merged = { ...get().notificationPreferences, ...partial };
+        const previous = get().notificationPreferences;
+        const merged = { ...previous, ...partial };
         set({ notificationPreferences: merged, preferencesHydrated: true });
         void fetch('/api/users/notification-preferences', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(merged),
-        }).catch(() => {});
+        })
+          .then((res) => { if (!res.ok) set({ notificationPreferences: previous }); })
+          .catch(() => set({ notificationPreferences: previous }));
       },
 
       setWorkHours: (workStart, workEnd) => {
+        const previous = { workStart: get().workStart, workEnd: get().workEnd };
         set({ workStart, workEnd, preferencesHydrated: true });
         void fetch('/api/users/preferences', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ workStart, workEnd }),
-        }).catch(() => {});
+        })
+          .then((res) => { if (!res.ok) set(previous); })
+          .catch(() => set(previous));
       },
 
       hydratePreferencesFromDb: (prefs) => {

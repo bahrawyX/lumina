@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         longBreakMins: users.longBreakMins,
         sessionsPerCycle: users.sessionsPerCycle,
         ambientTrack: users.ambientTrack,
+        customCategories: users.customCategories,
       })
       .from(users)
       .where(eq(users.id, session.user.id))
@@ -76,6 +77,7 @@ export async function GET(req: NextRequest) {
       longBreakMins: row.longBreakMins ?? 20,
       sessionsPerCycle: row.sessionsPerCycle ?? 4,
       ambientTrack: row.ambientTrack ?? null,
+      customCategories: row.customCategories ?? [],
     });
   } catch (err) {
     console.error('[GET /api/users/preferences]', err);
@@ -97,6 +99,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const update: Partial<{
+    name: string;
     focusSessionLength: number;
     workStart: string;
     workEnd: string;
@@ -104,8 +107,20 @@ export async function PATCH(req: NextRequest) {
     longBreakMins: number;
     sessionsPerCycle: number;
     ambientTrack: string | null;
+    customCategories: Array<{ name: string; color: string }>;
     updatedAt: Date;
   }> = { updatedAt: new Date() };
+
+  if (body.name !== undefined) {
+    if (typeof body.name !== 'string') {
+      return NextResponse.json({ error: 'name must be a string' }, { status: 400 });
+    }
+    const trimmed = body.name.trim();
+    if (trimmed.length < 2 || trimmed.length > 80) {
+      return NextResponse.json({ error: 'name must be 2-80 characters' }, { status: 400 });
+    }
+    update.name = trimmed;
+  }
 
   if (body.focusSessionLength !== undefined) {
     const n = normalizeFocusSessionLength(body.focusSessionLength);
@@ -157,6 +172,30 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid ambientTrack' }, { status: 400 });
     }
     update.ambientTrack = body.ambientTrack as string | null;
+  }
+
+  if (body.customCategories !== undefined) {
+    if (!Array.isArray(body.customCategories)) {
+      return NextResponse.json({ error: 'customCategories must be an array' }, { status: 400 });
+    }
+    if (body.customCategories.length > 64) {
+      return NextResponse.json({ error: 'Too many custom categories (max 64)' }, { status: 400 });
+    }
+    const cleaned: Array<{ name: string; color: string }> = [];
+    for (const raw of body.customCategories) {
+      if (!raw || typeof raw !== 'object') {
+        return NextResponse.json({ error: 'customCategories entries must be objects' }, { status: 400 });
+      }
+      const r = raw as { name?: unknown; color?: unknown };
+      if (typeof r.name !== 'string' || typeof r.color !== 'string') {
+        return NextResponse.json({ error: 'customCategories entries need name + color strings' }, { status: 400 });
+      }
+      const name = r.name.trim().slice(0, 40);
+      const color = r.color.trim().slice(0, 32);
+      if (name.length === 0 || color.length === 0) continue;
+      cleaned.push({ name, color });
+    }
+    update.customCategories = cleaned;
   }
 
   if (Object.keys(update).length === 1) {

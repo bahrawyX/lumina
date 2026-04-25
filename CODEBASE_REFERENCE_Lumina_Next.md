@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-19 (v28 — Mobile polish for Android Chrome / Pixel-class viewport (~412×915). Three P0 fixes: (1) Global `input/textarea/select { font-size: 16px }` under `@media (max-width: 768px)` in globals.css so iOS Safari / Android Chrome no longer auto-zoom the viewport on focus; (2) TaskBoard force-renders **List view** on mobile via `useIsMobile()` — the 4-column kanban at 260px/col cannot fit on a 412px viewport even with snap-scroll, so the stored preference is overridden (not mutated) on mobile and the view-toggle is hidden; (3) CalendarPage transparently maps stored `view=WEEK` → `DayView` on mobile since a 7-column grid is unreadable at ~58px/col, and hides the view-switcher tabs on mobile. P1: ContributionGrid (performance heatmap) wrapped in `overflow-x-auto no-scrollbar` so the year-wide grid pans horizontally without widening the page. New `tests/e2e/mobile.spec.ts` tagged `@mobile` (14 tests: 10 no-horizontal-overflow + force-list + force-day + input-zoom + bottom-nav). Desktop project gains `grepInvert: /@mobile\b(?!.*@cross)/`. Before/after Pixel-5 full-page screenshots captured under `playwright-screenshots/{mobile,mobile-after}/` via env-var-driven spec. 102 Vitest + 54 Playwright desktop + 28 Playwright mobile (14 audit + 14 screenshot).)
+> Last updated: 2026-04-25 (v29 — Three feature/fix clusters. **Docs**: (1) P0 stale-write race: `PATCH /api/docs/[id]` now returns `updatedAt` via Drizzle `.returning()`; `useDocsStore` propagates the server timestamp so the next save always has a fresh baseline — eliminates spurious 409s after a title edit; (2) P1 Escape-revert race in `DocPage.tsx`: `skipNextBlurRef` guard prevents `handleTitleBlur` from firing a stale-value write when the user presses Escape; (3) AI assist `/ai` slash command: new `AIPromptInput` floating card, Gemini streaming via `/api/docs/ai-stream`, updates placeholder block per chunk, handles 429/network/empty-stream. **Planner — bug fixes**: (4) P0 UUID resolver registry in `useTaskBoardStore` (`resolveTaskDbId`): tasks optimistically added with a non-UUID `uid()` ID are resolved to their DB UUID before `POST /api/planner-items` — eliminates Zod `.uuid()` rejection when a task is dragged to the planner before its DB round-trip completes; (5) P1 `removeAllByTaskId` rollback: inner `.catch(() => null)` in Promise.all silently swallowed failures — replaced with per-deletion `true/false` tracking so the snapshot rolls back when any delete fails; (6) Mobile tab switcher: `DailyPlanView` gains a `role="tablist"` Pool/Timeline toggle that hides/shows each column on small screens. **Planner — date navigation + Roll Over UX**: (7) `useDailyPlanStore` gains `viewDate: string` + `setViewDate()`; (8) `GET /api/planner-items` accepts optional `?date=YYYY-MM-DD` filter; (9) `DailyPlanHeader` gains prev/next day nav arrows and a Today chip; (10) `RollOverButton` renamed "Push to Tomorrow", `onRollOver` prop is `undefined` when not viewing today so the button hides off-today, toast shows count or empty-state message. 102 Vitest + 54 Playwright desktop + 28 Playwright mobile — unchanged.)
 
 ---
 
@@ -222,16 +222,16 @@ src/
 │   ├── performance/
 │   │   └── contributions/         ← ContributionGrid, Cell, Heatmap, Legend, Tooltip, YearSelector
 │   ├── planner/
-│   │   ├── DailyPlanView.tsx       ← data-tutorial="plan-pool" on task pool container
-│   │   ├── DailyPlanHeader.tsx
-│   │   ├── TodayTimeline.tsx
+│   │   ├── DailyPlanView.tsx       ← data-tutorial="plan-pool" on task pool container; viewDate state, date navigation, mobile tab switcher (Pool / Timeline)
+│   │   ├── DailyPlanHeader.tsx     ← prev/next day nav arrows, Today chip, eyebrow "PLAN · TODAY" vs "PLAN · MMM D"
+│   │   ├── TodayTimeline.tsx       ← accepts optional viewDate prop
 │   │   ├── PlannedTaskCard.tsx
 │   │   ├── TaskPoolCard.tsx
 │   │   ├── FreeTimePanel.tsx
 │   │   ├── IntelligencePanel.tsx   ← All dark/zinc tokens replaced with semantic bg-card/border-border
 │   │   ├── IntelligenceRecommendationCard.tsx
 │   │   ├── PlanningModal.tsx
-│   │   └── RollOverButton.tsx
+│   │   └── RollOverButton.tsx      ← labelled "Push to Tomorrow"; hidden when not viewing today
 │   ├── tasks/
 │   │   ├── TaskBoard.tsx           ← data-tutorial="task-board-header" on board header
 │   │   ├── TaskColumn.tsx
@@ -667,6 +667,7 @@ All stores in `src/store/`. Stores with `persist` write to `localStorage`.
 - List view actions: `setViewMode`, `setListSort`, `setListGroupBy`, `toggleListGroupCollapse`
 - Filter state (persisted in same `lumina_task_view_prefs` key): `searchQuery: string`, `priorityFilter: TaskPriority[]`, `difficultyFilter: TaskDifficulty[]`, `dueDateFilter: 'all'|'overdue'|'today'|'this_week'|'next_week'|'no_date'|'has_date'`
 - Filter actions: `setSearchQuery`, `setPriorityFilter`, `setDifficultyFilter`, `setDueDateFilter`, `clearAllFilters`
+- **UUID resolver registry** (module-level, outside Zustand state): `resolveTaskDbId(taskId, timeoutMs?)` — exported async function. If `taskId` is already a UUID returns it immediately. Otherwise waits for `addTask`'s DB round-trip to resolve the optimistic `uid()` id → real DB UUID (up to 5 s timeout). Used by `useDailyPlanStore.addPlanItem` / `batchAddPlanItems` to avoid sending a non-UUID taskId to `POST /api/planner-items` (which rejects it via Zod `.uuid()`). `addTask` calls internal `notifyOptimisticIdResolved(optimisticId, dbId)` on every outcome (success, failure, or when `dbId === optimisticId` meaning the task already had a UUID).
 
 ### `useFocusStore`
 - `activeSession: ActiveSession | null` — ephemeral timer state (persisted to localStorage for page-reload resume)
@@ -677,9 +678,14 @@ All stores in `src/store/`. Stores with `persist` write to `localStorage`.
 - Note: FocusSessionView uses this store's timer. PomodoroView uses `usePomodoroStore` for its own timer but reads `useFocusStore.activeSession` on mount to pre-populate the task selector, and writes session results (with taskId/taskTitle) to `sessionHistory`.
 
 ### `useDailyPlanStore`
-- `scheduledItems: PlannedItem[]`, `unscheduledTasks: Task[]`
-- `planDate: string` (YYYY-MM-DD)
-- `addToSchedule`, `removeFromSchedule`, `autoPlan`, `rollOver`
+- `plansByDate: Record<string, PlannedTaskItem[]>` — all plan items keyed by `YYYY-MM-DD`
+- `dbHydrated: boolean`
+- `viewDate: string` (YYYY-MM-DD, session-only, never persisted) — which calendar day the planner UI is showing; defaults to today
+- Hydration: `hydrateFromDb(items)`, `hydrateFromDbFailed()`
+- View: `setViewDate(date)`
+- CRUD: `addPlanItem(taskId, planDate, startTime, endTime)` — awaits `resolveTaskDbId` before `POST /api/planner-items`; `batchAddPlanItems(planDate, items[])` — resolves all task IDs in parallel then `POST /api/planner-items/batch`; `removePlanItem(planItemId, planDate)`; `removeAllByTaskId(taskId)` — deletes all plan items for a task (cross-date), rolls back snapshot if any deletion fails; `updatePlanItem(planItemId, planDate, patch)` (startTime/endTime/order); `reorderPlanItems(planDate, orderedIds)`
+- Selector: `getPlanItemsForDate(planDate) → PlannedTaskItem[]`
+- No `persist` middleware — DB is sole source of truth
 
 ### `usePlannerStore`
 - `outlookConnected: boolean`, `outlookEvents: OutlookEvent[]`
@@ -1773,6 +1779,8 @@ Full document/knowledge system integrated into the app. Documents link to tasks,
 - **Keyboard shortcut guard**: AppShell's global `keydown` handler (single-key shortcuts like `p`, `t`, `f`, `n`, `g`, `m`, `w`, `d`) checks `e.target.isContentEditable` and `e.target.closest('[contenteditable]')` to bail out when the user is typing in the BlockNote editor. Without this, single-key presses would trigger navigation/actions instead of inserting characters.
 - **Dark mode**: CSS `!important` overrides in `globals.css` force transparent backgrounds on BlockNote layers inside `.lumina-editor`. `BlockNoteView` receives `theme={resolvedTheme}` from the theme provider.
 - **Last edited**: Relative time via `formatDistanceToNow` + `·` separator + save indicator.
+- **AI assist slash command** (`/ai`, also triggered by aliases: `ask`, `generate`, `assist`, `gemini`) — group "Lumina". Opens `AIPromptInput` floating card below the cursor's anchor block. On submit, inserts a `✨ Generating…` placeholder paragraph, streams from `POST /api/docs/ai-stream` with `{ prompt, context }`, calls `editor.updateBlock` per streamed chunk, and removes the placeholder block on error or empty stream. 429 → `toast.error('AI assist limit reached. Try again in a minute.')`. Network errors → `toast.error('AI assist unavailable')`. The icon is a chat-bubble SVG (two lines inside a rounded rect).
+- **`AIPromptInput` component** (`src/components/docs/AIPromptInput.tsx`) — fixed z-[60] card positioned below the anchor block. Chat-bubble icon, text input, `↵ send` mono chip (disabled below 3 chars). `Enter` submits; `Escape` cancels without mutation.
 
 ### Database
 #### `docs` table
@@ -1815,7 +1823,7 @@ Indexes: user_id, parent_id, (user_id, parent_id), linked_task_id, linked_event_
 | `/api/docs` | GET | Tree list (no content), sorted by pinned/position/updated_at |
 | `/api/docs` | POST | Create doc, validates nesting depth ≤ 5 |
 | `/api/docs/[id]` | GET | Full doc with content |
-| `/api/docs/[id]` | PATCH | Update with 409 stale-write protection |
+| `/api/docs/[id]` | PATCH | Update with 409 stale-write protection; returns `{ ok: true, updatedAt: string }` so the client can advance its baseline |
 | `/api/docs/[id]` | DELETE | Soft delete (archive). `?hard=true` + `{confirm:true}` for permanent |
 | `/api/docs/search` | GET | PostgreSQL FTS with `to_tsquery` prefix search (`:*` suffix), `ts_headline` `<mark>` excerpts, limit 20 |
 | `/api/docs/ai-stream` | POST | Gemini streaming proxy, 10/min rate limit |
@@ -1823,13 +1831,15 @@ Indexes: user_id, parent_id, (user_id, parent_id), linked_task_id, linked_event_
 ### Store: `useDocsStore` (src/store/useDocsStore.ts)
 State: `docs`, `openDocId`, `openDocContent`, `expandedIds`, `dbHydrated`, `isSaving`, `lastSavedAt`, `searchQuery`, `searchResults`, `isSearching`
 Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, `deleteDoc`, `pinDoc`, `moveDoc`, `saveContent` (1000ms debounced), `search`, `clearSearch`, `openDoc`, `closeDoc`, `toggleExpanded`
+Stale-write handling: `UpdateOneResult` in `docsPersistence.ts` is a discriminated union — `{ status: 'success'; updatedAt: string }` | `{ status: 'conflict' }` | `{ status: 'error' }`. Both `updateDoc` and `saveContent` advance the `lastSavedAt` / `openDocContent.updatedAt` on success so the next request always sends a current baseline. 409 from the server → `status: 'conflict'` → store shows a conflict toast without overwriting local edits.
 
 ### UI Components
 | File | Description |
 |---|---|
 | `src/components/docs/SidebarDocsTree.tsx` | Full-featured sidebar tree (expand/collapse, context menu, inline rename, add subpage, emoji picker). Currently unused — replaced by inline tree in Sidebar.tsx |
 | `src/components/Sidebar.tsx` (inline) | `SidebarDocsInlineTree` + `InlineDocItem` — compact nested doc tree rendered under the Docs nav item. Chevron toggle, 12px depth nesting, active doc highlight. Uses `useDocsStore.expandedIds` |
-| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with `lumina-editor` class, transparent bg, inherited font, custom `taskBlock` spec, multi-column schema, two-way task sync |
+| `src/components/docs/DocEditor.tsx` | BlockNote wrapper with `lumina-editor` class, transparent bg, inherited font, custom `taskBlock` spec, multi-column schema, two-way task sync, `/ai` slash command with Gemini streaming |
+| `src/components/docs/AIPromptInput.tsx` | Floating AI prompt card (z-[60]): chat-bubble icon, text input, `↵ send` chip. Enter → submit, Escape → cancel |
 | `src/components/docs/ColumnRatioPicker.tsx` | Visual column ratio picker (6 presets), backdrop-blur popover, mobile note |
 | `src/components/docs/DocBreadcrumb.tsx` | Parent chain navigation with 12px icons at each level |
 | `src/components/docs/DocSaveIndicator.tsx` | "Saving..."/"Saved ✓" AnimatePresence |
@@ -1837,7 +1847,7 @@ Actions: `hydrateFromDb`, `createDoc`, `updateDoc`, `archiveDoc`, `restoreDoc`, 
 | `src/components/docs/DocsEmptyAnimation.tsx` | SVG animated empty state (floating clipboard + blinking cursor, 120x120) |
 | `src/components/docs/QuickSwitcher.tsx` | Cmd+K global search overlay — docs section uses `/api/docs/search` API (200ms debounce) for prefix matching |
 | `src/components/pages/DocsHomePage.tsx` | /docs — greeting, search, pinned grid (20px icons), recent list (14px icons), animated empty state |
-| `src/components/pages/DocPage.tsx` | /docs/[id] — cover, CompactEmojiPicker icon selector, text-3xl title, editor, right sidebar |
+| `src/components/pages/DocPage.tsx` | /docs/[id] — cover, CompactEmojiPicker icon selector, text-3xl title, editor, right sidebar. `skipNextBlurRef` guards `handleTitleBlur` from firing after an Escape-revert (prevents stale-value write race) |
 
 ### CSS Overrides (globals.css)
 BlockNote editor themed via a mix of the `Theme` object (passed to
@@ -2557,6 +2567,163 @@ SSR-safe matchMedia hook. Behind `>=768px` the hook returns `false` so
 every change is a strict no-op on desktop. No store writes, no DOM
 changes, no layout shifts. Desktop visual regression (54 screenshots
 under `playwright-screenshots/desktop/`) is unchanged.
+
+---
+
+## 36. SESSION v29 CHANGES (2026-04-25)
+
+Three clusters of work across two committed sessions (`0a0a03e` and `b196ce6`).
+
+---
+
+### 36.1 Docs — P0 stale-write race (`src/app/api/docs/[id]/route.ts`, `src/lib/persistence/docsPersistence.ts`, `src/store/useDocsStore.ts`)
+
+**Problem.** After a user edited a doc title, the server processed the PATCH but the response body was `{ ok: true }` with no timestamp. The client never advanced its `lastSavedAt` baseline. The next content auto-save used the stale timestamp → server returned 409 "conflict" → save silently failed.
+
+**Root cause.** Drizzle `update().set().where()` was not chained with `.returning()`, so the server-authoritative `updatedAt` was never sent back to the client.
+
+**Fix.**
+- `PATCH /api/docs/[id]` now uses `.returning({ updatedAt: docs.updatedAt })` via Drizzle and returns `{ ok: true, updatedAt: string }`.
+- `docsPersistence.ts` — `UpdateOneResult` changed from a string union to a discriminated union: `{ status: 'success'; updatedAt: string } | { status: 'conflict' } | { status: 'error' }`.
+- `useDocsStore.updateDoc` — on success, syncs `result.updatedAt` into `openDocContent.updatedAt`.
+- `useDocsStore.saveContent` — on success, sets `lastSavedAt: result.updatedAt` and syncs `openDocContent.updatedAt`.
+
+**Effect.** Title edit → content auto-save → no 409. Each successful write advances the baseline.
+
+---
+
+### 36.2 Docs — P1 Escape-revert race (`src/components/pages/DocPage.tsx`)
+
+**Problem.** Pressing Escape in the title input called `setTitle(previous)` (async React state update) then `.blur()` (synchronous DOM). The `blur` event fired before the state update landed, so `handleTitleBlur` read the still-dirty value and issued a PATCH with the typed (not reverted) text.
+
+**Fix.** Added `skipNextBlurRef = useRef(false)`. The Escape handler sets it to `true` before calling `.blur()`; `handleTitleBlur` checks and short-circuits if `true`, then clears the ref.
+
+---
+
+### 36.3 Docs — AI assist slash command (`src/components/docs/DocEditor.tsx`, `src/components/docs/AIPromptInput.tsx`)
+
+New `/ai` slash command in the BlockNote editor (group "Lumina", aliases: `ai`, `ask`, `generate`, `assist`, `gemini`).
+
+**`AIPromptInput` component** — fixed-position floating card rendered when `aiPrompt` state is non-null. Positioned below the anchor block using `document.querySelector('[data-id="${blockId}"]')` getBoundingClientRect; falls back to selection rect. Chat-bubble SVG icon. `Enter` submits (min 3 chars), `Escape` cancels.
+
+**`handleAISubmit` flow**:
+1. Inserts a `✨ Generating…` placeholder paragraph below the anchor block.
+2. POST `/api/docs/ai-stream` with `{ prompt, context }`.
+3. `ReadableStream.getReader()` — reads chunks, calls `editor.updateBlock` per chunk to stream content into the placeholder.
+4. On empty stream → `editor.removeBlocks([placeholderId])`.
+5. On network error → remove placeholder + `toast.error('AI assist unavailable')`.
+6. On 429 → remove placeholder + `toast.error('AI assist limit reached. Try again in a minute.')`.
+
+**Icon**: chat-bubble SVG (`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5...">`).
+
+---
+
+### 36.4 Planner — P0 UUID resolver registry (`src/store/useTaskBoardStore.ts`, `src/store/useDailyPlanStore.ts`)
+
+**Problem.** Tasks created via the quick-add flow use `uid()` (a short non-UUID string) as their optimistic ID. `POST /api/planner-items` validates `taskId` with Zod `.uuid()` and rejects non-UUIDs with 400. A user who drags a freshly added task to the timeline before the `addTask` DB round-trip completes would silently fail to save the plan item.
+
+**Fix.** Module-level resolver registry in `useTaskBoardStore.ts`:
+
+```ts
+// Module-level (not Zustand state)
+const optimisticIdResolveMap = new Map<string, string | null>();
+const optimisticIdWaiters = new Map<string, Array<(dbId: string | null) => void>>();
+
+export function resolveTaskDbId(taskId: string, timeoutMs = 5000): Promise<string | null>
+```
+
+- If `taskId` is already a UUID → resolves immediately.
+- Otherwise → waits for `notifyOptimisticIdResolved(optimisticId, dbId)` fired by `addTask`'s DB callback, or times out after 5 s returning `null` (causes the plan item add to roll back).
+- `addTask` calls `notifyOptimisticIdResolved` on every outcome: success (passes DB UUID), failure (passes `null`), or when `dbId === task.id` (already a UUID, no-op waiter).
+
+`useDailyPlanStore.addPlanItem` and `batchAddPlanItems` await `resolveTaskDbId` before the persistence call; patch local `taskId` if the DB UUID differs from the optimistic one; drop items whose task never arrived in the DB.
+
+---
+
+### 36.5 Planner — P1 `removeAllByTaskId` rollback fix (`src/store/useDailyPlanStore.ts`)
+
+**Problem.** The per-item `.catch(() => null)` inside `Promise.all` silently absorbed individual deletion failures, making the outer `.catch` unreachable. The snapshot therefore never rolled back on partial failure.
+
+**Fix.** Each deletion is mapped to `.then(() => true, () => false)`; if any result is `false` the snapshot is restored and a save-error toast is shown.
+
+---
+
+### 36.6 Planner — Mobile tab switcher (`src/components/planner/DailyPlanView.tsx`)
+
+New `mobileTab: 'pool' | 'timeline'` state. A `role="tablist"` bar above the two columns switches visibility on small screens:
+- Pool column: `${mobileTab === 'pool' ? 'flex' : 'hidden'} md:flex`
+- Timeline column: `${mobileTab === 'timeline' ? 'flex' : 'hidden'} md:flex`
+
+Desktop layout is byte-for-byte unchanged (both columns always `md:flex`).
+
+---
+
+### 36.7 Planner — Date navigation (`src/store/useDailyPlanStore.ts`, `src/app/api/planner-items/route.ts`, `src/components/planner/DailyPlanView.tsx`, `src/components/planner/DailyPlanHeader.tsx`, `src/components/planner/TodayTimeline.tsx`)
+
+**`useDailyPlanStore` additions**:
+- `viewDate: string` — which YYYY-MM-DD the planner UI is showing; defaults to today; session-only (no localStorage / DB persistence).
+- `setViewDate(date)` — validates with `isValidDate`; no-ops on invalid input.
+
+**`GET /api/planner-items`** now accepts `?date=YYYY-MM-DD`. Validates with `DATE_PARAM_RE`. Computes `[startBound, endBound)` as `[local midnight on date, local midnight on date+1)` and adds SQL `>=`/`<` conditions. Without the param, returns all items (existing behaviour preserved).
+
+**`DailyPlanView.tsx`**:
+```ts
+const viewDate = useDailyPlanStore((s) => s.viewDate);
+const isViewingToday = viewDate === today;  // "today" = format(new Date(), 'yyyy-MM-dd')
+const viewDateAsDate = useMemo(() => parseISO(viewDate), [viewDate]);
+const navigateDay = useCallback((delta) =>
+  setViewDate(format(addDays(parseISO(viewDate), delta), 'yyyy-MM-dd')), [viewDate]);
+const goToToday = useCallback(() => setViewDate(format(new Date(), 'yyyy-MM-dd')), []);
+```
+
+- `viewDateEvents`, `planItems`, `plannedTaskIds` all keyed by `viewDate`.
+- Separate `todayPlannedTaskIds` memo (always from `plansByDate[today]`) drives `rolloverCandidates` so Roll Over always operates on today's tasks regardless of the viewed date.
+- `handleAutoPlanDay` uses `viewDate`; start time is `09:00` when not viewing today.
+
+**`DailyPlanHeader.tsx`** additions:
+- New props: `isViewingToday`, `onPrevDay`, `onNextDay`, `onGoToToday`.
+- `eyebrowLabel`: `isViewingToday ? 'PLAN · TODAY' : 'PLAN · ${format(date, 'MMM d').toUpperCase()}'`.
+- Inline `NavArrow` component (`ChevronLeftIcon`/`ChevronRightIcon`).
+- "Today" chip rendered only when `!isViewingToday && onGoToToday`.
+
+**`TodayTimeline.tsx`**: new optional `viewDate?: string` prop. `dateStr = viewDate ?? format(new Date(), 'yyyy-MM-dd')`. Calendar events memo uses `instanceDate: dateStr`.
+
+---
+
+### 36.8 Planner — Roll Over UX (`src/components/planner/RollOverButton.tsx`, `src/components/planner/DailyPlanView.tsx`)
+
+Changes to the Roll Over feature:
+- **Renamed**: "Roll Over" → **"Push to Tomorrow"**. Spinner copy "Rolling…" → "Pushing…".
+- **Hidden off-today**: `onRollOver` prop in `DailyPlanView` is `isViewingToday ? handleRollOverTasks : undefined`. `DailyPlanHeader` skips rendering `RollOverButton` when `onRollOver` is undefined.
+- **Empty-state toast**: 0 candidates → `toast('Nothing to roll over')` instead of silent no-op. The button stays clickable (no `rolloverCount === 0` disable) so this toast always fires.
+- **Count toast**: success → `toast.success(\`${count} task${count === 1 ? '' : 's'} pushed to tomorrow\`)`.
+- **Tooltip**: "Move unfinished tasks from today's plan to tomorrow". Added `aria-label` attribute.
+
+---
+
+### 36.9 Files changed in v29
+
+```
+src/app/api/docs/[id]/route.ts                     | PATCH returns { ok, updatedAt } via .returning()
+src/lib/persistence/docsPersistence.ts             | UpdateOneResult → discriminated union
+src/store/useDocsStore.ts                          | updateDoc + saveContent sync updatedAt
+src/components/pages/DocPage.tsx                   | skipNextBlurRef Escape-revert guard
+src/components/docs/DocEditor.tsx                  | /ai slash command, AIPromptInput overlay, chat-bubble icon
+src/components/docs/AIPromptInput.tsx              | NEW — floating AI prompt card
+src/store/useTaskBoardStore.ts                     | resolveTaskDbId + notifyOptimisticIdResolved registry
+src/store/useDailyPlanStore.ts                     | resolveTaskDbId calls; removeAllByTaskId fix; viewDate + setViewDate; mobile tab state
+src/app/api/planner-items/route.ts                 | GET ?date=YYYY-MM-DD filter
+src/components/planner/DailyPlanView.tsx            | viewDate navigation; mobile tab switcher; roll-over count toast
+src/components/planner/DailyPlanHeader.tsx          | isViewingToday + NavArrow + Today chip
+src/components/planner/TodayTimeline.tsx            | viewDate prop
+src/components/planner/RollOverButton.tsx           | renamed "Push to Tomorrow"; aria-label
+CODEBASE_REFERENCE_Lumina_Next.md                  | v29 header + §36 NEW; §6 useDailyPlanStore/useTaskBoardStore updated; §25 docs updated
+```
+
+### 36.10 Test count (unchanged from v28)
+- Vitest: 102/102
+- Playwright desktop: 54/54
+- Playwright mobile: 28/28
 
 ---
 

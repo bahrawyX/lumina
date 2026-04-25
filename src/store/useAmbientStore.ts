@@ -32,6 +32,7 @@ export const useAmbientStore = create<AmbientState & AmbientActions>()(
       drawerOpen: false,
 
       setTrack: (track) => {
+        const previous = { isPlaying: get().isPlaying, activeTrack: get().activeTrack };
         stopTrack();
         if (track === null) {
           set({ isPlaying: false, activeTrack: null });
@@ -43,7 +44,21 @@ export const useAmbientStore = create<AmbientState & AmbientActions>()(
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ambientTrack: track }),
-        }).catch(() => {});
+        })
+          .then((res) => {
+            if (!res.ok) {
+              // Server rejected — revert UI + audio to the prior selection so
+              // local state matches the DB.
+              stopTrack();
+              if (previous.activeTrack) playTrack(previous.activeTrack, get().volume);
+              set(previous);
+            }
+          })
+          .catch(() => {
+            stopTrack();
+            if (previous.activeTrack) playTrack(previous.activeTrack, get().volume);
+            set(previous);
+          });
       },
 
       setVolume: (v) => {
@@ -53,13 +68,24 @@ export const useAmbientStore = create<AmbientState & AmbientActions>()(
       },
 
       stop: () => {
+        const previous = { isPlaying: get().isPlaying, activeTrack: get().activeTrack };
         stopTrack();
         set({ isPlaying: false, activeTrack: null });
         void fetch('/api/users/preferences', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ambientTrack: null }),
-        }).catch(() => {});
+        })
+          .then((res) => {
+            if (!res.ok) {
+              if (previous.activeTrack) playTrack(previous.activeTrack, get().volume);
+              set(previous);
+            }
+          })
+          .catch(() => {
+            if (previous.activeTrack) playTrack(previous.activeTrack, get().volume);
+            set(previous);
+          });
       },
 
       openDrawer: () => set({ drawerOpen: true }),

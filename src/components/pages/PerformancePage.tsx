@@ -9,12 +9,12 @@ import { motion } from 'framer-motion';
 if (typeof window !== 'undefined') {
   ReactDOM.preload('/animations/streak-fire.json', { as: 'fetch', crossOrigin: 'anonymous' });
 }
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isWithinInterval, parseISO } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isWithinInterval, parseISO, subDays } from 'date-fns';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useStreakStore } from '@/store/useStreakStore';
-import { useCoinsStore, selectCoinBalance } from '@/store/useCoinsStore';
+import { useCoinsStore, selectCoinBalance, selectConsumables } from '@/store/useCoinsStore';
 import { timeToMinutes } from '@/utils/time/timeUtils';
 import { computeBestDay } from '@/utils/performance/bestDay';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { LottieAnimation, STREAK_FIRE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { FireIcon, LightningIcon, TrophyIcon, CoinIcon, GemIcon } from '@/components/ui/AnimatedIcons';
 import { useAchievementsStore } from '@/store/useAchievementsStore';
+import { requestStreakRecovery } from '@/lib/persistence/streakPersistence';
 
 // ── Metric card ───────────────────────────────────────────────────────────────
 
@@ -100,18 +101,51 @@ function getAchievementMeta(type: string) {
 
 const StreakStatsRow: React.FC = () => {
   const { dailyStreak, sessionStreak, bestDailyStreak } = useStreakStore();
+  const hydrateStreaks = useStreakStore((s) => s.hydrateFromAPI);
   // Coin balance is owned by useCoinsStore — the DB-backed single source of
   // truth. useStreakStore no longer duplicates it.
   const coins = useCoinsStore(selectCoinBalance);
+  const consumables = useCoinsStore(selectConsumables);
+  const refetchCoins = useCoinsStore((s) => s.refetchBalance);
   const focusHistory = useFocusStore((s) => s.sessionHistory);
   const best = useMemo(() => computeBestDay(focusHistory), [focusHistory]);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
+  const shieldCount = consumables.streakShield ?? 0;
   const showRecovery = dailyStreak === 0 && bestDailyStreak > 3;
+
+  const streakStartLabel = useMemo(() => {
+    if (dailyStreak <= 0) return null;
+    const start = subDays(new Date(), Math.max(0, dailyStreak - 1));
+    return format(start, 'MMM d');
+  }, [dailyStreak]);
+
+  const handleRecover = async () => {
+    if (recovering) return;
+    setRecovering(true);
+    setRecoveryError(null);
+    const res = await requestStreakRecovery();
+    setRecovering(false);
+    if (res.ok) {
+      // Pull fresh values for both stores so the UI reflects the updated
+      // streak count and decremented shield consumable.
+      await Promise.all([hydrateStreaks(), refetchCoins()]);
+      setRecoveryOpen(false);
+    } else {
+      setRecoveryError(
+        res.reason === 'payment_required'
+          ? 'You don\'t have a streak shield. Visit the shop to get one.'
+          : 'Could not recover streak. Try again later.',
+      );
+    }
+  };
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="streak-stats-row">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm" data-testid="card-daily-streak">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Daily Streak</span>
           <div className="flex items-center gap-1.5">
             {dailyStreak > 0 ? (
@@ -127,11 +161,19 @@ const StreakStatsRow: React.FC = () => {
             ) : (
               <FireIcon size={22} />
             )}
-            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
+            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground" data-testid="daily-streak-value">
               {dailyStreak}
             </span>
             <span className="text-xs text-muted-foreground">days</span>
           </div>
+          {streakStartLabel && (
+            <span className="text-[11px] text-muted-foreground/60 mt-0.5">since {streakStartLabel}</span>
+          )}
+          {bestDailyStreak > 0 && (
+            <span className="text-[11px] text-muted-foreground/60 mt-0.5" data-testid="best-streak-value">
+              best: {bestDailyStreak} day{bestDailyStreak === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
         <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Session Streak</span>
@@ -152,27 +194,42 @@ const StreakStatsRow: React.FC = () => {
           </div>
           {best && <span className="text-[11px] text-muted-foreground/50">{Math.floor(best.totalMinutes / 60)}h {best.totalMinutes % 60}m focused</span>}
         </div>
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm">
+        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm" data-testid="card-coins">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Coins</span>
           <div className="flex items-baseline gap-1.5">
             <CoinIcon size={22} />
-            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground">
-              {coins}
+            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground" data-testid="coins-value">
+              {coins.toLocaleString()}
             </span>
           </div>
+          {shieldCount > 0 && (
+            <span className="text-[11px] text-muted-foreground/60 mt-0.5" data-testid="shield-count">
+              shields: {shieldCount}
+            </span>
+          )}
         </div>
       </div>
 
       {showRecovery && (
-        <div className="rounded-2xl bg-card border border-border p-4 flex items-center justify-between gap-3">
+        <div className="rounded-2xl bg-card border border-border p-4 flex items-center justify-between gap-3" data-testid="streak-recovery-banner">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">Lost your streak?</p>
-            <p className="text-xs text-muted-foreground">You had a {bestDailyStreak}-day streak. Restore it to keep going.</p>
+            <p className="text-xs text-muted-foreground">
+              You had a {bestDailyStreak}-day streak.
+              {shieldCount > 0
+                ? ` Use a streak shield to restore it. (${shieldCount} available)`
+                : ' Buy a streak shield in the shop to restore it.'}
+            </p>
           </div>
           <button
             type="button"
-            onClick={() => setRecoveryOpen(true)}
-            className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary/10 border border-primary/30 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
+            onClick={() => {
+              setRecoveryError(null);
+              setRecoveryOpen(true);
+            }}
+            disabled={shieldCount <= 0}
+            data-testid="streak-recovery-trigger"
+            className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary/10 border border-primary/30 text-sm font-medium text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary/10"
           >
             <span className="flex items-center gap-1.5">Restore Streak <GemIcon size={16} /></span>
           </button>
@@ -184,19 +241,128 @@ const StreakStatsRow: React.FC = () => {
           <DialogHeader>
             <DialogTitle className="text-foreground">Streak Recovery</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Streak recovery is not available yet.
+              {shieldCount > 0
+                ? `Use one streak shield to restore your ${bestDailyStreak}-day streak. You have ${shieldCount} shield${shieldCount === 1 ? '' : 's'}.`
+                : 'You don\'t have any streak shields. Visit the shop to get one.'}
             </DialogDescription>
           </DialogHeader>
+          {recoveryError && (
+            <p className="text-xs text-destructive" role="alert">{recoveryError}</p>
+          )}
           <button
             type="button"
-            disabled
-            className="w-full py-2.5 rounded-xl bg-muted text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60"
+            disabled={shieldCount <= 0 || recovering}
+            onClick={handleRecover}
+            data-testid="streak-recovery-confirm"
+            className="w-full py-2.5 rounded-xl bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Restore for 50 coins
+            {recovering ? 'Restoring…' : shieldCount > 0 ? 'Use streak shield' : 'No shield available'}
           </button>
         </DialogContent>
       </Dialog>
     </>
+  );
+};
+
+// ── Lifetime stats ────────────────────────────────────────────────────────────
+
+interface LifetimeStats {
+  totalSessions: number;
+  totalMinutes: number;
+  avgMinutes: number;
+  busiestHour: number | null;
+  busiestWeekday: string | null;
+}
+
+function computeLifetimeStats(sessions: { startTime: string; duration: number; completed: boolean }[]): LifetimeStats {
+  let totalSessions = 0;
+  let totalMinutes = 0;
+  const hourCounts = new Map<number, number>();
+  const weekdayCounts = new Map<number, number>();
+
+  for (const s of sessions) {
+    if (!s.completed) continue;
+    totalSessions += 1;
+    const mins = Math.max(0, Math.round(s.duration / 60));
+    totalMinutes += mins;
+    try {
+      const d = parseISO(s.startTime);
+      if (!isNaN(d.getTime())) {
+        const hour = d.getHours();
+        const weekday = d.getDay();
+        hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + mins);
+        weekdayCounts.set(weekday, (weekdayCounts.get(weekday) ?? 0) + mins);
+      }
+    } catch { /* swallow */ }
+  }
+
+  let busiestHour: number | null = null;
+  let busiestHourMins = 0;
+  hourCounts.forEach((m, h) => { if (m > busiestHourMins) { busiestHourMins = m; busiestHour = h; } });
+
+  let busiestWeekdayIdx: number | null = null;
+  let busiestWeekdayMins = 0;
+  weekdayCounts.forEach((m, w) => { if (m > busiestWeekdayMins) { busiestWeekdayMins = m; busiestWeekdayIdx = w; } });
+
+  const avgMinutes = totalSessions > 0 ? Math.round(totalMinutes / totalSessions) : 0;
+  const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  return {
+    totalSessions,
+    totalMinutes,
+    avgMinutes,
+    busiestHour,
+    busiestWeekday: busiestWeekdayIdx === null ? null : weekdayLabels[busiestWeekdayIdx],
+  };
+}
+
+function formatHourBucket(hour: number): string {
+  // 6 → "6–7am", 13 → "1–2pm"
+  const start = hour;
+  const end = (hour + 1) % 24;
+  const fmt = (h: number) => {
+    if (h === 0) return '12am';
+    if (h === 12) return '12pm';
+    if (h < 12) return `${h}am`;
+    return `${h - 12}pm`;
+  };
+  return `${fmt(start)}–${fmt(end)}`;
+}
+
+const LifetimeStatsSection: React.FC = () => {
+  const focusHistory = useFocusStore((s) => s.sessionHistory);
+  const stats = useMemo(() => computeLifetimeStats(focusHistory), [focusHistory]);
+
+  return (
+    <div data-testid="lifetime-stats-section">
+      <h3 className="font-display text-sm font-semibold text-foreground mb-3">All-time Stats</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MetricCard
+          label="Total Sessions"
+          value={stats.totalSessions}
+          sub={stats.totalSessions === 1 ? 'session' : 'sessions'}
+        />
+        <MetricCard
+          label="Total Focus"
+          value={`${Math.floor(stats.totalMinutes / 60)}h ${stats.totalMinutes % 60}m`}
+          sub="lifetime"
+        />
+        <MetricCard
+          label="Avg Session"
+          value={stats.avgMinutes > 0 ? `${stats.avgMinutes}m` : '—'}
+          sub="per session"
+        />
+        <MetricCard
+          label="Peak Time"
+          value={
+            stats.busiestHour !== null
+              ? formatHourBucket(stats.busiestHour)
+              : '—'
+          }
+          sub={stats.busiestWeekday ? `best day: ${stats.busiestWeekday}` : 'most productive hour'}
+        />
+      </div>
+    </div>
   );
 };
 
@@ -402,6 +568,7 @@ const PerformancePage: React.FC = () => {
         >
           <StreakStatsRow />
           <ContributionHeatmap />
+          <LifetimeStatsSection />
 
           {noData ? (
             <div className="rounded-2xl border border-border bg-card px-6 py-12 flex flex-col items-center justify-center gap-3">
