@@ -94,7 +94,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>(defaultStatus);
-  const [difficulty, setDifficulty] = useState<TaskDifficulty>('medium');
+  const [difficulty, setDifficulty] = useState<TaskDifficulty | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [dueDate, setDueDate] = useState('');
   const [titleError, setTitleError] = useState('');
@@ -107,7 +107,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setTitle(task?.title ?? '');
       setDescription(task?.description ?? '');
       setStatus(task?.status ?? defaultStatus);
-      setDifficulty(task?.difficulty ?? 'medium');
+      setDifficulty(task?.difficulty ?? null);
       setDurationMinutes(task?.durationMinutes ?? 30);
       setDueDate(normalizeDueDateString(task?.dueDate) ?? '');
       setTitleError('');
@@ -132,7 +132,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       title: title.trim(),
       description: description.trim() || undefined,
       status,
-      difficulty,
+      difficulty: difficulty ?? 'medium',
       durationMinutes,
       dueDate: normalizeDueDateString(dueDate),
       startTime: null,
@@ -227,7 +227,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => setDifficulty(opt.value)}
+                        onClick={() => setDifficulty(difficulty === opt.value ? null : opt.value)}
                         className={`rounded-lg px-4 py-1.5 text-sm font-medium border transition-colors ${
                           difficulty === opt.value ? opt.activeClass : opt.inactiveClass
                         }`}

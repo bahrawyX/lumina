@@ -38,7 +38,8 @@ export const DifficultyBadge: React.FC<{
   size?: 'sm' | 'md';
   className?: string;
 }> = ({ difficulty, size = 'md', className = '' }) => {
-  const d = difficulty ?? 'medium';
+  if (!difficulty || difficulty === 'medium') return null;
+  const d = difficulty;
   const meta = DIFFICULTY_META[d];
   const padding = size === 'sm' ? 'px-1.5 py-0.5 text-[10px] gap-1' : 'px-2 py-0.5 text-[11px] gap-1.5';
   return (

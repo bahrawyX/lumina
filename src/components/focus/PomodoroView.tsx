@@ -719,7 +719,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
         data-tutorial="pomodoro-view"
-        className="relative w-full max-w-[900px] rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-[1fr_280px] min-h-[520px]"
+        className="relative w-full max-w-[900px] rounded-2xl border border-border/60 bg-card shadow-sm grid grid-cols-1 md:grid-cols-[1fr_280px] min-h-[520px]"
       >
         {/* ── LEFT: Timer Column ────────────────────────────────────── */}
         <div className="flex flex-col items-center justify-center gap-5 p-6 sm:p-8 md:border-r md:border-border/40">
@@ -842,7 +842,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
         </div>
 
         {/* ── RIGHT: Settings Panel ─────────────────────────────────── */}
-        <div className="bg-muted/30 p-5 md:p-6 flex flex-col gap-6 border-t md:border-t-0 border-border/40 md:rounded-r-2xl rounded-b-2xl md:rounded-bl-none overflow-hidden">
+        <div className="bg-muted/30 p-5 md:p-6 flex flex-col gap-6 border-t md:border-t-0 border-border/40 md:rounded-r-2xl rounded-b-2xl md:rounded-bl-none">
           <SessionConfig
             workMins={workMins}
             shortBreakMins={shortBreakMins}
