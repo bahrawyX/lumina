@@ -5,7 +5,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { motion } from 'framer-motion';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskPriority, TaskStatus } from '../../types/task';
+import type { Task, TaskPriority, TaskDifficulty, TaskStatus } from '../../types/task';
 import { getDoingFocusHint } from '../../utils/taskBoard';
 import { TaskCard } from './TaskCard';
 import { useVirtualWindow } from '../../hooks/useVirtualWindow';
@@ -30,6 +30,7 @@ interface TaskColumnProps {
   linkedEvents: Record<string, CalendarEvent | undefined>;
   isDragOver: boolean;
   onPriorityChange: (task: Task, priority: TaskPriority) => void;
+  onDifficultyChange: (task: Task, difficulty: TaskDifficulty) => void;
   onAddTask: (status: TaskStatus) => void;
   onEditTask: (task: Task) => void;
   onScheduleTask: (task: Task) => void;
@@ -47,7 +48,7 @@ interface TaskColumnProps {
 
 export const TaskColumn = React.memo<TaskColumnProps>(({
   id, label, tasks, linkedEvents, isDragOver,
-  onPriorityChange,
+  onPriorityChange, onDifficultyChange,
   onAddTask, onEditTask, onScheduleTask, onAutoScheduleTask, onDeleteTask, onFocusTask,
   subtaskMap = {}, allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone,
 }) => {
@@ -133,6 +134,7 @@ export const TaskColumn = React.memo<TaskColumnProps>(({
                     task={task}
                     linkedEvent={task.linkedEventId ? linkedEvents[task.linkedEventId] ?? null : null}
                     onPriorityChange={onPriorityChange}
+                    onDifficultyChange={onDifficultyChange}
                     onEdit={onEditTask}
                     onSchedule={onScheduleTask}
                     onAutoSchedule={onAutoScheduleTask}

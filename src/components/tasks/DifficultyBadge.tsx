@@ -13,13 +13,13 @@ import React from 'react';
 import type { TaskDifficulty } from '../../types/task';
 import { DIFFICULTY_META } from '../../utils/taskBadges';
 
-const FILLED_BARS: Record<TaskDifficulty, 1 | 2 | 3> = {
+export const FILLED_BARS: Record<TaskDifficulty, 1 | 2 | 3> = {
   easy: 1,
   medium: 2,
   hard: 3,
 };
 
-const SignalBarsIcon: React.FC<{ filled: 1 | 2 | 3 }> = ({ filled }) => (
+export const SignalBarsIcon: React.FC<{ filled: 1 | 2 | 3 }> = ({ filled }) => (
   <svg
     width={10}
     height={10}
@@ -38,7 +38,7 @@ export const DifficultyBadge: React.FC<{
   size?: 'sm' | 'md';
   className?: string;
 }> = ({ difficulty, size = 'md', className = '' }) => {
-  if (!difficulty || difficulty === 'medium') return null;
+  if (!difficulty) return null;
   const d = difficulty;
   const meta = DIFFICULTY_META[d];
   const padding = size === 'sm' ? 'px-1.5 py-0.5 text-[10px] gap-1' : 'px-2 py-0.5 text-[11px] gap-1.5';

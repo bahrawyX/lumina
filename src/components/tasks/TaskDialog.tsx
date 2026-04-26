@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { CompactEmojiPicker } from '../ui/CompactEmojiPicker';
 import type { CalendarEvent } from '../../types';
-import type { Task, TaskStatus, TaskDifficulty } from '../../types/task';
+import type { Task, TaskStatus, TaskDifficulty, TaskPriority } from '../../types/task';
 import { COLUMNS } from '../../types/task';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -27,6 +27,29 @@ const XIcon: React.FC = () => (
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
   </svg>
 );
+
+// ── Priority config ───────────────────────────────────────────────────────────
+
+const PRIORITY_OPTIONS: { value: TaskPriority; label: string; activeClass: string; inactiveClass: string }[] = [
+  {
+    value: 'high',
+    label: 'High',
+    activeClass: 'bg-destructive/20 border-destructive/40 text-destructive',
+    inactiveClass: 'bg-destructive/10 text-destructive border-transparent hover:bg-destructive/15',
+  },
+  {
+    value: 'medium',
+    label: 'Medium',
+    activeClass: 'bg-amber-500/20 border-amber-500/40 text-amber-600 dark:text-amber-400',
+    inactiveClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-transparent hover:bg-amber-500/15',
+  },
+  {
+    value: 'low',
+    label: 'Low',
+    activeClass: 'bg-muted border-border text-muted-foreground',
+    inactiveClass: 'bg-muted/50 text-muted-foreground border-transparent hover:bg-muted',
+  },
+];
 
 // ── Difficulty config ─────────────────────────────────────────────────────────
 
@@ -57,6 +80,7 @@ export interface TaskDialogPayload {
   title: string;
   description?: string;
   status: TaskStatus;
+  priority: TaskPriority;
   difficulty: TaskDifficulty;
   durationMinutes: number;
   dueDate?: string | null;
@@ -94,6 +118,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>(defaultStatus);
+  const [priority, setPriority] = useState<TaskPriority>('medium');
   const [difficulty, setDifficulty] = useState<TaskDifficulty | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [dueDate, setDueDate] = useState('');
@@ -107,6 +132,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setTitle(task?.title ?? '');
       setDescription(task?.description ?? '');
       setStatus(task?.status ?? defaultStatus);
+      setPriority(task?.priority ?? 'medium');
       setDifficulty(task?.difficulty ?? null);
       setDurationMinutes(task?.durationMinutes ?? 30);
       setDueDate(normalizeDueDateString(task?.dueDate) ?? '');
@@ -132,6 +158,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       title: title.trim(),
       description: description.trim() || undefined,
       status,
+      priority,
       difficulty: difficulty ?? 'medium',
       durationMinutes,
       dueDate: normalizeDueDateString(dueDate),
@@ -217,6 +244,25 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                     rows={3}
                     className="text-sm rounded-lg resize-none"
                   />
+                </div>
+
+                {/* Priority pills */}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Priority</Label>
+                  <div className="flex gap-2">
+                    {PRIORITY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setPriority(opt.value)}
+                        className={`rounded-lg px-4 py-1.5 text-sm font-medium border transition-colors ${
+                          priority === opt.value ? opt.activeClass : opt.inactiveClass
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Difficulty pills */}

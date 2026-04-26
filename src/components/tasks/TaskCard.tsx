@@ -22,8 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
-import { PRIORITY_META, PRIORITY_OPTIONS } from '../../utils/taskBadges';
-import { DifficultyBadge } from './DifficultyBadge';
+import { PRIORITY_META, PRIORITY_OPTIONS, DIFFICULTY_META, DIFFICULTY_OPTIONS } from '../../utils/taskBadges';
+import { DifficultyBadge, SignalBarsIcon, FILLED_BARS } from './DifficultyBadge';
 
 // ── More icon ─────────────────────────────────────────────────────────────────
 
@@ -76,6 +76,7 @@ export interface TaskCardProps {
   task: Task;
   linkedEvent?: CalendarEvent | null;
   onPriorityChange: (task: Task, priority: TaskPriority) => void;
+  onDifficultyChange: (task: Task, difficulty: TaskDifficulty) => void;
   onEdit: (task: Task) => void;
   onSchedule: (task: Task) => void;
   onAutoSchedule: (task: Task) => void;
@@ -241,7 +242,7 @@ const InlineAddSubtask: React.FC<{ onAdd: (title: string) => void }> = ({ onAdd 
   );
 };
 
-export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false, subtasks = [], allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone }) => {
+export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onDifficultyChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false, subtasks = [], allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone }) => {
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
   // Stable today string — changes only when the calendar day rolls over (memoised once per mount)
   const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -517,9 +518,49 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                 </DropdownMenu>
               </div>
             )}
-            <DifficultyBadge difficulty={task.difficulty} />
-            {/* Difficulty badge differs from Priority via a signal-bars icon + distinct
-                label format (see Bug #1). */}
+            {isDragOverlay ? (
+              <DifficultyBadge difficulty={task.difficulty} />
+            ) : (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="inline-flex"
+              >
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={`inline-flex items-center gap-1 min-h-11 rounded-xl border px-3 py-1 text-[11px] font-medium transition-colors md:min-h-0 md:rounded-md md:px-2 md:py-0.5 ${DIFFICULTY_META[task.difficulty ?? 'medium'].className}`}
+                      aria-label={`${DIFFICULTY_META[task.difficulty ?? 'medium'].label} difficulty. Click to change`}
+                    >
+                      <SignalBarsIcon filled={FILLED_BARS[task.difficulty ?? 'medium']} />
+                      {DIFFICULTY_META[task.difficulty ?? 'medium'].label}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    sideOffset={6}
+                    className="w-36 border-border bg-popover/95"
+                    onCloseAutoFocus={(e) => e.preventDefault()}
+                  >
+                    {DIFFICULTY_OPTIONS.map((difficulty) => {
+                      const selected = task.difficulty === difficulty;
+                      return (
+                        <DropdownMenuItem
+                          key={difficulty}
+                          onClick={() => onDifficultyChange(task, difficulty)}
+                          className={`text-xs font-medium ${DIFFICULTY_META[difficulty].itemClassName}`}
+                        >
+                          <SignalBarsIcon filled={FILLED_BARS[difficulty]} />
+                          <span className="ml-1">{DIFFICULTY_META[difficulty].label}</span>
+                          {selected && <span className="ml-auto text-[10px] opacity-80">Current</span>}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
             {linkedEvent && (
               <span className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary dark:border-primary/25 dark:bg-primary/15 dark:text-primary-foreground/90">
                 Scheduled

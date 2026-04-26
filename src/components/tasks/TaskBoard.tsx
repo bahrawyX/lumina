@@ -423,6 +423,11 @@ export const TaskBoard: React.FC = () => {
     updateTask(task.id, { priority });
   }, [updateTask]);
 
+  const handleDifficultyChange = useCallback((task: Task, difficulty: TaskDifficulty) => {
+    if (task.difficulty === difficulty) return;
+    updateTask(task.id, { difficulty });
+  }, [updateTask]);
+
   const router = useRouter();
   const startFocusSession = useFocusStore((s) => s.startSession);
   const preferredFocusMinutes = useSettingsStore((s) => s.focusSessionLength);
@@ -854,6 +859,7 @@ export const TaskBoard: React.FC = () => {
                 linkedEvents={linkedEvents}
                 isDragOver={overId !== null && findContainerForId(overId, tasks) === col.id && activeTask?.status !== col.id}
                 onPriorityChange={handlePriorityChange}
+                onDifficultyChange={handleDifficultyChange}
                 onAddTask={openCreateDialog}
                 onEditTask={openEditDialog}
                 onScheduleTask={openScheduleDialog}
@@ -877,6 +883,7 @@ export const TaskBoard: React.FC = () => {
               task={activeTask}
               linkedEvent={activeTask.linkedEventId ? linkedEvents[activeTask.linkedEventId] ?? null : null}
               onPriorityChange={handlePriorityChange}
+              onDifficultyChange={handleDifficultyChange}
               onEdit={() => {}}
               onSchedule={() => {}}
               onAutoSchedule={() => {}}

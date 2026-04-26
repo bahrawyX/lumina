@@ -175,6 +175,7 @@ interface SessionConfigProps {
   sessionsPerCycle: number;
   isRunning: boolean;
   phase: string;
+  preferredMins: number;
   onWorkChange: (m: number) => void;
   onBreakChange: (m: number) => void;
   onSessionsChange: (n: number) => void;
@@ -182,8 +183,9 @@ interface SessionConfigProps {
 
 const SessionConfig: React.FC<SessionConfigProps> = ({
   workMins, shortBreakMins, longBreakMins, sessionsPerCycle, isRunning, phase,
-  onWorkChange, onBreakChange, onSessionsChange,
+  preferredMins, onWorkChange, onBreakChange, onSessionsChange,
 }) => {
+  const isCustomPreferred = !WORK_PRESETS.includes(preferredMins);
 
   return (
     <div>
@@ -196,6 +198,21 @@ const SessionConfig: React.FC<SessionConfigProps> = ({
             {WORK_PRESETS.map((m) => (
               <Pill key={m} label={`${m}m`} active={workMins === m} disabled={isRunning && phase === 'work'} onClick={() => onWorkChange(m)} />
             ))}
+            {isCustomPreferred && (
+              <button
+                type="button"
+                onClick={() => onWorkChange(preferredMins)}
+                disabled={isRunning && phase === 'work'}
+                title="Your preferred session length"
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
+                  workMins === preferredMins
+                    ? 'bg-amber-500/30 border-amber-500/60 text-amber-500 dark:text-amber-400'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-500 dark:text-amber-400 hover:bg-amber-500/20'
+                } ${isRunning && phase === 'work' ? 'opacity-40 pointer-events-none' : ''}`}
+              >
+                {preferredMins}m ★
+              </button>
+            )}
           </div>
         </div>
         {/* Break duration */}
@@ -683,7 +700,6 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   // ── Settings handlers ──────────────────────────────────────────────────────
   const handleWorkChange = useCallback((m: number) => {
     usePomodoroStore.getState().setWorkMins(m);
-    useSettingsStore.getState().setFocusSessionLength(m);
   }, []);
 
   const handleBreakChange = useCallback((m: number) => {
@@ -850,6 +866,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
             sessionsPerCycle={sessionsPerCycle}
             isRunning={isRunning}
             phase={phase}
+            preferredMins={focusSessionLength}
             onWorkChange={handleWorkChange}
             onBreakChange={handleBreakChange}
             onSessionsChange={handleSessionsChange}
