@@ -4,15 +4,6 @@ import notify from '../utils/notify';
 import { useTaskBoardStore } from './useTaskBoardStore';
 import { useLinkStore } from './useLinkStore';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
-import { getStorageItem, setStorageItem } from '@/lib/storage';
-
-const isDev = process.env.NODE_ENV === 'development';
-
-/** Returns null when userId is unknown in production — callers must guard on null. */
-function storageKey(userId: string | null): string | null {
-  if (userId) return `lumina_events_${userId}`;
-  return isDev ? 'lumina_events' : null;
-}
 
 interface HistoryState {
   events: CalendarEvent[];
@@ -43,20 +34,13 @@ interface CalendarEventsState {
   redo: () => void;
 }
 
-const saveState = (events: CalendarEvent[], userId: string | null) => {
-  setStorageItem(storageKey(userId), JSON.stringify(events));
+// DB is the only source of truth for events. The previous `lumina_events_*`
+// localStorage cache leaked stale data across logouts and confused users
+// after a DB wipe, so reads/writes have been removed. saveState is kept
+// as a no-op so call sites stay unchanged.
+const saveState = (_events: CalendarEvent[], _userId: string | null) => {
+  // no-op
 };
-
-function loadEvents(userId: string | null): CalendarEvent[] {
-  try {
-    const raw = getStorageItem(storageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 /** Notify useCalendarStore to recalculate intelligence after any event mutation. */
 const triggerIntelligence = () =>
@@ -106,16 +90,15 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
 
   hydrateFromDbFailed: () => {
     if (get().dbHydrated) return;
-    if (isDev) {
-      const fallback = loadEvents(get().userId);
-      set({
-        dbHydrated: true,
-        events: fallback,
-        history: [{ events: fallback }],
-        historyIndex: 0,
-      });
-      triggerIntelligence();
-    }
+    // No localStorage fallback — DB is source of truth. Mark hydrated with
+    // an empty list so the UI stops blocking; the user can retry.
+    set({
+      dbHydrated: true,
+      events: [],
+      history: [{ events: [] }],
+      historyIndex: 0,
+    });
+    triggerIntelligence();
   },
 
 

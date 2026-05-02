@@ -10,6 +10,7 @@ import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskBoardStore } from '../store/useTaskBoardStore';
 import { clearProvider, clearAll } from '../lib/calendar/externalEventsCache';
+import { clearLuminaStorage } from '../lib/storage';
 import { focusModeFromMinutes } from '../lib/focusSettings';
 import CustomContextDialog from './CustomContextDialog';
 import {
@@ -170,7 +171,7 @@ const AppSidebar: React.FC = () => {
   const { data: _session } = authClient.useSession();
   const _userId = _session?.user?.id ?? null;
   const resetOnboarding = useOnboardingStore((s) => s.reset);
-  const handleSignOut = useCallback(async () => {
+  const handleSignOut = useCallback(() => {
     // CRITICAL: hard-navigate FIRST before any state changes. If we call
     // authClient.signOut() or resetOnboarding() while still inside an
     // (app)/ route, AppShell's redirect effect fires synchronously on
@@ -179,13 +180,16 @@ const AppSidebar: React.FC = () => {
     try {
       if (_userId) clearAll(_userId);
       usePlannerStore.getState().clearExternalEvents();
+      // Wipe every Lumina-owned localStorage / sessionStorage entry so no
+      // per-user data leaks back into the next session. Theme + PWA prefs
+      // are preserved by clearLuminaStorage.
+      clearLuminaStorage();
       // Fire-and-forget sign-out — don't await. The subsequent full page
       // reload will tear everything down. BetterAuth stores the session in
       // an httpOnly cookie that the server clears via the sign-out endpoint;
       // the hard redirect below ensures we get a fresh page without a session.
       authClient.signOut().catch(() => { /* swallow */ });
     } catch { /* swallow */ }
-    // Do NOT reset onboarding — it's about user preferences, not auth.
     // Hard redirect to landing — no race, no React rerender.
     window.location.href = '/';
   }, [authClient, _userId]);
@@ -1218,7 +1222,14 @@ const AppSidebar: React.FC = () => {
 
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                onClick={handleSignOut}
+                onSelect={(e) => {
+                  // Radix dispatches onSelect on the first activation
+                  // (click / Enter). Calling it directly here avoids the
+                  // double-click bug where onClick raced the menu's own
+                  // close-and-blur cycle and the first click was eaten.
+                  e.preventDefault();
+                  handleSignOut();
+                }}
               >
                 <LogOutIcon size={14} />
                 Sign Out

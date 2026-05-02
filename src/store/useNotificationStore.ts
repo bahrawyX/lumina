@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,8 +36,11 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-export const useNotificationStore = create<NotificationState & NotificationActions>()(
-  persist(
+// Notification preferences live in `users.notificationPreferences` in the
+// DB. The previous `lumina-notifications` persist payload duplicated those
+// values into localStorage and meant a freshly-wiped or different user
+// briefly saw the previous user's prefs before init() overwrote them.
+export const useNotificationStore = create<NotificationState & NotificationActions>(
     (set, get) => ({
       permission: 'default' as NotificationPermission,
       subscription: null,
@@ -180,12 +182,4 @@ export const useNotificationStore = create<NotificationState & NotificationActio
         }
       },
     }),
-    {
-      name: 'lumina-notifications',
-      partialize: (state) => ({
-        preferences: state.preferences,
-        // Don't persist permission/subscription — re-check on init
-      }),
-    },
-  ),
 );

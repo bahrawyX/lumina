@@ -134,10 +134,12 @@ export const useDailyBriefStore = create<DailyBriefState>()(
     }),
     {
       name: 'lumina-daily-brief',
+      // Only the dismissed-date flag is persisted — the brief itself is
+      // re-fetched from the API on mount so deleting it from the DB takes
+      // effect immediately and a different user can't see the previous
+      // user's brief.
       partialize: (state) => ({
-        brief: state.brief,
         dismissedDate: state.dismissedDate,
-        lastFetched: state.lastFetched,
       }),
     },
   ),

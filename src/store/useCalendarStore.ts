@@ -11,7 +11,7 @@ import { useTaskBoardStore } from './useTaskBoardStore';
 import { useCalendarEventsStore } from './useCalendarEventsStore';
 import { useDailyPlanStore, todayKey } from './useDailyPlanStore';
 import { uid } from '@/lib/uid';
-import { getStorageItem, setStorageItem, removeStorageItem, readStorageJSON } from '@/lib/storage';
+import { setStorageItem, removeStorageItem, readStorageJSON } from '@/lib/storage';
 
 interface UserGoal {
   id: string;
@@ -152,16 +152,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   // so the previous user's contexts cannot leak into a new session.
   customCategories: [],
   customCategoriesHydrated: false,
-  profile: (() => {
-    const stored = readStorageJSON<Partial<UserProfile>>('lumina_profile', defaultProfile);
-    // Migration guard: ensure all fields have correct shape regardless of stored schema version
-    return {
-      ...defaultProfile,
-      ...stored,
-      goals: Array.isArray(stored.goals) ? stored.goals : [],
-      intelligence: { ...initialIntelligence, ...stored.intelligence },
-    };
-  })(),
+  // Profile is in-memory only. The previous `lumina_profile` cache leaked
+  // identity (name/email/bio) and stale intelligence numbers across logouts.
+  // Intelligence is recomputed from events; user identity comes from auth.
+  profile: { ...defaultProfile, intelligence: { ...initialIntelligence } },
   insights: [],
   activeFocusSession: readStorageJSON<FocusSession | null>('lumina_active_focus_session', null),
   focusSessions: [],
@@ -266,7 +260,6 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
   updateProfile: (profile) => set((state) => {
     const next = { ...state.profile, ...profile };
-    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
@@ -450,13 +443,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
     const nextProfile = { ...profile, intelligence: nextIntel };
     set({ profile: nextProfile });
-    setStorageItem('lumina_profile', JSON.stringify(nextProfile));
   },
 
   addGoal: (text) => set((state) => {
     const newGoal: UserGoal = { id: uid(), text, completed: false };
     const next = { ...state.profile, goals: [...getGoals(state.profile), newGoal] };
-    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
@@ -465,13 +456,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       ...state.profile,
       goals: getGoals(state.profile).map(g => g.id === id ? { ...g, completed: !g.completed } : g),
     };
-    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 
   deleteGoal: (id) => set((state) => {
     const next = { ...state.profile, goals: getGoals(state.profile).filter(g => g.id !== id) };
-    setStorageItem('lumina_profile', JSON.stringify(next));
     return { profile: next };
   }),
 

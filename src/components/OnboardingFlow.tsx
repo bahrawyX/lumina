@@ -15,6 +15,7 @@ import TimePicker from './TimePicker';
 import { useLuminaAuthClient } from './AuthProvider';
 import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
 import { useGuestStore } from '../store/useGuestStore';
+import { clearLuminaStorage } from '../lib/storage';
 import {
   getFieldError,
   nameSchema,
@@ -1300,6 +1301,7 @@ const OnboardingFlow: React.FC = () => {
         setAuthMessage(result.error.message ?? 'Sign out failed.');
         return;
       }
+      clearLuminaStorage();
       await refetchAuthSession();
       setAuthMessage('Signed out.');
     } finally {

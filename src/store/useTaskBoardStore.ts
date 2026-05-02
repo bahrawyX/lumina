@@ -63,31 +63,14 @@ export function resolveTaskDbId(taskId: string, timeoutMs = 5000): Promise<strin
   });
 }
 
-/** Returns null when userId is unknown in production — callers must guard on null. */
-function storageKey(userId: string | null): string | null {
-  if (userId) return `lumina_tasks_${userId}`;
-  return isDev ? 'lumina_tasks' : null;
-}
-
-function saveTasks(tasks: Task[], userId: string | null): void {
-  setStorageItem(storageKey(userId), JSON.stringify(tasks));
-}
-
-function loadTasks(userId: string | null): Task[] {
-  try {
-    const key = storageKey(userId);
-    if (!key) return [];
-    const raw = getStorageItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    const normalized = normalizePersistedTasks(parsed);
-    if (JSON.stringify(normalized) !== raw) {
-      saveTasks(normalized, userId);
-    }
-    return normalized;
-  } catch {
-    return [];
-  }
+// DB is the only source of truth for tasks. The previous `lumina_tasks_*`
+// localStorage cache leaked stale data across logouts (same user logging in
+// after a DB wipe would still see the cached board), so all reads/writes
+// have been removed. saveTasks is intentionally a no-op so call sites stay
+// unchanged; loadTasks is gone — hydrateFromDbFailed now leaves the board
+// empty rather than reading a stale cache.
+function saveTasks(_tasks: Task[], _userId: string | null): void {
+  // no-op
 }
 
 // ── List view preferences persistence ────────────────────────────────────────
@@ -250,10 +233,9 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
 
   hydrateFromDbFailed: () => {
     if (get().dbHydrated) return;
-    if (isDev) {
-      const fallback = loadTasks(get().userId);
-      set({ dbHydrated: true, tasks: fallback });
-    }
+    // No localStorage fallback — DB is source of truth. Leave the board
+    // empty and let the user retry.
+    set({ dbHydrated: true, tasks: [] });
   },
 
 

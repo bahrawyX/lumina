@@ -50,3 +50,50 @@ export function readStorageJSON<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
+
+// Keys that survive logout/clear — purely browser-level UX preferences with
+// no relation to user data or identity.
+const PRESERVE_ON_CLEAR = new Set<string>([
+  'lumina-theme',         // next-themes
+  'lumina_theme',
+  'lumina-pwa-installed', // PWA install banner
+  'lumina-pwa-snooze',
+]);
+
+/**
+ * Clear every Lumina-owned key from localStorage and sessionStorage.
+ *
+ * Used on signout and on cross-user-id detection so no per-user data leaks
+ * across sessions. Theme + PWA install flags are intentionally preserved.
+ */
+export function clearLuminaStorage(): void {
+  if (!canUseStorage) return;
+  try {
+    const lsKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        (key.startsWith('lumina-') || key.startsWith('lumina_') || key.startsWith('lumina:')) &&
+        !PRESERVE_ON_CLEAR.has(key)
+      ) {
+        lsKeys.push(key);
+      }
+    }
+    lsKeys.forEach((k) => {
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
+    });
+  } catch { /* ignore */ }
+  try {
+    const ssKeys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && (key.startsWith('lumina-') || key.startsWith('lumina_') || key.startsWith('lumina:'))) {
+        ssKeys.push(key);
+      }
+    }
+    ssKeys.forEach((k) => {
+      try { sessionStorage.removeItem(k); } catch { /* ignore */ }
+    });
+  } catch { /* ignore */ }
+}
