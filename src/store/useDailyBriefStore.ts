@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
+import { useCoinsStore } from './useCoinsStore';
 
 interface NextEventData {
   title: string;
@@ -96,8 +97,13 @@ export const useDailyBriefStore = create<DailyBriefState>()(
 
       dismiss: () => {
         set({ dismissedDate: format(new Date(), 'yyyy-MM-dd') });
-        // Award coins for reading daily brief (fire-and-forget, server dedupes by day)
-        void fetch('/api/coins/award-brief', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => {});
+        // Award coins for reading daily brief (fire-and-forget, server dedupes by day).
+        // Refetch the balance once the request lands so the coin chip in
+        // DailyBriefStrip / Sidebar reflects the new total without waiting
+        // for the next page load.
+        void fetch('/api/coins/award-brief', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+          .then(() => useCoinsStore.getState().invalidateBalance())
+          .catch(() => {});
       },
 
       refresh: async (timezone) => {

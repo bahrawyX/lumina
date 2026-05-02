@@ -9,6 +9,7 @@
  */
 
 import type { DocTreeNode, DocContent, DocPatch, DocSearchResult } from '@/types/doc';
+import { useCoinsStore } from '@/store/useCoinsStore';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,8 @@ export async function createOne(params: {
     if (res.status === 401) return { ok: false, reason: 'unauthorized', status: 401 };
     if (!res.ok) return { ok: false, reason: 'server', status: res.status };
     const doc = (await res.json()) as DocContent;
+    // Server awards a one-time `first_doc` coin when creating doc #1.
+    useCoinsStore.getState().invalidateBalance();
     return { ok: true, doc };
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
@@ -218,6 +221,12 @@ export async function updateOne(
       if (typeof data?.updatedAt === 'string') updatedAt = data.updatedAt;
     } catch {
       /* fallback to local timestamp */
+    }
+    // Server may award a one-time `doc_500_words` coin when content
+    // crosses 500 words. Cheap to over-trigger this — the debounce
+    // collapses many edits into one GET /api/coins.
+    if (typeof patch.contentText === 'string') {
+      useCoinsStore.getState().invalidateBalance();
     }
     return { status: 'success', updatedAt };
   } catch (err) {

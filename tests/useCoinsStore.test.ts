@@ -7,7 +7,7 @@
  *   - purchase success (both consumable + permanent paths)
  *   - purchase failure rollback
  *   - insufficient-funds rejection
- *   - addEarnedCoins capping transactions at 50
+ *   - invalidateBalance debounces and refetches from the server
  *   - selectors
  */
 import { beforeEach, describe, it, expect, vi } from 'vitest';
@@ -148,49 +148,36 @@ describe('useCoinsStore — purchaseItem', () => {
   });
 });
 
-describe('useCoinsStore — addEarnedCoins', () => {
-  beforeEach(() => resetStore());
-
-  it('adds to balance', () => {
-    useCoinsStore.getState().addEarnedCoins(25);
-    expect(useCoinsStore.getState().balance).toBe(25);
+describe('useCoinsStore — invalidateBalance', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+    vi.useFakeTimers();
   });
 
-  it('prepends a transaction when provided', () => {
-    useCoinsStore.getState().addEarnedCoins(10, {
-      id: 'tx1',
-      amount: 10,
-      reason: 'task_complete',
-      label: 'Test reward',
-      createdAt: new Date().toISOString(),
-    });
-    expect(useCoinsStore.getState().transactions[0].id).toBe('tx1');
-  });
-
-  it('caps transaction history at 50 entries', () => {
-    // pre-fill with 50 transactions
-    const existing = Array.from({ length: 50 }).map((_, i) => ({
-      id: `old_${i}`,
-      amount: 1,
-      reason: 'task_complete',
-      label: `old ${i}`,
-      createdAt: new Date().toISOString(),
-    }));
-    useCoinsStore.setState({ transactions: existing });
-
-    useCoinsStore.getState().addEarnedCoins(5, {
-      id: 'new_tx',
-      amount: 5,
-      reason: 'task_complete',
-      label: 'new',
-      createdAt: new Date().toISOString(),
+  it('debounces multiple invalidate calls into a single fetch', async () => {
+    vi.mocked(coinsPersistence.fetchCoinsData).mockResolvedValue({
+      balance: 777,
+      transactions: [],
+      consumables: { ...DEFAULT_CONSUMABLES },
+      ownedItems: [],
+      activeCosmetics: {},
     });
 
-    const txs = useCoinsStore.getState().transactions;
-    expect(txs).toHaveLength(50);
-    expect(txs[0].id).toBe('new_tx');
-    // oldest was dropped
-    expect(txs.find(t => t.id === 'old_49')).toBeUndefined();
+    const store = useCoinsStore.getState();
+    store.invalidateBalance();
+    store.invalidateBalance();
+    store.invalidateBalance();
+
+    // Before the debounce fires, no fetch yet.
+    expect(coinsPersistence.fetchCoinsData).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(350);
+    // Drain microtasks so the awaited refetchBalance() set() lands.
+    await vi.runAllTimersAsync();
+
+    expect(coinsPersistence.fetchCoinsData).toHaveBeenCalledTimes(1);
+    expect(useCoinsStore.getState().balance).toBe(777);
   });
 });
 

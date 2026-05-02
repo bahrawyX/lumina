@@ -703,7 +703,15 @@ export default function DocEditor({ docId, initialContent, onChange, className }
       if (!accumulated.trim()) {
         removePlaceholder();
         toast.error('AI assist unavailable');
+        return;
       }
+
+      // Server awards a one-time `ai_docs` coin for the first AI usage.
+      // Re-pull the balance so the UI reflects it without a page refresh.
+      // Lazy-import to keep the editor bundle lean.
+      void import('@/store/useCoinsStore').then(({ useCoinsStore }) =>
+        useCoinsStore.getState().invalidateBalance(),
+      );
     },
     [aiPrompt, editor],
   );

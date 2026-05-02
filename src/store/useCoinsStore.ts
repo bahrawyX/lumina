@@ -26,7 +26,6 @@ interface CoinsState {
   // Actions
   purchaseItem: (itemId: string) => Promise<boolean>;
   activateCosmetic: (patch: Partial<ActiveCosmetics>) => Promise<boolean>;
-  addEarnedCoins: (amount: number, tx?: CoinTransaction) => void;
   /**
    * Re-pull the canonical coin balance + transactions from GET /api/coins.
    * Called after a focus session finishes so the UI reflects the DB-side
@@ -35,6 +34,14 @@ interface CoinsState {
    * useStreakStore no longer tracks `coins`.
    */
   refetchBalance: () => Promise<void>;
+  /**
+   * Mark the current balance as potentially stale and schedule a debounced
+   * refetch (300ms). Call this after any client action that the server may
+   * answer with a coin award — task complete, planner add, doc create, AI
+   * use, goal create/complete, brief read, etc. The debounce coalesces
+   * bursts (e.g. multi-task drag-completion) into a single GET /api/coins.
+   */
+  invalidateBalance: () => void;
 
   // Selectors
   ownsItem: (itemId: string) => boolean;
@@ -113,13 +120,6 @@ export const useCoinsStore = create<CoinsState>((set, get) => ({
     return success;
   },
 
-  addEarnedCoins: (amount, tx) => {
-    set(s => ({
-      balance: s.balance + amount,
-      transactions: tx ? [tx, ...s.transactions.slice(0, 49)] : s.transactions,
-    }));
-  },
-
   refetchBalance: async () => {
     try {
       const data = await coinsPersistence.fetchCoinsData();
@@ -131,14 +131,32 @@ export const useCoinsStore = create<CoinsState>((set, get) => ({
         activeCosmetics: data.activeCosmetics,
       });
     } catch {
-      // Swallow — keep optimistic state if the refetch fails. The next
-      // PersistenceBootstrap cycle or a subsequent session will retry.
+      // Swallow — keep prior state if the refetch fails. The next bootstrap
+      // cycle or invalidateBalance() call will retry.
     }
+  },
+
+  invalidateBalance: () => {
+    scheduleInvalidate(() => {
+      void useCoinsStore.getState().refetchBalance();
+    });
   },
 
   ownsItem: (itemId) => get().ownedItems.includes(itemId),
   getConsumable: (key) => get().consumables[key] ?? 0,
 }));
+
+// ── Module-level debounce so simultaneous invalidateBalance() calls collapse
+//    into a single GET /api/coins. Lives outside the store because it is
+//    pure scheduling state with no UI consumers.
+let pendingInvalidateTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleInvalidate(run: () => void): void {
+  if (pendingInvalidateTimer) clearTimeout(pendingInvalidateTimer);
+  pendingInvalidateTimer = setTimeout(() => {
+    pendingInvalidateTimer = null;
+    run();
+  }, 300);
+}
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 

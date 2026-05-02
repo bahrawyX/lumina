@@ -9,6 +9,7 @@
  */
 
 import type { PlannedTaskItem } from '@/store/useDailyPlanStore';
+import { useCoinsStore } from '@/store/useCoinsStore';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,10 @@ export async function createOne(item: PlannedTaskItem): Promise<string> {
     throw new Error(`createOne failed (${res.status})`);
   }
   const json = (await res.json()) as { id: string };
+  // The server awards a one-time `planner_day` coin on the first item of
+  // any given day. We don't get the new balance back, so trigger a
+  // debounced refetch to keep the UI in sync.
+  useCoinsStore.getState().invalidateBalance();
   return json.id;
 }
 

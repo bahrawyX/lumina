@@ -2,6 +2,7 @@
  * Goals persistence layer — fire-and-forget pattern matching tasksPersistence.ts
  */
 import type { Goal, GoalTarget } from '@/types/goal';
+import { useCoinsStore } from '@/store/useCoinsStore';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -35,6 +36,8 @@ export async function createOne(goal: Record<string, unknown>): Promise<{ goalId
       body: JSON.stringify(goal),
     });
     if (!res.ok) return null;
+    // Server awards `goal_created` coins.
+    useCoinsStore.getState().invalidateBalance();
     return await res.json();
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.createOne]', err);
@@ -44,10 +47,14 @@ export async function createOne(goal: Record<string, unknown>): Promise<{ goalId
 
 export async function updateOne(id: string, patch: Partial<Goal>): Promise<void> {
   try {
-    await apiFetch(`/api/goals/${id}`, {
+    const res = await apiFetch(`/api/goals/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
+    // Server awards `goal_complete` coins when status flips to 'completed'.
+    if (res.ok && patch.status === 'completed') {
+      useCoinsStore.getState().invalidateBalance();
+    }
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.updateOne]', err);
   }

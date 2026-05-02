@@ -5,6 +5,7 @@
  */
 
 import type { Task } from '@/types/task';
+import { useCoinsStore } from '@/store/useCoinsStore';
 
 type ApiTaskStatus = 'todo' | 'doing' | 'done';
 
@@ -81,10 +82,17 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
       ...patch,
       status: mapUiStatusToDb(patch.status),
     };
-    await apiFetch(`/api/tasks/${id}`, {
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
+    // Server awards coins (per-difficulty, first-task-of-day, burst, all-
+    // subtasks-done) when status flips to 'done'. The response is just
+    // {ok:true}, so we re-pull GET /api/coins to keep the UI balance in
+    // sync with the DB.
+    if (res.ok && patch.status === 'done') {
+      useCoinsStore.getState().invalidateBalance();
+    }
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[tasksPersistence] updateOne failed:', err);
