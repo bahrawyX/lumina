@@ -399,6 +399,21 @@ export default function DocEditor({ docId, initialContent, onChange, className }
     previousBlocksRef.current = editor.document as any[];
   }, [editor]);
 
+  // ── Drag-state tracking — sets data-dragging on wrapper so CSS can ghost
+  //    the source block and highlight the drop indicator during DnD.
+  useEffect(() => {
+    const el = editorWrapperRef.current;
+    if (!el) return;
+    const onDragStart = () => el.setAttribute('data-dragging', 'true');
+    const onDragEnd   = () => el.removeAttribute('data-dragging');
+    el.addEventListener('dragstart', onDragStart);
+    el.addEventListener('dragend',   onDragEnd);
+    return () => {
+      el.removeEventListener('dragstart', onDragStart);
+      el.removeEventListener('dragend',   onDragEnd);
+    };
+  }, []);
+
   // ── Inline task creation ────────────────────────────────────────────────
   const createTask = useCallback(async (forDocId: string): Promise<string | null> => {
     try {

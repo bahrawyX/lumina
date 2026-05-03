@@ -599,6 +599,46 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   opacity: 0.8;
 }
 
+/* ── Drag & drop — drop indicator + ghost effect ──────── */
+
+/* Drop cursor line — replace the default with a primary-coloured bar */
+.ProseMirror-dropcursor {
+  height: 3px !important;
+  background: hsl(var(--primary)) !important;
+  border-radius: 3px !important;
+  opacity: 1 !important;
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.45) !important;
+}
+
+/* Circular cap on the left of the drop line (Notion-style) */
+.ProseMirror-dropcursor::before {
+  content: '';
+  display: block;
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 6px hsl(var(--primary) / 0.55);
+}
+
+/* Ghost the source block while a drag is in progress */
+.lumina-editor[data-dragging] .bn-block-outer:has(.ProseMirror-selectednode) > .bn-block {
+  opacity: 0.28;
+  filter: blur(0.4px);
+  transition: opacity 0.12s ease, filter 0.12s ease;
+}
+
+/* Subtle lift on every block while dragging (shows depth) */
+.lumina-editor[data-dragging] .bn-block-outer:not(:has(.ProseMirror-selectednode)):hover > .bn-block {
+  background: hsl(var(--muted) / 0.25);
+  border-radius: 6px;
+  transition: background 0.1s ease;
+}
+
 /* ── Feature showcase ───────────────────────────────────── */
 /*
  * The feature showcase uses a vertical-scroll-drives-horizontal-translation
