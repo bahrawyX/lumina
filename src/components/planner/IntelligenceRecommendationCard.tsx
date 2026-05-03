@@ -5,6 +5,29 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import type { Recommendation } from '@/lib/intelligence/types';
 import { useIntelligenceStore } from '@/store/useIntelligenceStore';
+import { useTaskBoardStore } from '@/store/useTaskBoardStore';
+
+// ── Explanation humanizer ────────────────────────────────────────────────────
+
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const ISO_RE  = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
+
+function fmtIso(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function humanize(text: string, tasks: { id: string; title: string }[]): string {
+  // Replace raw UUIDs with the task title (quoted), or shorten unknown ones
+  let out = text.replace(UUID_RE, (id) => {
+    const task = tasks.find((t) => t.id === id);
+    return task ? `"${task.title}"` : id.slice(0, 8) + '…';
+  });
+  // Replace ISO timestamps with a readable local time
+  out = out.replace(ISO_RE, fmtIso);
+  return out;
+}
 
 interface IntelligenceRecommendationCardProps {
   recommendation: Recommendation;
@@ -27,7 +50,9 @@ function acceptLabel(type: Recommendation['type']): string {
 
 export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendationCardProps> = ({ recommendation, plannedTaskIds }) => {
   const applyRecommendation = useIntelligenceStore((s) => s.applyRecommendation);
+  const tasks = useTaskBoardStore((s) => s.tasks);
   const [isApplying, setIsApplying] = React.useState(false);
+  const explanation = humanize(recommendation.explanation, tasks);
 
   // Check if this task_plan recommendation is for an already-planned task
   const isAlreadyPlanned = recommendation.type === 'task_plan'
@@ -63,7 +88,7 @@ export const IntelligenceRecommendationCard: React.FC<IntelligenceRecommendation
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{recommendation.type.replace('_', ' ')}</p>
-          <p className="mt-1 text-sm text-foreground leading-relaxed">{recommendation.explanation}</p>
+          <p className="mt-1 text-sm text-foreground leading-relaxed">{explanation}</p>
         </div>
         <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${priorityTone(recommendation.priority)}`}>
           {recommendation.priority}

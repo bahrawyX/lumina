@@ -106,6 +106,19 @@ export default function PersistenceBootstrap() {
     }
   }, [session?.user?.id]);
 
+  // Sync the auth user's real name + email into the calendar profile so the
+  // sidebar footer and Profile page show the DB name, not the hardcoded default.
+  useEffect(() => {
+    const u = session?.user;
+    if (!u) return;
+    const patch: Record<string, string> = {};
+    if (u.name)  patch.name  = u.name;
+    if (u.email) patch.email = u.email;
+    if (Object.keys(patch).length > 0) {
+      useCalendarStore.getState().updateProfile(patch);
+    }
+  }, [session?.user?.id]);
+
   // Cross-user data-isolation guard.
   useEffect(() => {
     if (typeof window === 'undefined') return;
