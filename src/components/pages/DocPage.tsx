@@ -18,9 +18,7 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
-// Editor JSON shape — temporarily loose during BlockNote→Tiptap migration.
-// Replaced with Tiptap's JSONContent in Prompt 2.
-type Block = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+import type { JSONContent } from '@tiptap/core';
 
 const COVER_GRADIENTS = [
   'linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--primary) / 0.1))',
@@ -47,6 +45,7 @@ export default function DocPage() {
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [wordCount, setWordCount] = useState(0);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   // Tracks whether the current blur was triggered by an Escape-revert. The
@@ -115,10 +114,13 @@ export default function DocPage() {
     }
   }, [openDocContent]);
 
-  // Editor content change
-  const handleEditorChange = useCallback(
-    (blocks: Block[], plainText: string, wordCount: number) => {
-      saveContent(docId, blocks as any, plainText, wordCount);
+  // Editor content change. The Tiptap JSON document is a single object;
+  // saveContent's signature still expects an array (BlockNote shape). We
+  // wrap in a single-element array so the persistence layer's jsonb column
+  // round-trips intact, and the Phase 6 migration script will rewrite this.
+  const handleEditorUpdate = useCallback(
+    (content: JSONContent, plainText: string, words: number) => {
+      saveContent(docId, [content as Record<string, unknown>], plainText, words);
     },
     [docId, saveContent]
   );
@@ -304,15 +306,20 @@ export default function DocPage() {
             <span className="text-muted-foreground/30">·</span>
           )}
           <DocSaveIndicator />
+          <span className="text-muted-foreground/30">·</span>
+          <span className="font-mono text-muted-foreground/60">
+            {wordCount} {wordCount === 1 ? 'word' : 'words'}
+          </span>
         </div>
 
         {/* Editor — sits right under the title meta, no divider */}
-        <div ref={editorRef} className="bg-transparent">
+        <div ref={editorRef} suppressHydrationWarning className="bg-transparent">
           <DocEditor
             key={docId}
             docId={docId}
-            initialContent={openDocContent?.content as Block[] | null}
-            onChange={handleEditorChange}
+            initialContent={openDocContent?.content as JSONContent | null}
+            onUpdate={handleEditorUpdate}
+            onWordCountChange={setWordCount}
             className="min-h-[300px] bg-transparent"
           />
         </div>
