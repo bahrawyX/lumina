@@ -1031,6 +1031,14 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   opacity: 0.4;
 }
 
+/* Task Block (custom Lumina node — added Phase 3) */
+.lumina-editor .task-block-wrapper {
+  margin: 0.35rem 0;
+}
+.lumina-editor .ProseMirror > .task-block-wrapper:first-child {
+  margin-top: 0;
+}
+
 /* End TIPTAP EDITOR section */
 
 /* ── Feature showcase ───────────────────────────────────── */

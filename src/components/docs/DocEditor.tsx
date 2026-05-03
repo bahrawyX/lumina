@@ -18,8 +18,10 @@ import { CharacterCount } from '@tiptap/extension-character-count';
 import { DragHandle } from '@tiptap/extension-drag-handle-react';
 import { common, createLowlight } from 'lowlight';
 import { useTheme } from '@/components/theme-provider';
+import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { cn } from '@/lib/utils';
 import { FloatingToolbar } from './FloatingToolbar';
+import { TaskBlockExtension } from './extensions/TaskBlockExtension';
 
 // Module-level lowlight instance — creating it inside the component would
 // re-instantiate every language parser on every render.
@@ -107,6 +109,7 @@ export default function DocEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       CharacterCount,
+      TaskBlockExtension,
     ],
     content: safeInitialContent(initialContent),
     autofocus: 'end',
@@ -138,6 +141,27 @@ export default function DocEditor({
     // render that might pass a new onWordCountChange identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
+
+  // Bridge editor → task board. Each TaskBlockNodeView dispatches this event
+  // when its checkbox is clicked; we forward the new status to the task store.
+  // The store's updateTask() then dispatches lumina:task-updated, which the
+  // NodeView listens for to keep the visual state in sync. The loop is
+  // bounded — updateAttributes inside the NodeView is a pure ProseMirror
+  // transaction with no side effects, so nothing re-fires this event.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ taskId: string; status: 'todo' | 'done' }>
+      ).detail;
+      if (!detail?.taskId) return;
+      useTaskBoardStore.getState().updateTask(detail.taskId, {
+        status: detail.status,
+      });
+    };
+    window.addEventListener('lumina:taskblock-toggle', handler);
+    return () =>
+      window.removeEventListener('lumina:taskblock-toggle', handler);
+  }, []);
 
   // Block-in animation gate: 300ms after mount, drop the .editor-loaded
   // class onto the wrapper so initial content doesn't all animate at once.
