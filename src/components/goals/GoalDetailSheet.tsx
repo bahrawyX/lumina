@@ -8,8 +8,6 @@ import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import type { Goal, GoalTarget, TargetType, GoalColor } from '@/types/goal';
 import { computeGoalProgress, computeTargetProgress, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
 import { format, differenceInDays, isPast, differenceInCalendarDays } from 'date-fns';
-import { showCoinToast } from '@/lib/coins/showCoinToast';
-import { goalCompleteAwards } from '@/lib/coins/earnRules';
 
 // ── Progress Ring ───────────────────────────────────────────────────────────
 
@@ -237,8 +235,7 @@ export const GoalDetailSheet: React.FC<{
       }
     });
     updateGoal(liveGoal.id, { status: 'completed' });
-    const earned = goalCompleteAwards(liveGoal.timeframe).reduce((s, a) => s + a.amount, 0);
-    showCoinToast(earned, 'Goal completed!');
+    // Coin toast fires from `goalsPersistence.updateOne` after server confirmation.
     onClose();
   };
 

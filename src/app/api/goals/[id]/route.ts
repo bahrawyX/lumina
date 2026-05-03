@@ -58,8 +58,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // returned newBalance is the post-award DB value — otherwise the client
     // would refetch a stale balance and the UI would lag the toast.
     let newBalance: number | undefined;
+    let coinsEarned: number | undefined;
     if (patch.status === 'completed' && prev?.status !== 'completed') {
       const awards = goalCompleteAwards(prev?.timeframe ?? 'custom');
+      coinsEarned = awards.reduce((s, a) => s + a.amount, 0);
       try {
         newBalance = await awardCoinsBatch(userId, awards);
       } catch (e) {
@@ -67,10 +69,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       }
     }
 
-    return NextResponse.json({ ok: true, newBalance });
+    return NextResponse.json({ ok: true, newBalance, coinsEarned });
   } catch (err) {
     console.error('[PATCH /api/goals/[id]]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Internal server error',
+      detail: process.env.NODE_ENV !== 'production' ? String((err as Error)?.message ?? err) : undefined,
+    }, { status: 500 });
   }
 }
 

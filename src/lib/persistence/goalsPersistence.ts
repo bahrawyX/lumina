@@ -3,6 +3,8 @@
  */
 import type { Goal, GoalTarget } from '@/types/goal';
 import { useCoinsStore } from '@/store/useCoinsStore';
+import { showCoinToast } from '@/lib/coins/showCoinToast';
+import { toast } from 'sonner';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -54,30 +56,52 @@ export async function createOne(
   }
 }
 
-export async function updateOne(id: string, patch: Partial<Goal>): Promise<void> {
+export async function updateOne(id: string, patch: Partial<Goal>): Promise<boolean> {
   try {
     const res = await apiFetch(`/api/goals/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      // Surface the real failure once instead of silently swallowing — the
+      // user explicitly asked for visibility into "why does the toast fire
+      // when the server returned 500". Read the body if any.
+      let detail = '';
+      try {
+        const errBody = (await res.json()) as { error?: string; detail?: string };
+        detail = errBody.detail ?? errBody.error ?? '';
+      } catch { /* ignore */ }
+      if (isDev) console.error('[goalsPersistence.updateOne] non-OK', res.status, detail);
+      if (patch.status === 'completed') {
+        toast.error(detail ? `Couldn't save completion: ${detail}` : 'Couldn\'t save goal completion');
+      }
+      return false;
+    }
     // Server awards `goal_complete` coins when status flips to 'completed'.
-    // The endpoint awaits the award and returns `newBalance` so the badge
-    // updates synchronously with the toast — no debounced-refetch race.
+    // The toast + balance update fire here so they only happen when the
+    // server confirms — no more "+400 coins" celebration on a failed save.
     if (patch.status === 'completed') {
       try {
-        const data = (await res.json()) as { newBalance?: number };
+        const data = (await res.json()) as { newBalance?: number; coinsEarned?: number };
         if (typeof data?.newBalance === 'number') {
           useCoinsStore.getState().setBalance(data.newBalance);
         } else {
           useCoinsStore.getState().invalidateBalance();
         }
+        if (typeof data?.coinsEarned === 'number' && data.coinsEarned > 0) {
+          showCoinToast(data.coinsEarned, 'Goal completed!');
+        }
       } catch {
         useCoinsStore.getState().invalidateBalance();
       }
     }
+    return true;
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.updateOne]', err);
+    if (patch.status === 'completed') {
+      toast.error('Couldn\'t reach the server to save completion');
+    }
+    return false;
   }
 }
 

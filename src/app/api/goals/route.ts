@@ -191,7 +191,22 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ...result, newBalance }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/goals]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    // Log the full error chain to Vercel logs AND surface it in the response
+    // body during development. The previous opaque "Internal server error"
+    // made the actual cause (drizzle constraint, enum mismatch, transaction
+    // failure, etc.) impossible to diagnose from the client.
+    const e = err as Error & { code?: string; cause?: unknown; detail?: string };
+    console.error('[POST /api/goals]', {
+      message: e?.message,
+      name:    e?.name,
+      code:    e?.code,
+      detail:  e?.detail,
+      stack:   e?.stack,
+      cause:   e?.cause,
+    });
+    return NextResponse.json({
+      error: 'Internal server error',
+      detail: process.env.NODE_ENV !== 'production' ? String(e?.message ?? err) : undefined,
+    }, { status: 500 });
   }
 }

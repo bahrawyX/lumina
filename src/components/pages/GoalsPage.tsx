@@ -25,9 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { LottieOverlay } from '@/components/ui/LottieOverlay';
-import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { CoinsBadge } from '@/components/coins/CoinsBadge';
-import { goalCompleteAwards } from '@/lib/coins/earnRules';
 import { cn } from '@/lib/utils';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
@@ -394,8 +392,9 @@ export default function GoalsPage() {
     });
     updateGoal(goal.id, { status: 'completed' });
     setShowGoalTrophy(true);
-    const earned = goalCompleteAwards(goal.timeframe).reduce((s, a) => s + a.amount, 0);
-    showCoinToast(earned, 'Goal completed!');
+    // Coin toast fires from `goalsPersistence.updateOne` ONLY after the
+    // server confirms the completion + reports the awarded delta. No more
+    // optimistic "+400 coins!" on a failed save.
   };
   const handleArchive = (goal: Goal) => archiveGoal(goal.id);
   const handleDelete = (goal: Goal) => deleteGoal(goal.id);
