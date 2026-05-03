@@ -69,6 +69,66 @@ function notifyTargetIdResolved(optId: string, dbId: string | null) {
 function syncResolveGoal(id: string)   { return optimisticGoalIds.get(id) ?? id; }
 function syncResolveTarget(id: string) { return optimisticTargetIds.get(id) ?? id; }
 
+// ── Debounced target-save queue ─────────────────────────────────────────────
+// Coalesces rapid +/− clicks on a single target into one PATCH carrying the
+// final patch. Keyed by `${localGoalId}::${localTargetId}` so different
+// targets don't clobber each other. Errors are reported only after the
+// debounce fires — preventing the toast spam the user complained about.
+const TARGET_SAVE_DEBOUNCE_MS = 350;
+interface PendingTargetSave {
+  timer: ReturnType<typeof setTimeout>;
+  goalIdInput: string;
+  targetIdInput: string;
+  patch: Record<string, unknown>;
+}
+const pendingTargetSaves = new Map<string, PendingTargetSave>();
+let lastTargetSaveErrorAt = 0;
+
+function scheduleTargetSave(
+  localGoalId: string,
+  localTargetId: string,
+  goalIdInput: string,
+  targetIdInput: string,
+  patch: Record<string, unknown>,
+) {
+  const key = `${localGoalId}::${localTargetId}`;
+  const existing = pendingTargetSaves.get(key);
+  const merged = { ...(existing?.patch ?? {}), ...patch };
+  if (existing) clearTimeout(existing.timer);
+
+  const timer = setTimeout(() => {
+    pendingTargetSaves.delete(key);
+    void Promise.all([resolveGoalDbId(goalIdInput), resolveTargetDbId(targetIdInput)]).then(([realGoalId, realTargetId]) => {
+      if (!realGoalId || !realTargetId) {
+        // Optimistic ID never resolved — the create POST probably failed.
+        // Fire one rate-limited error so the user knows; don't roll back.
+        emitTargetSaveError();
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[useGoalsStore] target save failed: ID never resolved', { goalIdInput, targetIdInput });
+        }
+        return;
+      }
+      goalsPersistence.updateTarget(realGoalId, realTargetId, merged as Partial<GoalTarget>).catch((err) => {
+        emitTargetSaveError();
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[useGoalsStore] target save HTTP error', err);
+        }
+      });
+    });
+  }, TARGET_SAVE_DEBOUNCE_MS);
+
+  pendingTargetSaves.set(key, { timer, goalIdInput, targetIdInput, patch: merged });
+}
+
+/** Toast-error rate limiter — at most one "Failed to save" toast per 4 s
+ *  regardless of how many target updates fail. */
+function emitTargetSaveError() {
+  const now = Date.now();
+  if (now - lastTargetSaveErrorAt < 4000) return;
+  lastTargetSaveErrorAt = now;
+  toast.error('Couldn\'t sync goal progress. Your changes are saved locally.');
+}
+
 // ── Store interface ──────────────────────────────────────────────────────────
 
 interface GoalsState {
@@ -289,8 +349,6 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
     const now = new Date().toISOString();
     const localGoalId = syncResolveGoal(goalId);
     const localTargetId = syncResolveTarget(targetId);
-    // Snapshot for rollback
-    const snap = get().goals.find(g => g.id === localGoalId)?.targets.find(t => t.id === localTargetId);
 
     set(s => ({
       goals: s.goals.map(g =>
@@ -306,24 +364,12 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
       ),
     }));
 
-    void Promise.all([resolveGoalDbId(goalId), resolveTargetDbId(targetId)]).then(([realGoalId, realTargetId]) => {
-      if (!realGoalId || !realTargetId) {
-        toast.error('Failed to save goal progress');
-        return;
-      }
-      goalsPersistence.updateTarget(realGoalId, realTargetId, patch).catch(() => {
-        if (snap) {
-          set(s => ({
-            goals: s.goals.map(g =>
-              g.id === localGoalId
-                ? { ...g, targets: g.targets.map(t => (t.id === localTargetId ? snap : t)) }
-                : g
-            ),
-          }));
-        }
-        toast.error('Failed to save goal progress');
-      });
-    });
+    // Coalesce rapid clicks on +/− into a single PATCH per (goal, target).
+    // Without this, ten quick clicks fire ten parallel requests; one slow or
+    // racing request returns an error and we used to emit a noisy stream of
+    // "Failed to save goal progress" toasts even though the local state was
+    // fine. The debouncer also lets us hold the latest patch only.
+    scheduleTargetSave(localGoalId, localTargetId, goalId, targetId, patch);
   },
 
   deleteTarget: (goalId, targetId) => {

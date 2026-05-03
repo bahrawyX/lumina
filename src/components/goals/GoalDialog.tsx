@@ -75,8 +75,15 @@ export const GoalDialog: React.FC<{
       setEmoji('🎯');
       setColor('blue');
       setTimeframe('quarterly');
-      setTargets([]);
-      // Auto-fill dates for current quarter
+      // Pre-seed one empty target row so the user sees what's required
+      // and doesn't have to click "+ Add target" before they can save.
+      setTargets([{
+        tempId: Math.random().toString(36).slice(2),
+        title: '',
+        type: 'number',
+        targetValue: 10,
+        unit: '',
+      }]);
       autoFillDates('quarterly');
     }
   }, [open, goal]);
@@ -120,15 +127,22 @@ export const GoalDialog: React.FC<{
     ));
   }
 
-  function handleSave() {
-    if (!title.trim() || !startDate || !endDate) return;
+  // Sub-goals are mandatory on create — a goal without measurable targets
+  // can't be tracked, completed, or auto-graded. The Save button is disabled
+  // until the user has added at least one target with a non-empty title.
+  const validTargets = targets.filter(t => t.title.trim()).map(t => ({
+    title: t.title.trim(),
+    type: t.type,
+    targetValue: t.type === 'boolean' ? 1 : t.targetValue,
+    unit: t.unit.trim() || undefined,
+  }));
 
-    const validTargets = targets.filter(t => t.title.trim()).map(t => ({
-      title: t.title.trim(),
-      type: t.type,
-      targetValue: t.type === 'boolean' ? 1 : t.targetValue,
-      unit: t.unit.trim() || undefined,
-    }));
+  const canSave = Boolean(
+    title.trim() && startDate && endDate && (isEdit || validTargets.length > 0),
+  );
+
+  function handleSave() {
+    if (!canSave) return;
 
     if (isEdit && goal) {
       updateGoal(goal.id, {
@@ -282,10 +296,20 @@ export const GoalDialog: React.FC<{
           />
         </div>
 
-        {/* Targets */}
+        {/* Targets — mandatory on create */}
         {!isEdit && (
           <div className="space-y-2">
-            <Label className="text-xs">Key Results / Targets</Label>
+            <div className="flex items-baseline justify-between">
+              <Label className="text-xs">
+                Key Results / Targets <span className="text-destructive">*</span>
+              </Label>
+              {targets.filter(t => t.title.trim()).length === 0 && (
+                <span className="text-[10px] text-amber-400/90">At least one is required</span>
+              )}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 -mt-1">
+              Goals need measurable sub-goals to track progress.
+            </p>
             {targets.map(t => (
               <div key={t.tempId} className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-muted/20">
                 <Input
@@ -346,8 +370,9 @@ export const GoalDialog: React.FC<{
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={!title.trim() || !startDate || !endDate}
+            disabled={!canSave}
             className="rounded-lg px-5"
+            title={!canSave && !isEdit && validTargets.length === 0 ? 'Add at least one sub-goal first' : undefined}
           >
             {isEdit ? 'Save Changes' : 'Create Goal'}
           </Button>
