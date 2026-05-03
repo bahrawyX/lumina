@@ -293,494 +293,10 @@ html.transitioning-theme *::after {
 
 /* ─── Selection — use browser defaults ────────────────────────────────────── */
 
-/* ─── BlockNote + Mantine theme — bound to Lumina CSS vars ──────────────── */
-/* Set on :root so portaled menus (rendered at body) inherit them too */
-:root {
-  /* BlockNote variables */
-  --bn-colors-editor-background: transparent;
-  --bn-colors-editor-text: hsl(var(--foreground));
-  --bn-colors-menu-background: hsl(var(--popover));
-  --bn-colors-menu-text: hsl(var(--popover-foreground));
-  --bn-colors-tooltip-background: hsl(var(--popover));
-  --bn-colors-tooltip-text: hsl(var(--popover-foreground));
-  --bn-colors-hovered-background: hsl(var(--muted));
-  --bn-colors-hovered-text: hsl(var(--foreground));
-  --bn-colors-selected-background: hsl(var(--primary) / 0.12);
-  --bn-colors-selected-text: hsl(var(--foreground));
-  --bn-colors-disabled-background: hsl(var(--muted));
-  --bn-colors-disabled-text: hsl(var(--muted-foreground));
-  --bn-colors-shadow: rgba(0, 0, 0, 0.15);
-  --bn-colors-border: hsl(var(--border));
-  --bn-colors-side-menu: hsl(var(--muted-foreground));
-  --bn-font-family: inherit;
-  --bn-border-radius: 8px;
-
-}
-
-.dark {
-  --bn-colors-shadow: rgba(0, 0, 0, 0.4);
-}
-
-/* ── Content typography ─────────────────────────────────── */
-.bn-container [class*="blockContent"] {
-  font-family: inherit;
-  font-size: 0.9375rem;   /* 15px */
-  line-height: 1.7;
-  color: hsl(var(--foreground));
-}
-
-.lumina-editor .bn-editor {
-  padding: 0;
-  background: transparent;
-}
-
-/* ── Transparent editor background ──────────────────────── */
-.lumina-editor,
-.lumina-editor .bn-container,
-.lumina-editor .bn-editor,
-.lumina-editor .ProseMirror,
-.lumina-editor .bn-block-group,
-.lumina-editor .bn-block,
-.lumina-editor .bn-block-outer {
-  background: transparent !important;
-  background-color: transparent !important;
-}
-
-/* ── Multi-column layout overrides ───────────────────────────────────────── */
-.lumina-editor .bn-column-list {
-  display: flex !important;
-  gap: 16px !important;
-  width: 100% !important;
-}
-
-.lumina-editor .bn-column {
-  flex: var(--column-width, 1) !important;
-  min-width: 0 !important;
-  min-height: 40px !important;
-}
-
-.lumina-editor .bn-column:focus-within {
-  outline: none !important;
-}
-
-.lumina-editor .bn-column-resize-handle {
-  width: 4px !important;
-  background: hsl(var(--border)) !important;
-  border-radius: 2px !important;
-  cursor: col-resize !important;
-  opacity: 0 !important;
-  transition: opacity 150ms !important;
-}
-
-.lumina-editor .bn-column-list:hover .bn-column-resize-handle {
-  opacity: 1 !important;
-}
-
-/* Mobile: stack columns vertically */
-@media (max-width: 768px) {
-  .lumina-editor .bn-column-list {
-    flex-direction: column !important;
-  }
-  .lumina-editor .bn-column {
-    flex: 1 1 100% !important;
-  }
-  .lumina-editor .bn-column-resize-handle {
-    display: none !important;
-  }
-}
-
-/* ── Headings ───────────────────────────────────────────── */
-.bn-container h1[class*="blockContent"],
-.bn-container [data-level="1"][class*="blockContent"] {
-  font-size: 1.875rem;  /* text-3xl */
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.3;
-  margin-top: 1.5rem;
-}
-
-.bn-container h2[class*="blockContent"],
-.bn-container [data-level="2"][class*="blockContent"] {
-  font-size: 1.5rem;    /* text-2xl */
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.35;
-  margin-top: 1.25rem;
-}
-
-.bn-container h3[class*="blockContent"],
-.bn-container [data-level="3"][class*="blockContent"] {
-  font-size: 1.25rem;   /* text-xl */
-  font-weight: 600;
-  line-height: 1.4;
-  margin-top: 1rem;
-}
-
-/* ── BlockNote shadcn surfaces ──────────────────────────── */
-
-/* Tooltips — neutral in both modes (override shadcn primary bg) */
-.bn-shadcn [data-slot="tooltip-content"] {
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--popover-foreground)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  font-size: 0.75rem !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-}
-
-/* Formatting toolbar — compact, clean, pushed away from selection */
-.bn-shadcn .bn-toolbar.bn-formatting-toolbar {
-  margin-top: -6px;
-}
-
-.bn-shadcn .bn-toolbar {
-  border-radius: 8px;
-  padding: 2px 3px;
-  gap: 1px;
-}
-
-/* Formatting toolbar buttons — compact 28px */
-.bn-shadcn .bn-toolbar button {
-  min-width: 28px;
-  min-height: 28px;
-  height: 28px !important;
-  border-radius: 5px;
-  padding: 0 4px !important;
-}
-
-/* Formatting toolbar icons — 15px for cleaner look */
-.bn-shadcn .bn-toolbar [data-slot="toggle"] svg,
-.bn-shadcn .bn-toolbar button:not([role="combobox"]) svg {
-  width: 15px !important;
-  height: 15px !important;
-}
-
-/* Formatting toolbar active state — subtle highlight */
-.bn-shadcn .bn-toolbar [data-state="on"] {
-  background: hsl(var(--primary) / 0.12) !important;
-  color: hsl(var(--primary)) !important;
-}
-
-/* ── Side menu (plus + drag handle) — smaller ─────────── */
-
-.bn-shadcn .bn-side-menu .bn-button,
-.bn-shadcn .bn-side-menu button {
-  height: 20px !important;
-  min-height: 20px !important;
-  width: 20px !important;
-  min-width: 20px !important;
-  padding: 0 !important;
-  border-radius: 4px;
-}
-
-.bn-shadcn .bn-side-menu .bn-button svg,
-.bn-shadcn .bn-side-menu button svg {
-  width: 14px !important;
-  height: 14px !important;
-}
-
-/* ── Block type select dropdown ────────────────────────── */
-
-/* Trigger — compact, borderless */
-.bn-shadcn .bn-toolbar button[role="combobox"] {
-  min-width: 100px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  gap: 4px;
-  padding: 0 8px !important;
-  height: 28px !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* Dropdown content — proper colors, no scrollbar */
-.bn-shadcn .bn-select,
-html body [data-radix-popper-content-wrapper] [role="listbox"] {
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--popover-foreground)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: 8px !important;
-  min-width: 160px !important;
-  padding: 4px !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-}
-
-.dark html body [data-radix-popper-content-wrapper] [role="listbox"],
-html body .dark [data-radix-popper-content-wrapper] [role="listbox"] {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
-}
-
-/* Dropdown items — clean padding, no truncation */
-html body [data-radix-popper-content-wrapper] [role="option"] {
-  padding: 6px 10px !important;
-  border-radius: 5px !important;
-  font-size: 0.8125rem !important;
-  cursor: pointer;
-  color: hsl(var(--popover-foreground)) !important;
-  overflow: visible !important;
-  text-overflow: unset !important;
-  white-space: nowrap !important;
-}
-
-html body [data-radix-popper-content-wrapper] [role="option"]:hover,
-html body [data-radix-popper-content-wrapper] [role="option"][data-highlighted] {
-  background: hsl(var(--muted)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-html body [data-radix-popper-content-wrapper] [role="option"][data-state="checked"] {
-  background: hsl(var(--primary) / 0.12) !important;
-  color: hsl(var(--primary)) !important;
-}
-
-/* ── BlockNote dropdown / popover scrollbars — fully suppressed ───────────
- * Color picker, sub-menus, and any other radix popover content leaked
- * native scrollbars on overflow. Hide the bar but keep scrolling functional
- * (the colour list IS taller than the popover — we want overflow:auto, just
- * with no visible track). */
-
-.bn-shadcn [data-slot="dropdown-menu-content"],
-.bn-shadcn [data-slot="dropdown-menu-sub-content"],
-.bn-shadcn .bn-menu-dropdown,
-.bn-shadcn .bn-color-picker-dropdown,
-[data-radix-popper-content-wrapper] [role="menu"],
-[data-radix-popper-content-wrapper] [data-slot$="content"] {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-.bn-shadcn [data-slot="dropdown-menu-content"]::-webkit-scrollbar,
-.bn-shadcn [data-slot="dropdown-menu-sub-content"]::-webkit-scrollbar,
-.bn-shadcn .bn-menu-dropdown::-webkit-scrollbar,
-.bn-shadcn .bn-color-picker-dropdown::-webkit-scrollbar,
-[data-radix-popper-content-wrapper] *::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-}
-
-/* Block type select — z-index fix */
-html body .bn-container [data-radix-popper-content-wrapper] {
-  z-index: 9999 !important;
-}
-
-/* ── Code blocks ────────────────────────────────────────── */
-.bn-container code {
-  font-size: 0.85em;
-  background: hsl(var(--muted));
-  padding: 0.15em 0.35em;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
-
-.bn-container pre {
-  background: hsl(var(--muted)) !important;
-  border-radius: 8px !important;
-  padding: 12px 16px !important;
-  font-size: 0.8125rem !important;
-  line-height: 1.6 !important;
-  overflow-x: auto;
-}
-
-/* ── Selection — browser defaults (no custom override) ─── */
-
-/* ── Drag handle / side menu ─────────────────────────────
- * Real class names in BlockNote React are kebab-case (`.bn-side-menu`), not
- * camelCase. Earlier `[class*="sideMenu"]` selectors silently failed to
- * match — leaving the side-menu (drag-handle GripVertical SVG + add-block
- * button) fully visible at every block, which the user perceived as small
- * white dots running down the left margin. Target the kebab class directly. */
-
-.bn-container .bn-side-menu,
-.bn-container .bn-side-menu * {
-  opacity: 0 !important;
-  transition: opacity 0.15s ease;
-}
-
-/* Reveal the side menu only when the user hovers the block it belongs to.
- * BlockNote anchors `.bn-side-menu` next to `.bn-block-outer`, so we hover
- * the block's outer wrapper and reveal the adjacent menu via :has(). */
-.bn-container .bn-block-outer:hover ~ * .bn-side-menu,
-.bn-container .bn-block-outer:hover .bn-side-menu,
-.bn-container [class*="blockOuter"]:hover .bn-side-menu {
-  opacity: 0.55 !important;
-}
-
-.bn-container .bn-side-menu:hover,
-.bn-container .bn-side-menu:hover * {
-  opacity: 1 !important;
-}
-
-/* ── Drag & drop — drop indicator + drag-follow card ───── */
-
-/* Drop cursor line — replace the default with a primary-coloured bar */
-.ProseMirror-dropcursor {
-  height: 3px !important;
-  background: hsl(var(--primary)) !important;
-  border-radius: 3px !important;
-  opacity: 1 !important;
-  box-shadow: 0 0 8px hsl(var(--primary) / 0.45) !important;
-}
-
-/* Circular cap on the left of the drop line (Notion-style) */
-.ProseMirror-dropcursor::before {
-  content: '';
-  display: block;
-  position: absolute;
-  left: -3px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: hsl(var(--primary));
-  box-shadow: 0 0 6px hsl(var(--primary) / 0.55);
-}
-
-/* Make the drag preview *visible* — BlockNote ships with `opacity:.001` so
- * the user sees nothing follow the cursor. We render it as a solid card with
- * elevation so HTML5's setDragImage shows a proper "lifted" snapshot of the
- * block following the pointer. */
-.bn-drag-preview {
-  opacity: 1 !important;
-  background: hsl(var(--card)) !important;
-  border: 1px solid hsl(var(--primary) / 0.35) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.55), 0 0 0 1px hsl(var(--primary) / 0.15) !important;
-  padding: 8px 12px !important;
-  max-width: 480px !important;
-  color: hsl(var(--foreground)) !important;
-  font-size: 0.92rem !important;
-  /* keep the preview offscreen-but-rendered so the browser snapshot picks it
-   * up; the snapshot follows the cursor as the native drag image. */
-}
-
-/* Hide source block almost entirely during drag — gives the impression that
- * the block has "lifted off" and is moving with the cursor. */
-.lumina-editor[data-dragging] .bn-block-outer:has(.ProseMirror-selectednode) > .bn-block {
-  opacity: 0.18;
-  transition: opacity 0.12s ease;
-}
-
-/* Subtle row highlight on hover during a drag */
-.lumina-editor[data-dragging] .bn-block-outer:not(:has(.ProseMirror-selectednode)):hover > .bn-block {
-  background: hsl(var(--muted) / 0.18);
-  border-radius: 6px;
-  transition: background 0.1s ease;
-}
-
-/* ── Suppress stray pseudo-element dots on the side-menu wrapper ───── */
-.bn-shadcn .bn-side-menu::before,
-.bn-shadcn .bn-side-menu::after {
-  display: none !important;
-}
-
-/* ── Divider block — full-width separator (replaces "half line" bug) ── */
-.bn-editor [data-content-type="divider"] hr,
-.bn-editor [data-content-type="pageBreak"] > div {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid hsl(var(--border));
-  margin: 0.75em 0;
-}
-
-/* ── Callout block — already styled inline; this just centres typography ─ */
-.bn-editor [data-content-type="callout"] {
-  margin: 0.25em 0;
-}
-
-/* ── Code block — language picker + Shiki-friendly chrome ──────────────
- * BlockNote ships the language <select> at opacity 0.5 on hover (or 0
- * otherwise), which made it nearly invisible. Promote it to a proper
- * pill in the top-right and pad the code area so the picker doesn't
- * collide with the first line. */
-.bn-editor .bn-block-content[data-content-type="codeBlock"] {
-  position: relative;
-  background: hsl(var(--muted)) !important;
-  color: hsl(var(--foreground)) !important;
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px !important;
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace !important;
-  font-size: 0.85rem !important;
-  line-height: 1.6 !important;
-}
-
-.bn-editor .bn-block-content[data-content-type="codeBlock"] > pre {
-  padding: 36px 16px 12px !important;
-  margin: 0 !important;
-  background: transparent !important;
-}
-
-/* Language pill — always visible, top-right corner, hover lifts opacity */
-.bn-editor .bn-block-content[data-content-type="codeBlock"] > div > select {
-  opacity: 0.85 !important;
-  top: 8px !important;
-  right: 10px !important;
-  left: auto !important;
-  font-family: var(--font-sans, system-ui), sans-serif !important;
-  font-size: 0.7rem !important;
-  font-weight: 600 !important;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: hsl(var(--muted-foreground)) !important;
-  background: hsl(var(--card) / 0.8) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: 6px !important;
-  padding: 3px 22px 3px 8px !important;
-  appearance: auto !important;
-  -webkit-appearance: auto !important;
-  cursor: pointer !important;
-  transition-delay: 0s !important;
-  transition: opacity 0.15s ease, border-color 0.15s ease !important;
-}
-
-.bn-editor .bn-block-content[data-content-type="codeBlock"]:hover > div > select,
-.bn-editor .bn-block-content[data-content-type="codeBlock"] > div > select:focus {
-  opacity: 1 !important;
-  border-color: hsl(var(--primary) / 0.5) !important;
-}
-
-/* Shiki tokens — let them inherit but enforce mono font on every span */
-.bn-editor .bn-block-content[data-content-type="codeBlock"] .shiki,
-.bn-editor .bn-block-content[data-content-type="codeBlock"] .shiki * {
-  font-family: inherit !important;
-  background: transparent !important;
-}
-
-/* ── Columns — visible structure ────────────────────────────────────────
- * Columns shipped invisible (no border, no bg). Empty columns were
- * impossible to see and impossible to drop into. Add a soft 1-col
- * dashed outline at idle and a primary tint on hover so the user sees
- * the structure of their column-list. */
-.bn-editor .bn-block-column-list {
-  gap: 12px;
-  padding: 4px 0;
-}
-
-.bn-editor .bn-block-column {
-  border: 1px dashed hsl(var(--border));
-  border-radius: 8px;
-  padding: 10px 12px !important;
-  min-height: 48px;
-  background: hsl(var(--muted) / 0.15);
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-
-.bn-editor .bn-block-column:hover,
-.bn-editor .bn-block-column:focus-within {
-  border-color: hsl(var(--primary) / 0.35);
-  background: hsl(var(--muted) / 0.3);
-}
-
-/* Reset the BlockNote first/last-child padding zeroing so our padding wins */
-.bn-editor .bn-block-column:first-child,
-.bn-editor .bn-block-column:last-child {
-  padding: 10px 12px !important;
-}
 
 /* ─────────────────────────────────────────────────────────
-   TIPTAP EDITOR — Lumina doc editor styles
-   Added in Phase 2 of the BlockNote → Tiptap migration.
-   The .bn-* block above this comment is removed in Phase 6.
+   TIPTAP EDITOR — Lumina doc editor styles.
+   The legacy BlockNote/Mantine theme block was removed in Phase 6.
    ───────────────────────────────────────────────────────── */
 
 /* Outer wrapper */
@@ -1156,6 +672,84 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   .drag-handle-btn {
     display: none;
   }
+}
+
+/* Table (Phase 6) */
+.lumina-editor .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1rem 0;
+  overflow: hidden;
+  border-radius: 6px;
+}
+.lumina-editor .ProseMirror th,
+.lumina-editor .ProseMirror td {
+  min-width: 100px;
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  border: 1px solid hsl(var(--border));
+  position: relative;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.lumina-editor .ProseMirror th {
+  font-weight: 500;
+  background: hsl(var(--muted));
+  text-align: left;
+}
+.lumina-editor .ProseMirror .selectedCell {
+  background: hsl(var(--primary) / 0.08);
+}
+.lumina-editor .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary) / 0.4);
+  cursor: col-resize;
+  pointer-events: all;
+}
+.lumina-editor .ProseMirror .tableWrapper {
+  overflow-x: auto;
+}
+.lumina-editor .ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
+/* Toggle / collapsible block (Phase 6) — most styling lives in the
+   ToggleNodeView component; this just covers the wrapper spacing and
+   makes sure ProseMirror's <details> default browser styling doesn't
+   leak through. */
+.lumina-editor .ProseMirror details[data-type="toggle"] {
+  margin: 0.35rem 0;
+}
+.lumina-editor .ProseMirror details[data-type="toggle"] > summary {
+  display: none;
+}
+
+/* Bookmark card (Phase 6) — most styling lives in BookmarkNodeView;
+   .bookmark-wrapper just lets us target the NodeViewWrapper spacing. */
+.lumina-editor .bookmark-wrapper {
+  margin: 0.5rem 0;
+}
+
+/* Math block (Phase 6) — KaTeX rendering produces a centered display.
+   Add a small surrounding spacing to match other block elements. */
+.lumina-editor .ProseMirror .Tiptap-mathematics-render {
+  display: block;
+  text-align: center;
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 0.5);
+}
+.lumina-editor .ProseMirror .Tiptap-mathematics-render--editable {
+  cursor: pointer;
+}
+.lumina-editor .ProseMirror .Tiptap-mathematics-render:hover {
+  background: hsl(var(--muted));
 }
 
 /* End TIPTAP EDITOR section */

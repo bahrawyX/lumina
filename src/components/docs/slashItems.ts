@@ -6,13 +6,17 @@ export interface SlashItemExecuteProps {
   range: Range;
   // Callbacks injected by SlashCommandExtension at plugin-creation time. They
   // bridge to DocEditor state so the slash item can ask the page-level UI to
-  // open ColumnRatioPicker / AIPromptInput.
+  // open ColumnRatioPicker / AIPromptInput / DocLinkPicker.
   onOpenColumnPicker?: () => void;
   onOpenAIPrompt?: (params: {
     coords: { top: number; left: number };
     // Doc position where the AI-generated content should be inserted. Captured
     // at slash-item-execute time so a focus shift before submit doesn't move
     // the insert point.
+    docPos: number;
+  }) => void;
+  onOpenDocLinkPicker?: (params: {
+    coords: { top: number; left: number };
     docPos: number;
   }) => void;
   // The doc this editor is editing — passed to /task so the created task is
@@ -49,6 +53,11 @@ const ICON = {
   columns: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="5.5" height="12" rx="1"/><rect x="9.5" y="2" width="5.5" height="12" rx="1"/></svg>`,
   callout: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1l1.5 4h4l-3.5 2.5 1.5 4L8 9l-3.5 2.5 1.5-4L2.5 5h4z"/></svg>`,
   ai: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="9" rx="1.5"/><path d="M5 13l1.5 2 1.5-2"/><line x1="5" y1="7" x2="11" y2="7"/><line x1="5" y1="9.5" x2="9" y2="9.5"/></svg>`,
+  table: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="13" height="13" rx="1"/><line x1="1.5" y1="5.5" x2="14.5" y2="5.5"/><line x1="1.5" y1="9.5" x2="14.5" y2="9.5"/><line x1="5.5" y1="5.5" x2="5.5" y2="14.5"/><line x1="9.5" y1="5.5" x2="9.5" y2="14.5"/></svg>`,
+  toggle: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 5 8 9 12 5"/><line x1="3" y1="12" x2="13" y2="12"/></svg>`,
+  pageLink: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h3v3M13 3L8 8M7 4H4a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V9"/></svg>`,
+  bookmark: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h12v10l-6-3-6 3V2z"/></svg>`,
+  math: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><text x="1" y="12" font-size="10" fill="currentColor" font-family="serif" font-style="italic">∑x²</text></svg>`,
 };
 
 export function buildSlashItems(): SlashItem[] {
@@ -115,6 +124,23 @@ export function buildSlashItems(): SlashItem[] {
       },
     },
     {
+      title: 'Math',
+      description: 'LaTeX equation block',
+      group: 'Basic',
+      aliases: ['math', 'equation', 'latex', 'formula', 'katex', 'tex'],
+      icon: ICON.math,
+      execute: ({ editor, range }) => {
+        // @tiptap/extension-mathematics provides insertBlockMath via its
+        // BlockMath sub-extension. Renders via KaTeX into the document.
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertBlockMath({ latex: 'E = mc^2' })
+          .run();
+      },
+    },
+    {
       title: 'Bullet List',
       description: 'Unordered list of items',
       group: 'Basic',
@@ -145,6 +171,40 @@ export function buildSlashItems(): SlashItem[] {
       },
     },
     {
+      title: 'Toggle',
+      description: 'Collapsible content block',
+      group: 'Basic',
+      aliases: ['toggle', 'collapse', 'accordion', 'details', 'expand', 'fold'],
+      icon: ICON.toggle,
+      execute: ({ editor, range }) => {
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertContent({
+            type: 'toggle',
+            attrs: { isOpen: true },
+            content: [{ type: 'paragraph' }],
+          })
+          .run();
+      },
+    },
+    {
+      title: 'Table',
+      description: 'Insert a 3x3 table',
+      group: 'Basic',
+      aliases: ['table', 'grid', 'spreadsheet'],
+      icon: ICON.table,
+      execute: ({ editor, range }) => {
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .run();
+      },
+    },
+    {
       title: 'Divider',
       description: 'Horizontal separator line',
       group: 'Basic',
@@ -152,6 +212,25 @@ export function buildSlashItems(): SlashItem[] {
       icon: ICON.hr,
       execute: ({ editor, range }) => {
         editor.chain().focus().deleteRange(range).setHorizontalRule().run();
+      },
+    },
+    {
+      title: 'Page Link',
+      description: 'Link to another document',
+      group: 'Basic',
+      aliases: ['page', 'link', 'doc', 'document', 'pagelink', 'ref'],
+      icon: ICON.pageLink,
+      execute: ({ editor, range, onOpenDocLinkPicker }) => {
+        editor.chain().focus().deleteRange(range).run();
+        const { from } = editor.state.selection;
+        let coords: { top: number; left: number };
+        try {
+          const dom = editor.view.coordsAtPos(from);
+          coords = { top: dom.bottom + 4, left: dom.left };
+        } catch {
+          coords = { top: 100, left: 100 };
+        }
+        onOpenDocLinkPicker?.({ coords, docPos: from });
       },
     },
 
@@ -214,6 +293,25 @@ export function buildSlashItems(): SlashItem[] {
               `<p>🎵 <a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a></p>`,
             )
             .run();
+        } else {
+          editor.commands.focus();
+        }
+      },
+    },
+    {
+      title: 'Bookmark',
+      description: 'Save a link as a card',
+      group: 'Media',
+      aliases: ['bookmark', 'url', 'website', 'embed', 'card'],
+      icon: ICON.bookmark,
+      execute: ({ editor, range }) => {
+        editor.chain().focus().deleteRange(range).run();
+        const url = window.prompt('URL to bookmark:');
+        if (url?.trim()) {
+          editor.commands.insertContent({
+            type: 'bookmark',
+            attrs: { url: url.trim(), title: '' },
+          });
         } else {
           editor.commands.focus();
         }

@@ -36,8 +36,16 @@ import { SlashCommandExtension } from './extensions/SlashCommandExtension';
 import { CodeBlockNodeView } from './extensions/CodeBlockNodeView';
 import { KeyboardShortcutsExtension } from './extensions/KeyboardShortcutsExtension';
 import { FocusBlockExtension } from './extensions/FocusBlockExtension';
+import { ToggleExtension } from './extensions/ToggleExtension';
+import { BookmarkExtension } from './extensions/BookmarkExtension';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { Mathematics } from '@tiptap/extension-mathematics';
 import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
 import AIPromptInput from './AIPromptInput';
+import DocLinkPicker, { type DocSearchResult } from './DocLinkPicker';
 
 // Module-level lowlight instance — creating it inside the component would
 // re-instantiate every language parser on every render.
@@ -95,6 +103,10 @@ export default function DocEditor({
   // Doc position captured at /ai trigger time so a focus shift before the
   // user submits the prompt doesn't move the insert point.
   const aiInsertPosRef = useRef<number | null>(null);
+  const [docLinkCoords, setDocLinkCoords] = useState<
+    { top: number; left: number } | null
+  >(null);
+  const docLinkPosRef = useRef<number | null>(null);
 
   // Word-count emission is debounced ~500ms so DocPage doesn't re-render on
   // every keystroke just to show "12 words" → "13 words". Tiptap's onUpdate
@@ -140,7 +152,11 @@ export default function DocEditor({
         openOnClick: false,
         autolink: true,
         linkOnPaste: true,
-        validate: (url: string) => /^https?:\/\//.test(url),
+        // Accept http(s) for external links AND root-relative '/' for the
+        // /page slash command's intra-doc links. Both are safe — relative
+        // paths can't escape origin, and we already block javascript: by
+        // requiring the URL to start with either http or '/'.
+        validate: (url: string) => /^(https?:\/\/|\/)/.test(url),
       }),
       Image.configure({
         inline: false,
@@ -160,6 +176,18 @@ export default function DocEditor({
       ColumnExtension,
       ColumnsExtension,
       TaskBlockExtension,
+      ToggleExtension,
+      BookmarkExtension,
+      Table.configure({
+        resizable: true,
+        handleWidth: 5,
+        cellMinWidth: 100,
+        lastColumnResizable: false,
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      Mathematics,
       KeyboardShortcutsExtension,
       FocusBlockExtension,
       SlashCommandExtension.configure({
@@ -168,6 +196,10 @@ export default function DocEditor({
         onOpenAIPrompt: ({ coords, docPos }) => {
           aiInsertPosRef.current = docPos;
           setAiPromptCoords(coords);
+        },
+        onOpenDocLinkPicker: ({ coords, docPos }) => {
+          docLinkPosRef.current = docPos;
+          setDocLinkCoords(coords);
         },
       }),
     ],
@@ -471,6 +503,44 @@ export default function DocEditor({
     editor?.commands.focus();
   }, [editor]);
 
+  // ── /page selection handler ──
+  // Inserts a Tiptap text node with a Link mark pointing to the chosen doc.
+  // Using insertContentAt so the link lands at the captured position even if
+  // the user clicked elsewhere while the picker was open.
+  const handleDocLinkSelect = useCallback(
+    (doc: DocSearchResult) => {
+      const pos = docLinkPosRef.current;
+      docLinkPosRef.current = null;
+      setDocLinkCoords(null);
+      if (!editor || pos === null) return;
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(pos, {
+          type: 'text',
+          text: doc.title,
+          marks: [
+            {
+              type: 'link',
+              attrs: {
+                href: `/docs/${doc.id}`,
+                target: '_self',
+                rel: null,
+              },
+            },
+          ],
+        })
+        .run();
+    },
+    [editor],
+  );
+
+  const cancelDocLinkPicker = useCallback(() => {
+    setDocLinkCoords(null);
+    docLinkPosRef.current = null;
+    editor?.commands.focus();
+  }, [editor]);
+
   return (
     <div
       className={cn(
@@ -558,6 +628,17 @@ export default function DocEditor({
             position={aiPromptCoords}
             onSubmit={handleAISubmit}
             onCancel={cancelAIPrompt}
+          />,
+          document.body,
+        )}
+
+      {docLinkCoords &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <DocLinkPicker
+            position={docLinkCoords}
+            onSelect={handleDocLinkSelect}
+            onCancel={cancelDocLinkPicker}
           />,
           document.body,
         )}

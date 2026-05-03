@@ -10,6 +10,10 @@ export interface SlashCommandOptions {
     coords: { top: number; left: number };
     docPos: number;
   }) => void;
+  onOpenDocLinkPicker: (params: {
+    coords: { top: number; left: number };
+    docPos: number;
+  }) => void;
   // Passed to /task so created tasks are linked back to this doc.
   docId: string;
 }
@@ -23,6 +27,9 @@ export const SlashCommandExtension = Extension.create<SlashCommandOptions>({
         /* injected at configure time */
       },
       onOpenAIPrompt: () => {
+        /* injected at configure time */
+      },
+      onOpenDocLinkPicker: () => {
         /* injected at configure time */
       },
       docId: '',
@@ -63,6 +70,7 @@ export const SlashCommandExtension = Extension.create<SlashCommandOptions>({
             range,
             onOpenColumnPicker: options.onOpenColumnPicker,
             onOpenAIPrompt: options.onOpenAIPrompt,
+            onOpenDocLinkPicker: options.onOpenDocLinkPicker,
             docId: options.docId,
           });
         },

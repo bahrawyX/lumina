@@ -32,3 +32,7 @@ class ResizeObserverStub {
 
 // scrollTo isn't implemented in jsdom
 window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
+
+// Element.scrollIntoView isn't implemented in jsdom either — Tiptap's
+// SlashMenuList scrolls the active item into view on keyboard navigation.
+Element.prototype.scrollIntoView = vi.fn() as unknown as typeof Element.prototype.scrollIntoView;
