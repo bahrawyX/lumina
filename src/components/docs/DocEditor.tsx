@@ -2,8 +2,14 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useEditor, EditorContent } from '@tiptap/react';
+import {
+  useEditor,
+  useEditorState,
+  EditorContent,
+  ReactNodeViewRenderer,
+} from '@tiptap/react';
 import type { JSONContent } from '@tiptap/core';
+import { motion, AnimatePresence } from 'framer-motion';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
@@ -27,6 +33,9 @@ import { TaskBlockExtension } from './extensions/TaskBlockExtension';
 import { ColumnExtension } from './extensions/ColumnExtension';
 import { ColumnsExtension } from './extensions/ColumnsExtension';
 import { SlashCommandExtension } from './extensions/SlashCommandExtension';
+import { CodeBlockNodeView } from './extensions/CodeBlockNodeView';
+import { KeyboardShortcutsExtension } from './extensions/KeyboardShortcutsExtension';
+import { FocusBlockExtension } from './extensions/FocusBlockExtension';
 import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
 import AIPromptInput from './AIPromptInput';
 
@@ -46,10 +55,13 @@ export interface DocEditorProps {
   // saveContent (which is what runs the 1s debounce + stale-write check)
   // gets the same triple it always did.
   onUpdate?: (content: JSONContent, plainText: string, wordCount: number) => void;
-  // Fired immediately on every change for live word-count display in the
-  // page header. Kept separate from onUpdate so the count can update without
-  // waiting for whatever debounce the consumer applies to onUpdate.
+  // Fired (debounced ~500ms) for live word-count display in the page header.
+  // Kept separate from onUpdate so the count can update without waiting for
+  // the consumer's save debounce, while still avoiding a re-render per char.
   onWordCountChange?: (words: number) => void;
+  // When true, dim non-focused top-level blocks. Persisted by DocPage in
+  // localStorage; this component just reflects the prop.
+  focusMode?: boolean;
   className?: string;
 }
 
@@ -70,6 +82,7 @@ export default function DocEditor({
   initialContent,
   onUpdate,
   onWordCountChange,
+  focusMode = false,
   className,
 }: DocEditorProps) {
   const { resolvedTheme } = useTheme();
@@ -82,6 +95,12 @@ export default function DocEditor({
   // Doc position captured at /ai trigger time so a focus shift before the
   // user submits the prompt doesn't move the insert point.
   const aiInsertPosRef = useRef<number | null>(null);
+
+  // Word-count emission is debounced ~500ms so DocPage doesn't re-render on
+  // every keystroke just to show "12 words" → "13 words". Tiptap's onUpdate
+  // still fires per keystroke (we need that for save), but the React state
+  // tied to wordCount only flips a few times per second.
+  const wordCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -109,6 +128,13 @@ export default function DocEditor({
       CodeBlockLowlight.configure({
         lowlight,
         defaultLanguage: 'plaintext',
+      }).extend({
+        // Phase 5: render code blocks via a React NodeView so we can show a
+        // language selector and copy button alongside the syntax-highlighted
+        // <pre>. The base extension's parse/serialize behavior is preserved.
+        addNodeView() {
+          return ReactNodeViewRenderer(CodeBlockNodeView);
+        },
       }),
       Link.configure({
         openOnClick: false,
@@ -134,6 +160,8 @@ export default function DocEditor({
       ColumnExtension,
       ColumnsExtension,
       TaskBlockExtension,
+      KeyboardShortcutsExtension,
+      FocusBlockExtension,
       SlashCommandExtension.configure({
         docId,
         onOpenColumnPicker: () => setShowColumnPicker(true),
@@ -153,8 +181,14 @@ export default function DocEditor({
       // Tiptap v3 does NOT fire onUpdate on hydration of initial content
       // (verified empirically), so every emission here is a real user edit.
       const wc = editor.storage.characterCount.words();
-      onWordCountChange?.(wc);
+      // onUpdate fires immediately — the store's saveContent handles the 1s
+      // debounce + stale-write check. wordCount visual update is debounced
+      // separately to avoid a parent re-render per keystroke.
       onUpdate?.(editor.getJSON(), editor.getText(), wc);
+      if (wordCountTimerRef.current) clearTimeout(wordCountTimerRef.current);
+      wordCountTimerRef.current = setTimeout(() => {
+        onWordCountChange?.(wc);
+      }, 500);
     },
     editorProps: {
       attributes: {
@@ -197,12 +231,96 @@ export default function DocEditor({
 
   // Block-in animation gate: 300ms after mount, drop the .editor-loaded
   // class onto the wrapper so initial content doesn't all animate at once.
-  // Phase 5 will add per-new-block animation via MutationObserver.
   const [editorLoaded, setEditorLoaded] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setEditorLoaded(true), 300);
     return () => clearTimeout(t);
   }, []);
+
+  // Cmd+S → force-save bridge. KeyboardShortcutsExtension dispatches the
+  // event; this listener flushes pending content to onUpdate immediately so
+  // the user gets visual save feedback right away.
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => {
+      const wc = editor.storage.characterCount.words();
+      onUpdate?.(editor.getJSON(), editor.getText(), wc);
+    };
+    window.addEventListener('lumina:force-save', handler);
+    return () => window.removeEventListener('lumina:force-save', handler);
+  }, [editor, onUpdate]);
+
+  // Block-in animation trigger. After editor-loaded flips, watch for new
+  // top-level children appended to the ProseMirror root and run a Web
+  // Animations entrance on them. We use element.animate() rather than
+  // setting a `data-new-block` attribute because mutating the DOM inside
+  // the observer triggers ProseMirror's view to redraw the node, which
+  // re-fires the observer in an infinite loop. The Web Animations API
+  // doesn't mutate observable DOM state, so it's safe.
+  useEffect(() => {
+    if (!editor || !editorLoaded) return;
+    const root = editor.view.dom;
+    if (!root) return;
+    // Track elements we've already animated so a Tiptap re-render that
+    // briefly removes-and-re-adds the same DOM node doesn't replay the
+    // entrance every keystroke.
+    const animated = new WeakSet<Element>();
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (
+            node instanceof Element &&
+            node.parentNode === root &&
+            !animated.has(node)
+          ) {
+            animated.add(node);
+            try {
+              node.animate(
+                [
+                  { opacity: 0, transform: 'translateY(6px)' },
+                  { opacity: 1, transform: 'translateY(0)' },
+                ],
+                { duration: 150, easing: 'ease-out' },
+              );
+            } catch {
+              /* Web Animations may be unavailable in odd contexts — ignore */
+            }
+          }
+        });
+      });
+    });
+    observer.observe(root, { childList: true });
+    return () => observer.disconnect();
+  }, [editor, editorLoaded]);
+
+  // Focus-mode active-block tracker is implemented as a ProseMirror plugin
+  // in FocusBlockExtension — see that file for the rationale (DOM mutations
+  // outside PM's view layer get clobbered by redraws; Decorations don't).
+
+  // Cleanup the wordCount debounce timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (wordCountTimerRef.current) clearTimeout(wordCountTimerRef.current);
+    };
+  }, []);
+
+  // Empty-state hint visibility. Subscribed via useEditorState so it
+  // re-renders on any doc change. We don't use editor.isEmpty here because
+  // it stays true when the doc has empty structural blocks (e.g. a code
+  // block with no content) — the hint should disappear the moment ANY
+  // block has been inserted or any text typed.
+  const isPristine = useEditorState({
+    editor,
+    selector: ({ editor }) => {
+      if (!editor) return true;
+      const doc = editor.state.doc;
+      return (
+        doc.childCount === 1 &&
+        doc.firstChild?.type.name === 'paragraph' &&
+        doc.firstChild.content.size === 0
+      );
+    },
+  });
 
   // ── /columns selection handler ──
   const handleColumnsSelect = useCallback(
@@ -358,6 +476,7 @@ export default function DocEditor({
       className={cn(
         'lumina-editor relative',
         editorLoaded && 'editor-loaded',
+        focusMode && 'focus-mode-active',
         className,
       )}
       data-color-scheme={resolvedTheme}
@@ -386,6 +505,27 @@ export default function DocEditor({
       )}
 
       <EditorContent editor={editor} className="tiptap-content" />
+
+      {/* Empty-state hint — appears below a brand-new doc as a quiet pointer
+          to the slash menu. The 0.5s delay prevents it from flashing on
+          mount before the editor's own placeholder has settled. */}
+      <AnimatePresence>
+        {isPristine && editorLoaded && (
+          <motion.p
+            key="empty-hint"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.5 } }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            className="pointer-events-none mt-2 select-none text-center text-xs text-muted-foreground/40"
+          >
+            Start writing, or type{' '}
+            <kbd className="rounded border border-border/40 px-1 py-0.5 font-mono text-[10px]">
+              /
+            </kbd>{' '}
+            for commands
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {showColumnPicker &&
         typeof document !== 'undefined' &&

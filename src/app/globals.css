@@ -1076,6 +1076,88 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   display: none;
 }
 
+/* Code Block NodeView (Phase 5) — overrides the simpler pre styles above */
+.lumina-editor .code-block-wrapper {
+  margin: 1rem 0;
+}
+.lumina-editor .code-block-pre {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.875rem;
+  background: hsl(var(--muted));
+  border-radius: 8px;
+  /* extra top padding so the language selector + copy button don't overlap code */
+  padding: 2.25rem 1.25rem 1.25rem;
+  margin: 0;
+  overflow-x: auto;
+  tab-size: 2;
+  line-height: 1.6;
+}
+.lumina-editor .code-block-pre::-webkit-scrollbar {
+  height: 3px;
+}
+.lumina-editor .code-block-pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+.lumina-editor .code-block-pre::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+
+/* Lowlight syntax highlighting — colors via HSL so they adapt to theme */
+.lumina-editor .hljs-keyword,
+.lumina-editor .hljs-operator {
+  color: hsl(var(--primary));
+}
+.lumina-editor .hljs-string,
+.lumina-editor .hljs-attr {
+  color: hsl(142 70% 45%);
+}
+.lumina-editor .hljs-number,
+.lumina-editor .hljs-literal {
+  color: hsl(25 90% 55%);
+}
+.lumina-editor .hljs-comment,
+.lumina-editor .hljs-quote {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+.lumina-editor .hljs-title,
+.lumina-editor .hljs-built_in {
+  color: hsl(220 80% 60%);
+}
+.lumina-editor .hljs-variable,
+.lumina-editor .hljs-name {
+  color: hsl(var(--foreground));
+}
+
+/* Focus mode (Phase 5) — dim non-active top-level blocks. The
+   .is-focused-block class is set in DocEditor's selectionUpdate listener. */
+.lumina-editor.focus-mode-active .ProseMirror > * {
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+.lumina-editor.focus-mode-active .ProseMirror > .is-focused-block {
+  opacity: 1;
+}
+/* When the editor isn't focused (user clicked outside), restore everything
+   so the page doesn't look "broken" without an active block. */
+.lumina-editor.focus-mode-active .ProseMirror:not(:focus-within) > * {
+  opacity: 1;
+}
+
+/* Mobile (Phase 5) — 16px font prevents iOS auto-zoom on input focus,
+   extra bottom padding leaves room for the virtual keyboard, drag handle
+   hidden because touch drag-reorder is unreliable. */
+@media (max-width: 640px) {
+  .lumina-editor .ProseMirror {
+    font-size: 16px;
+    padding-bottom: 40vh;
+  }
+  .drag-handle-btn {
+    display: none;
+  }
+}
+
 /* End TIPTAP EDITOR section */
 
 /* ── Feature showcase ───────────────────────────────────── */

@@ -46,6 +46,29 @@ export default function DocPage() {
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [wordCount, setWordCount] = useState(0);
+  // Focus mode: dim non-active blocks. Persisted in localStorage so the
+  // user's preference survives reloads. Lazy initializer avoids reading
+  // localStorage on the server (DocPage is a client component but the
+  // initial state runs on every render-from-scratch).
+  const [focusMode, setFocusMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('lumina-editor-focus-mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('lumina-editor-focus-mode', String(next));
+      } catch {
+        /* localStorage may be unavailable */
+      }
+      return next;
+    });
+  }, []);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   // Tracks whether the current blur was triggered by an Escape-revert. The
@@ -310,6 +333,35 @@ export default function DocPage() {
           <span className="font-mono text-muted-foreground/60">
             {wordCount} {wordCount === 1 ? 'word' : 'words'}
           </span>
+          <span className="text-muted-foreground/30">·</span>
+          <button
+            type="button"
+            onClick={toggleFocusMode}
+            aria-label={focusMode ? 'Disable focus mode' : 'Enable focus mode'}
+            aria-pressed={focusMode}
+            title={focusMode ? 'Focus mode: on' : 'Focus mode: off'}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs transition-colors',
+              focusMode
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+            )}
+          >
+            <svg
+              width={11}
+              height={11}
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="6" cy="6" r="2" />
+              <path d="M1 6C1 6 3 2 6 2s5 4 5 4-2 4-5 4-5-4-5-4z" />
+            </svg>
+            Focus
+          </button>
         </div>
 
         {/* Editor — sits right under the title meta, no divider */}
@@ -320,6 +372,7 @@ export default function DocPage() {
             initialContent={openDocContent?.content as JSONContent | null}
             onUpdate={handleEditorUpdate}
             onWordCountChange={setWordCount}
+            focusMode={focusMode}
             className="min-h-[300px] bg-transparent"
           />
         </div>

@@ -17,7 +17,15 @@ interface ToolbarButtonProps {
   children: React.ReactNode;
 }
 
-function ToolbarButton({ onClick, isActive = false, label, children }: ToolbarButtonProps) {
+// React.memo so a parent re-render (BubbleMenu fires updateProps on every
+// selection change) doesn't cascade into N button re-renders. The buttons
+// only depend on isActive — that's the only prop that flips frequently.
+const ToolbarButton = React.memo(function ToolbarButton({
+  onClick,
+  isActive = false,
+  label,
+  children,
+}: ToolbarButtonProps) {
   return (
     <button
       type="button"
@@ -34,7 +42,7 @@ function ToolbarButton({ onClick, isActive = false, label, children }: ToolbarBu
       {children}
     </button>
   );
-}
+});
 
 function Divider() {
   return <span className="mx-0.5 h-4 w-px bg-border flex-shrink-0" aria-hidden="true" />;
