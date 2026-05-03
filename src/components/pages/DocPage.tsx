@@ -18,7 +18,9 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
-import type { Block } from '@blocknote/core';
+// Editor JSON shape — temporarily loose during BlockNote→Tiptap migration.
+// Replaced with Tiptap's JSONContent in Prompt 2.
+type Block = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const COVER_GRADIENTS = [
   'linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--primary) / 0.1))',
