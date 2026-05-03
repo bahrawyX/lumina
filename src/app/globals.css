@@ -582,21 +582,31 @@ html body .bn-container [data-radix-popper-content-wrapper] {
 
 /* ── Selection — browser defaults (no custom override) ─── */
 
-/* ── Drag handle ────────────────────────────────────────── */
-.bn-container [class*="dragHandle"],
-.bn-container [class*="sideMenu"] {
-  opacity: 0;
+/* ── Drag handle / side menu ─────────────────────────────
+ * Real class names in BlockNote React are kebab-case (`.bn-side-menu`), not
+ * camelCase. Earlier `[class*="sideMenu"]` selectors silently failed to
+ * match — leaving the side-menu (drag-handle GripVertical SVG + add-block
+ * button) fully visible at every block, which the user perceived as small
+ * white dots running down the left margin. Target the kebab class directly. */
+
+.bn-container .bn-side-menu,
+.bn-container .bn-side-menu * {
+  opacity: 0 !important;
   transition: opacity 0.15s ease;
 }
 
-.bn-container [class*="blockOuter"]:hover [class*="dragHandle"],
-.bn-container [class*="blockOuter"]:hover [class*="sideMenu"] {
-  opacity: 0.4;
+/* Reveal the side menu only when the user hovers the block it belongs to.
+ * BlockNote anchors `.bn-side-menu` next to `.bn-block-outer`, so we hover
+ * the block's outer wrapper and reveal the adjacent menu via :has(). */
+.bn-container .bn-block-outer:hover ~ * .bn-side-menu,
+.bn-container .bn-block-outer:hover .bn-side-menu,
+.bn-container [class*="blockOuter"]:hover .bn-side-menu {
+  opacity: 0.55 !important;
 }
 
-.bn-container [class*="dragHandle"]:hover,
-.bn-container [class*="sideMenu"]:hover {
-  opacity: 0.8;
+.bn-container .bn-side-menu:hover,
+.bn-container .bn-side-menu:hover * {
+  opacity: 1 !important;
 }
 
 /* ── Drag & drop — drop indicator + drag-follow card ───── */
@@ -657,13 +667,9 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   transition: background 0.1s ease;
 }
 
-/* ── Hide stray "white dots" widget marks the drag/+ icons render ────── */
-/* BlockNote's side-menu wrappers paint a couple of focus / select dots that
- * leak through the dark theme as bright pixels next to the drag handle.
- * Suppress them — the actual handle SVG is enough affordance. */
+/* ── Suppress stray pseudo-element dots on the side-menu wrapper ───── */
 .bn-shadcn .bn-side-menu::before,
-.bn-shadcn .bn-side-menu::after,
-.bn-shadcn [class*="sideMenu"] svg circle:not([data-keep]) {
+.bn-shadcn .bn-side-menu::after {
   display: none !important;
 }
 
