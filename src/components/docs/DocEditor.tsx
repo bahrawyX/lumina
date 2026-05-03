@@ -235,6 +235,12 @@ export default function DocEditor({
     if (editor) {
       onWordCountChange?.(editor.storage.characterCount.words());
     }
+    // Dev-only window exposure so the e2e suite (tests/e2e/editor.spec.ts)
+    // can read editor.getJSON() to assert custom-node attrs survive round-
+    // trip. NODE_ENV-gated so production never leaks the editor instance.
+    if (editor && process.env.NODE_ENV !== 'production') {
+      (window as unknown as { __luminaEditor?: unknown }).__luminaEditor = editor;
+    }
     // We only want this on editor instance creation, not on every parent
     // render that might pass a new onWordCountChange identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps

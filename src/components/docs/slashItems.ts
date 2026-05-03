@@ -130,14 +130,13 @@ export function buildSlashItems(): SlashItem[] {
       aliases: ['math', 'equation', 'latex', 'formula', 'katex', 'tex'],
       icon: ICON.math,
       execute: ({ editor, range }) => {
-        // @tiptap/extension-mathematics provides insertBlockMath via its
-        // BlockMath sub-extension. Renders via KaTeX into the document.
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .insertBlockMath({ latex: 'E = mc^2' })
-          .run();
+        // Two separate runs — chaining deleteRange + insertBlockMath in one
+        // .run() throws "Position out of range" because insertBlockMath
+        // resolves its insertion point before the deleteRange tx applies.
+        // Splitting commits the delete first, then inserts at the cursor's
+        // new position.
+        editor.chain().focus().deleteRange(range).run();
+        editor.chain().focus().insertBlockMath({ latex: 'E = mc^2' }).run();
       },
     },
     {
