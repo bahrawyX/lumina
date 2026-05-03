@@ -1039,6 +1039,43 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   margin-top: 0;
 }
 
+/* Columns layout (custom — added Phase 4 since Tiptap Pro extension is paid) */
+.lumina-editor .ProseMirror [data-type="columns"] {
+  display: flex;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+.lumina-editor .ProseMirror [data-type="column"] {
+  /* flex-grow value comes from the inline style set by ColumnExtension's
+     renderHTML — keep this rule as a fallback for any rendered HTML that
+     was serialised without the inline style. */
+  min-width: 0;
+}
+@media (max-width: 768px) {
+  .lumina-editor .ProseMirror [data-type="columns"] {
+    flex-direction: column;
+  }
+}
+.lumina-editor .ProseMirror [data-type="column"].ProseMirror-selectednode {
+  outline: 1px solid hsl(var(--border));
+  border-radius: 4px;
+}
+
+/* Slash menu (Phase 4): kill tippy's default frame so SlashMenuList's own
+   bg-popover/border/shadow are what the user sees. */
+.tippy-box[data-theme~='lumina-slash'] {
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+}
+.tippy-box[data-theme~='lumina-slash'] > .tippy-content {
+  padding: 0;
+}
+.tippy-box[data-theme~='lumina-slash'] > .tippy-arrow {
+  display: none;
+}
+
 /* End TIPTAP EDITOR section */
 
 /* ── Feature showcase ───────────────────────────────────── */

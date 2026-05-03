@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -17,15 +18,23 @@ import { TaskItem } from '@tiptap/extension-task-item';
 import { CharacterCount } from '@tiptap/extension-character-count';
 import { DragHandle } from '@tiptap/extension-drag-handle-react';
 import { common, createLowlight } from 'lowlight';
+import { toast } from 'sonner';
 import { useTheme } from '@/components/theme-provider';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { cn } from '@/lib/utils';
 import { FloatingToolbar } from './FloatingToolbar';
 import { TaskBlockExtension } from './extensions/TaskBlockExtension';
+import { ColumnExtension } from './extensions/ColumnExtension';
+import { ColumnsExtension } from './extensions/ColumnsExtension';
+import { SlashCommandExtension } from './extensions/SlashCommandExtension';
+import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
+import AIPromptInput from './AIPromptInput';
 
 // Module-level lowlight instance — creating it inside the component would
 // re-instantiate every language parser on every render.
 const lowlight = createLowlight(common);
+
+const AI_PLACEHOLDER = '✨ Generating…';
 
 export interface DocEditorProps {
   docId: string;
@@ -57,13 +66,22 @@ function safeInitialContent(content: JSONContent | null | undefined): JSONConten
 }
 
 export default function DocEditor({
-  docId: _docId,
+  docId,
   initialContent,
   onUpdate,
   onWordCountChange,
   className,
 }: DocEditorProps) {
   const { resolvedTheme } = useTheme();
+
+  // Slash-command-driven UI state.
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [aiPromptCoords, setAiPromptCoords] = useState<
+    { top: number; left: number } | null
+  >(null);
+  // Doc position captured at /ai trigger time so a focus shift before the
+  // user submits the prompt doesn't move the insert point.
+  const aiInsertPosRef = useRef<number | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -109,7 +127,21 @@ export default function DocEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       CharacterCount,
+      // Custom block-level nodes — must be registered BEFORE SlashCommand so
+      // the slash menu's commands can reference them. ColumnExtension MUST
+      // come before ColumnsExtension because the latter's content spec
+      // ('column+') is resolved at registration time.
+      ColumnExtension,
+      ColumnsExtension,
       TaskBlockExtension,
+      SlashCommandExtension.configure({
+        docId,
+        onOpenColumnPicker: () => setShowColumnPicker(true),
+        onOpenAIPrompt: ({ coords, docPos }) => {
+          aiInsertPosRef.current = docPos;
+          setAiPromptCoords(coords);
+        },
+      }),
     ],
     content: safeInitialContent(initialContent),
     autofocus: 'end',
@@ -172,6 +204,155 @@ export default function DocEditor({
     return () => clearTimeout(t);
   }, []);
 
+  // ── /columns selection handler ──
+  const handleColumnsSelect = useCallback(
+    (ratio: ColumnRatio) => {
+      editor?.chain().focus().insertColumns(ratio.widths).run();
+    },
+    [editor],
+  );
+
+  // ── /ai stream handler ──
+  // Inserts a placeholder paragraph at the captured position, then replaces
+  // its text content with each streamed chunk via tr.insertText. tr-based
+  // updates are one transaction per chunk, which Tiptap can handle fluidly
+  // at typical Gemini streaming rates.
+  const handleAISubmit = useCallback(
+    async (prompt: string) => {
+      const coords = aiPromptCoords;
+      setAiPromptCoords(null);
+      if (!editor || coords == null) return;
+
+      const insertPos =
+        aiInsertPosRef.current ?? editor.state.selection.from;
+      aiInsertPosRef.current = null;
+
+      // Insert placeholder. We move the selection to insertPos first so
+      // insertContent uses it as the anchor, then capture the resulting
+      // cursor position as the END of the placeholder text. Computing
+      // textStart from the post-insert cursor avoids the off-by-one that
+      // happens when ProseMirror merges the inserted paragraph into an
+      // existing empty paragraph (which leaves the open token uncounted).
+      editor
+        .chain()
+        .setTextSelection(insertPos)
+        .insertContent({
+          type: 'paragraph',
+          content: [{ type: 'text', text: AI_PLACEHOLDER }],
+        })
+        .run();
+
+      const textEnd = editor.state.selection.from;
+      const textStart = textEnd - AI_PLACEHOLDER.length;
+      let prevLen = AI_PLACEHOLDER.length;
+
+      // Best-effort delete of the placeholder text content (not the paragraph
+      // wrapper, since it may have been merged into an existing block).
+      // We catch the throw if positions have shifted (user kept editing) —
+      // in that case there's no clean rollback and we just leave the
+      // partial content. Matches the BlockNote behavior.
+      const removePlaceholder = () => {
+        try {
+          editor
+            .chain()
+            .deleteRange({ from: textStart, to: textStart + prevLen })
+            .run();
+        } catch {
+          /* position shifted — accept the orphan content */
+        }
+      };
+
+      let res: Response;
+      try {
+        res = await fetch('/api/docs/ai-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            prompt,
+            context: editor.getText(),
+          }),
+        });
+      } catch {
+        removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      if (res.status === 429) {
+        removePlaceholder();
+        toast.error('AI assist limit reached. Try again in a minute.');
+        return;
+      }
+      if (!res.ok || !res.body) {
+        removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let firstChunk = true;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          if (!chunk) continue;
+          if (firstChunk) {
+            // Replace the placeholder text wholesale on the first real chunk
+            // so the shimmer goes away cleanly.
+            accumulated = chunk;
+            firstChunk = false;
+          } else {
+            accumulated += chunk;
+          }
+          try {
+            // tr.insertText replaces a range with new text in one step. Cheap
+            // enough for ~per-word streaming; expensive only if the model
+            // returns a single huge chunk, which is fine.
+            const tr = editor.state.tr.insertText(
+              accumulated,
+              textStart,
+              textStart + prevLen,
+            );
+            editor.view.dispatch(tr);
+            prevLen = accumulated.length;
+          } catch {
+            // Position invalidated mid-stream — bail without throwing further.
+            break;
+          }
+        }
+      } catch {
+        if (!accumulated.trim()) removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      if (!accumulated.trim()) {
+        removePlaceholder();
+        toast.error('AI assist unavailable');
+        return;
+      }
+
+      // Server awards a one-time `ai_docs` coin for the first AI use today.
+      // Lazy-import the coins store so we don't pull it into the editor's
+      // initial chunk.
+      void import('@/store/useCoinsStore').then(({ useCoinsStore }) =>
+        useCoinsStore.getState().invalidateBalance(),
+      );
+    },
+    [editor, aiPromptCoords],
+  );
+
+  const cancelAIPrompt = useCallback(() => {
+    setAiPromptCoords(null);
+    aiInsertPosRef.current = null;
+    editor?.commands.focus();
+  }, [editor]);
+
   return (
     <div
       className={cn(
@@ -205,6 +386,41 @@ export default function DocEditor({
       )}
 
       <EditorContent editor={editor} className="tiptap-content" />
+
+      {showColumnPicker &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-background/40 backdrop-blur-sm"
+              onClick={() => {
+                setShowColumnPicker(false);
+                editor?.commands.focus();
+              }}
+            />
+            <div className="relative z-10">
+              <ColumnRatioPicker
+                onSelect={handleColumnsSelect}
+                onClose={() => {
+                  setShowColumnPicker(false);
+                  editor?.commands.focus();
+                }}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {aiPromptCoords &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <AIPromptInput
+            position={aiPromptCoords}
+            onSubmit={handleAISubmit}
+            onCancel={cancelAIPrompt}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

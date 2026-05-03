@@ -57,6 +57,7 @@
     "@tiptap/pm": "3.22.5",
     "@tiptap/react": "3.22.5",
     "@tiptap/starter-kit": "3.22.5",
+    "@tiptap/suggestion": "3.22.5",
     "better-auth": "^1.5.5",
     "boneyard-js": "^1.7.6",
     "canvas-confetti": "^1.9.4",
