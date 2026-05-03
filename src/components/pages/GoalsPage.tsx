@@ -26,6 +26,8 @@ import {
 import { format, differenceInDays, isPast } from 'date-fns';
 import { LottieOverlay } from '@/components/ui/LottieOverlay';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
+import { CoinsBadge } from '@/components/coins/CoinsBadge';
+import { goalCompleteAwards } from '@/lib/coins/earnRules';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -67,10 +69,15 @@ const GoalCard: React.FC<{
     : null;
   const canEditProgress = goal.targets.length === 0 || manualTarget !== null;
 
+  // Overall progress slider (no-target / manual-progress goals)
   const [editingProgress, setEditingProgress] = useState(false);
   const [progressDraft, setProgressDraft] = useState(0);
   const draftRef = useRef(progressDraft);
   draftRef.current = progressDraft;
+
+  // Per-target inline editing (percentage + number types)
+  const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
+  const [targetDraft, setTargetDraft] = useState(0);
 
   const handleProgressClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -96,6 +103,9 @@ const GoalCard: React.FC<{
     setEditingProgress(false);
   };
 
+  // Targets that are displayed (hide the auto "Progress" one since it's covered by the bar)
+  const visibleTargets = goal.targets.filter(t => !(t.title === 'Progress' && t.type === 'percentage'));
+
   return (
     <motion.div
       layout
@@ -104,8 +114,8 @@ const GoalCard: React.FC<{
       exit={{ opacity: 0, y: -4, scale: 0.97 }}
       transition={{ duration: 0.2 }}
       className={`card-lift group relative rounded-xl border-2 ${colors.border} bg-card p-4 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none`}
-      onClick={() => !editingProgress && onSelect(goal)}
-      onKeyDown={(e) => { if (!editingProgress && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(goal); } }}
+      onClick={() => !editingProgress && !editingTargetId && onSelect(goal)}
+      onKeyDown={(e) => { if (!editingProgress && !editingTargetId && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(goal); } }}
       tabIndex={0}
       role="button"
       aria-label={`Goal: ${goal.title}, ${progress}% complete`}
@@ -148,7 +158,7 @@ const GoalCard: React.FC<{
         </div>
       </div>
 
-      {/* Progress */}
+      {/* Overall progress bar */}
       {editingProgress ? (
         <div className="mb-3" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-2.5 mb-2">
@@ -163,20 +173,8 @@ const GoalCard: React.FC<{
             <span className="text-sm font-bold tabular-nums text-foreground w-10 text-right">{progressDraft}%</span>
           </div>
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={cancelProgress}
-              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={commitProgress}
-              className="text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
-            >
-              Save
-            </button>
+            <button type="button" onClick={cancelProgress} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+            <button type="button" onClick={commitProgress} className="text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors">Save</button>
           </div>
         </div>
       ) : (
@@ -201,27 +199,114 @@ const GoalCard: React.FC<{
         </div>
       )}
 
-      {/* Compact targets — hide manual "Progress" target since it's shown via the bar */}
-      {goal.targets.filter(t => !(t.title === 'Progress' && t.type === 'percentage')).length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {goal.targets.filter(t => !(t.title === 'Progress' && t.type === 'percentage')).slice(0, 3).map(target => {
-            const tp = computeTargetProgress(target);
+      {/* Interactive targets */}
+      {visibleTargets.length > 0 && (
+        <div className="space-y-1.5 mb-3" onClick={e => e.stopPropagation()}>
+          {visibleTargets.slice(0, 3).map(target => {
+            const isEditingThis = editingTargetId === target.id;
+
             return (
-              <div key={target.id} className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0">{target.title}</span>
-                <div className="w-16 h-1 rounded-full bg-muted overflow-hidden flex-shrink-0">
-                  <div className="h-full rounded-full bg-primary/60" style={{ width: `${tp}%` }} />
+              <div key={target.id}>
+                <div className="flex items-center gap-2 min-h-[22px]">
+                  {/* Target title */}
+                  <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0">{target.title}</span>
+
+                  {/* Boolean — tap to toggle */}
+                  {target.type === 'boolean' && (
+                    <button
+                      type="button"
+                      onClick={() => updateTargetProgress(goal.id, target.id, target.currentValue >= 1 ? 0 : 1)}
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition-colors flex-shrink-0 ${
+                        target.currentValue >= 1
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'border-border hover:border-primary/40 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {target.currentValue >= 1 ? '✓ Done' : 'Mark done'}
+                    </button>
+                  )}
+
+                  {/* Number — − / value / + */}
+                  {target.type === 'number' && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => updateTargetProgress(goal.id, target.id, Math.max(0, target.currentValue - 1))}
+                        className="w-5 h-5 rounded border border-border text-[12px] font-medium flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors leading-none"
+                      >−</button>
+                      <button
+                        type="button"
+                        onClick={() => { setEditingTargetId(target.id); setTargetDraft(target.currentValue); }}
+                        className="text-[10px] tabular-nums text-muted-foreground hover:text-primary transition-colors min-w-[40px] text-center"
+                        title="Click to set exact value"
+                      >
+                        {Math.round(target.currentValue)}/{Math.round(target.targetValue)}
+                        {target.unit ? ` ${target.unit}` : ''}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateTargetProgress(goal.id, target.id, Math.min(target.targetValue, target.currentValue + 1))}
+                        className="w-5 h-5 rounded border border-border text-[12px] font-medium flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors leading-none"
+                      >+</button>
+                    </div>
+                  )}
+
+                  {/* Percentage — click value to open slider */}
+                  {target.type === 'percentage' && (
+                    <button
+                      type="button"
+                      onClick={() => { setEditingTargetId(target.id); setTargetDraft(target.currentValue); }}
+                      className="text-[10px] tabular-nums text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
+                      title="Click to set progress"
+                    >
+                      {Math.round(target.currentValue)}%
+                    </button>
+                  )}
+
+                  {/* Task completion — read-only */}
+                  {target.type === 'task_completion' && (
+                    <span className="text-[10px] tabular-nums text-muted-foreground flex-shrink-0">
+                      {Math.round(target.currentValue)}/{Math.round(target.targetValue)}
+                    </span>
+                  )}
                 </div>
-                <span className="text-[10px] tabular-nums text-muted-foreground flex-shrink-0 w-10 text-right">
-                  {target.type === 'boolean' ? (target.currentValue >= 1 ? 'Done' : '—') :
-                   target.type === 'percentage' ? `${Math.round(target.currentValue)}%` :
-                   `${Math.round(target.currentValue)}/${Math.round(target.targetValue)}`}
-                </span>
+
+                {/* Inline mini-editor for number / percentage */}
+                {isEditingThis && (target.type === 'percentage' || target.type === 'number') && (
+                  <div className="flex items-center gap-2 mt-1.5 pl-0">
+                    <input
+                      type="range"
+                      min={0}
+                      max={target.type === 'percentage' ? 100 : target.targetValue}
+                      step={target.type === 'percentage' ? 1 : Math.max(1, Math.ceil(target.targetValue / 100))}
+                      value={targetDraft}
+                      onChange={e => setTargetDraft(Number(e.target.value))}
+                      onClick={e => e.stopPropagation()}
+                      className="flex-1 h-1 accent-primary cursor-pointer"
+                      autoFocus
+                    />
+                    <span className="text-[10px] tabular-nums text-foreground w-10 text-right flex-shrink-0">
+                      {target.type === 'percentage'
+                        ? `${Math.round(targetDraft)}%`
+                        : `${Math.round(targetDraft)}${target.unit ? ` ${target.unit}` : ''}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { updateTargetProgress(goal.id, target.id, targetDraft); setEditingTargetId(null); }}
+                      className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                    >Save</button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTargetId(null)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                    >✕</button>
+                  </div>
+                )}
               </div>
             );
           })}
-          {goal.targets.length > 3 && (
-            <span className="text-[10px] text-muted-foreground/60">+{goal.targets.length - 3} more</span>
+          {visibleTargets.length > 3 && (
+            <span className="text-[10px] text-muted-foreground/60">+{visibleTargets.length - 3} more</span>
           )}
         </div>
       )}
@@ -283,7 +368,8 @@ export default function GoalsPage() {
     });
     updateGoal(goal.id, { status: 'completed' });
     setShowGoalTrophy(true);
-    showCoinToast(100, 'Goal completed!');
+    const earned = goalCompleteAwards(goal.timeframe).reduce((s, a) => s + a.amount, 0);
+    showCoinToast(earned, 'Goal completed!');
   };
   const handleArchive = (goal: Goal) => archiveGoal(goal.id);
   const handleDelete = (goal: Goal) => deleteGoal(goal.id);
@@ -312,14 +398,17 @@ export default function GoalsPage() {
             {goals.filter(g => g.status === 'active').length} active · {goals.length} total
           </p>
         </div>
-        <Button
-          size="sm"
-          onClick={() => { setEditingGoal(null); setDialogOpen(true); }}
-          className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
-        >
-          <PlusIcon />
-          New Goal
-        </Button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <CoinsBadge variant="chip" />
+          <Button
+            size="sm"
+            onClick={() => { setEditingGoal(null); setDialogOpen(true); }}
+            className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
+          >
+            <PlusIcon />
+            New Goal
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
