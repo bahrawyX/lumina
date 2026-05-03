@@ -532,29 +532,30 @@ html body [data-radix-popper-content-wrapper] [role="option"][data-state="checke
   color: hsl(var(--primary)) !important;
 }
 
-/* ── All BlockNote dropdown menus — no scrollbar ──────── */
+/* ── BlockNote dropdown / popover scrollbars — fully suppressed ───────────
+ * Color picker, sub-menus, and any other radix popover content leaked
+ * native scrollbars on overflow. Hide the bar but keep scrolling functional
+ * (the colour list IS taller than the popover — we want overflow:auto, just
+ * with no visible track). */
 
 .bn-shadcn [data-slot="dropdown-menu-content"],
+.bn-shadcn [data-slot="dropdown-menu-sub-content"],
 .bn-shadcn .bn-menu-dropdown,
-.bn-shadcn .bn-color-picker-dropdown {
-  overflow: hidden !important;
+.bn-shadcn .bn-color-picker-dropdown,
+[data-radix-popper-content-wrapper] [role="menu"],
+[data-radix-popper-content-wrapper] [data-slot$="content"] {
   scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 .bn-shadcn [data-slot="dropdown-menu-content"]::-webkit-scrollbar,
+.bn-shadcn [data-slot="dropdown-menu-sub-content"]::-webkit-scrollbar,
 .bn-shadcn .bn-menu-dropdown::-webkit-scrollbar,
-.bn-shadcn .bn-color-picker-dropdown::-webkit-scrollbar {
+.bn-shadcn .bn-color-picker-dropdown::-webkit-scrollbar,
+[data-radix-popper-content-wrapper] *::-webkit-scrollbar {
   display: none !important;
-}
-
-/* Sub-content (nested menus like Colors) — no scrollbar */
-.bn-shadcn [data-slot="dropdown-menu-sub-content"] {
-  overflow: hidden !important;
-  scrollbar-width: none !important;
-}
-
-.bn-shadcn [data-slot="dropdown-menu-sub-content"]::-webkit-scrollbar {
-  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Block type select — z-index fix */
@@ -685,6 +686,95 @@ html body .bn-container [data-radix-popper-content-wrapper] {
 /* ── Callout block — already styled inline; this just centres typography ─ */
 .bn-editor [data-content-type="callout"] {
   margin: 0.25em 0;
+}
+
+/* ── Code block — language picker + Shiki-friendly chrome ──────────────
+ * BlockNote ships the language <select> at opacity 0.5 on hover (or 0
+ * otherwise), which made it nearly invisible. Promote it to a proper
+ * pill in the top-right and pad the code area so the picker doesn't
+ * collide with the first line. */
+.bn-editor .bn-block-content[data-content-type="codeBlock"] {
+  position: relative;
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px !important;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace !important;
+  font-size: 0.85rem !important;
+  line-height: 1.6 !important;
+}
+
+.bn-editor .bn-block-content[data-content-type="codeBlock"] > pre {
+  padding: 36px 16px 12px !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+/* Language pill — always visible, top-right corner, hover lifts opacity */
+.bn-editor .bn-block-content[data-content-type="codeBlock"] > div > select {
+  opacity: 0.85 !important;
+  top: 8px !important;
+  right: 10px !important;
+  left: auto !important;
+  font-family: var(--font-sans, system-ui), sans-serif !important;
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: hsl(var(--muted-foreground)) !important;
+  background: hsl(var(--card) / 0.8) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 6px !important;
+  padding: 3px 22px 3px 8px !important;
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  cursor: pointer !important;
+  transition-delay: 0s !important;
+  transition: opacity 0.15s ease, border-color 0.15s ease !important;
+}
+
+.bn-editor .bn-block-content[data-content-type="codeBlock"]:hover > div > select,
+.bn-editor .bn-block-content[data-content-type="codeBlock"] > div > select:focus {
+  opacity: 1 !important;
+  border-color: hsl(var(--primary) / 0.5) !important;
+}
+
+/* Shiki tokens — let them inherit but enforce mono font on every span */
+.bn-editor .bn-block-content[data-content-type="codeBlock"] .shiki,
+.bn-editor .bn-block-content[data-content-type="codeBlock"] .shiki * {
+  font-family: inherit !important;
+  background: transparent !important;
+}
+
+/* ── Columns — visible structure ────────────────────────────────────────
+ * Columns shipped invisible (no border, no bg). Empty columns were
+ * impossible to see and impossible to drop into. Add a soft 1-col
+ * dashed outline at idle and a primary tint on hover so the user sees
+ * the structure of their column-list. */
+.bn-editor .bn-block-column-list {
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.bn-editor .bn-block-column {
+  border: 1px dashed hsl(var(--border));
+  border-radius: 8px;
+  padding: 10px 12px !important;
+  min-height: 48px;
+  background: hsl(var(--muted) / 0.15);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.bn-editor .bn-block-column:hover,
+.bn-editor .bn-block-column:focus-within {
+  border-color: hsl(var(--primary) / 0.35);
+  background: hsl(var(--muted) / 0.3);
+}
+
+/* Reset the BlockNote first/last-child padding zeroing so our padding wins */
+.bn-editor .bn-block-column:first-child,
+.bn-editor .bn-block-column:last-child {
+  padding: 10px 12px !important;
 }
 
 /* ── Feature showcase ───────────────────────────────────── */

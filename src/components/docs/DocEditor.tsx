@@ -21,6 +21,10 @@ import { useTheme } from '@/components/theme-provider';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import '@blocknote/shadcn/style.css';
 import type { Block, BlockNoteEditor } from '@blocknote/core';
+// Shiki-backed syntax highlighting for `/code` blocks. Ships with a
+// language picker (text, javascript, typescript, python, rust, go, etc.)
+// and dual light/dark themes that switch based on the editor's theme prop.
+import { codeBlockOptions } from '@blocknote/code-block';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import ColumnRatioPicker, { type ColumnRatio } from './ColumnRatioPicker';
@@ -517,6 +521,8 @@ function DocEditorInner({ docId, initialContent, onChange, className, multiCol }
   const editor = useCreateBlockNote({
     schema: multiCol.schema as any,
     dropCursor: multiCol.dropCursor as any,
+    // Enable Shiki syntax highlighting + language picker for code blocks.
+    codeBlock: codeBlockOptions as any,
     initialContent: (initialContent && initialContent.length > 0)
       ? initialContent as any
       : undefined,
