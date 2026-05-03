@@ -2,7 +2,7 @@
 
 > **For engineers and LLM consumption.**
 > Paste this file at the start of any new Claude session.
-> Last updated: 2026-04-25 (v29 — Three feature/fix clusters. **Docs**: (1) P0 stale-write race: `PATCH /api/docs/[id]` now returns `updatedAt` via Drizzle `.returning()`; `useDocsStore` propagates the server timestamp so the next save always has a fresh baseline — eliminates spurious 409s after a title edit; (2) P1 Escape-revert race in `DocPage.tsx`: `skipNextBlurRef` guard prevents `handleTitleBlur` from firing a stale-value write when the user presses Escape; (3) AI assist `/ai` slash command: new `AIPromptInput` floating card, Gemini streaming via `/api/docs/ai-stream`, updates placeholder block per chunk, handles 429/network/empty-stream. **Planner — bug fixes**: (4) P0 UUID resolver registry in `useTaskBoardStore` (`resolveTaskDbId`): tasks optimistically added with a non-UUID `uid()` ID are resolved to their DB UUID before `POST /api/planner-items` — eliminates Zod `.uuid()` rejection when a task is dragged to the planner before its DB round-trip completes; (5) P1 `removeAllByTaskId` rollback: inner `.catch(() => null)` in Promise.all silently swallowed failures — replaced with per-deletion `true/false` tracking so the snapshot rolls back when any delete fails; (6) Mobile tab switcher: `DailyPlanView` gains a `role="tablist"` Pool/Timeline toggle that hides/shows each column on small screens. **Planner — date navigation + Roll Over UX**: (7) `useDailyPlanStore` gains `viewDate: string` + `setViewDate()`; (8) `GET /api/planner-items` accepts optional `?date=YYYY-MM-DD` filter; (9) `DailyPlanHeader` gains prev/next day nav arrows and a Today chip; (10) `RollOverButton` renamed "Push to Tomorrow", `onRollOver` prop is `undefined` when not viewing today so the button hides off-today, toast shows count or empty-state message. 102 Vitest + 54 Playwright desktop + 28 Playwright mobile — unchanged.)
+> Last updated: 2026-05-03 (v30 — Nine improvements across Goals, Focus, AI, and auth. **Goals**: (1) `GoalsPage` header gains `<CoinsBadge variant="chip" />` so balance is always visible when completing goals; `handleComplete` now calls `goalCompleteAwards(goal.timeframe).reduce(...)` for timeframe-correct coin amount instead of hardcoded 100; (2) `GoalDetailSheet.handleMarkComplete` now also calls `showCoinToast` with the timeframe-correct amount — was previously silent; (3) `GoalCard` inline target editing: each target gets interactive controls (boolean toggle pill, number ±1 step + click-to-slider, percentage click-to-slider, task_completion read-only) rendered inside a `stopPropagation` wrapper so editing does not open the detail sheet. **Focus**: (4) `useFocusStore` gains `applyFocusResult` helper that chains streak + coin store updates from the server `FocusSessionResult`; both `finishSession` and `cancelSession` chain `.then(applyFocusResult)`; (5) `focusPersistence.createOne` now returns `Promise<FocusSessionResult | null>` instead of `Promise<void>`. **AI/Intelligence**: (6) `IntelligenceRecommendationCard` gains `humanize()` function that replaces raw UUIDs in recommendation explanations with quoted task titles and ISO timestamps with readable local times; (7) `parse-event/route.ts` Gemini catch block now maps `err.status === 429` to HTTP 429 instead of 422. **Auth/Profile**: (8) `PersistenceBootstrap` gains a `useEffect` on `session?.user?.id` that calls `useCalendarStore.getState().updateProfile({ name, email })` so the sidebar footer and Profile page show the real DB name instead of the hardcoded "Alexander Sterling" default; (9) `Profile.tsx` Recent Sessions section now reads from `useFocusStore.sessionHistory` instead of a stale localStorage snapshot.)
 
 ---
 
@@ -2721,6 +2721,251 @@ CODEBASE_REFERENCE_Lumina_Next.md                  | v29 header + §36 NEW; §6 
 ```
 
 ### 36.10 Test count (unchanged from v28)
+- Vitest: 102/102
+- Playwright desktop: 54/54
+- Playwright mobile: 28/28
+
+---
+
+---
+
+## 37. SESSION v30 CHANGES
+
+### 37.1 Goals — CoinsBadge visibility + timeframe-correct coin toast (`src/components/pages/GoalsPage.tsx`)
+
+**Problem.** Completing a goal showed a coin toast hardcoded to `showCoinToast(100, ...)` regardless of timeframe, and there was no persistent coin balance indicator on the Goals page.
+
+**`GoalsPage` header** — wrapped the New Goal button in a flex row and added `<CoinsBadge variant="chip" />` to its left:
+
+```tsx
+<div className="flex items-center gap-2 flex-shrink-0">
+  <CoinsBadge variant="chip" />
+  <Button size="sm" onClick={() => { setEditingGoal(null); setDialogOpen(true); }}>
+    <PlusIcon /> New Goal
+  </Button>
+</div>
+```
+
+**`handleComplete` fix** — coin amount is now computed from `goalCompleteAwards`:
+
+```ts
+import { goalCompleteAwards } from '@/lib/coins/earnRules';
+
+// inside handleComplete:
+const earned = goalCompleteAwards(goal.timeframe).reduce((s, a) => s + a.amount, 0);
+showCoinToast(earned, 'Goal completed!');
+```
+
+`goalCompleteAwards(timeframe)` returns: base 100 + weekly +50, monthly +150, quarterly +300.
+
+---
+
+### 37.2 GoalDetailSheet — coin toast on `handleMarkComplete` (`src/components/goals/GoalDetailSheet.tsx`)
+
+`handleMarkComplete` previously called `updateGoal(...)` then `onClose()` silently. Added timeframe-correct coin toast:
+
+```ts
+import { showCoinToast } from '@/lib/coins/showCoinToast';
+import { goalCompleteAwards } from '@/lib/coins/earnRules';
+
+// inside handleMarkComplete:
+const earned = goalCompleteAwards(liveGoal.timeframe).reduce((s, a) => s + a.amount, 0);
+showCoinToast(earned, 'Goal completed!');
+onClose();
+```
+
+---
+
+### 37.3 GoalCard — inline target editing (`src/components/pages/GoalsPage.tsx`)
+
+**New local state on `GoalCard`**:
+```ts
+const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
+const [targetDraft, setTargetDraft] = useState(0);
+```
+
+**Card click guard** — clicking the card now also checks `editingTargetId`:
+```tsx
+onClick={() => !editingProgress && !editingTargetId && onSelect(goal)}
+```
+
+**`visibleTargets`** — filters out the synthetic progress target before rendering:
+```ts
+const visibleTargets = goal.targets.filter(
+  t => !(t.title === 'Progress' && t.type === 'percentage')
+);
+```
+
+**Per-target interactive controls** (all wrapped in `<div onClick={e => e.stopPropagation()}>` to block card-click propagation):
+
+| Target type | Control rendered |
+|---|---|
+| `boolean` | Pill toggle button: `✗ Not done` / `✓ Done` — calls `updateTarget(goal.id, t.id, { current: t.current ? 0 : 1 })` |
+| `number` | `−` / current value / `+` step buttons (±1); clicking the value opens an inline `<input type="range">` min=0 max=target |
+| `percentage` | Same as number but `max={100}` and renders `%` suffix |
+| `task_completion` | Read-only chip showing `X / total tasks` |
+
+When an inline slider is open (`editingTargetId === t.id`): `targetDraft` tracks the slider value; `onMouseUp`/`onTouchEnd` commit via `updateTarget` + clear `editingTargetId`.
+
+---
+
+### 37.4 IntelligenceRecommendationCard — explanation humanization (`src/components/planner/IntelligenceRecommendationCard.tsx`)
+
+**Problem.** The AI intelligence engine embeds raw UUIDs and ISO timestamps in recommendation explanations, e.g. `"Plan task fad33636-d466-4f67-a8a8-b12ddf1c2ec7 between 2026-05-02T08:00:00.000Z and ..."`.
+
+**Solution.** Post-process at render time — no API changes.
+
+```ts
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const ISO_RE  = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
+
+function fmtIso(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function humanize(text: string, tasks: { id: string; title: string }[]): string {
+  let out = text.replace(UUID_RE, (id) => {
+    const task = tasks.find((t) => t.id === id);
+    return task ? `"${task.title}"` : id.slice(0, 8) + '…';
+  });
+  out = out.replace(ISO_RE, fmtIso);
+  return out;
+}
+```
+
+In the component:
+```tsx
+const tasks = useTaskBoardStore((s) => s.tasks);
+const explanation = humanize(recommendation.explanation, tasks);
+// ...
+<p className="...">{explanation}</p>
+```
+
+Unknown UUIDs (not found in store) are shortened to first 8 chars + `…`.
+
+---
+
+### 37.5 PersistenceBootstrap — auth name sync (`src/components/PersistenceBootstrap.tsx`)
+
+**Problem.** `useCalendarStore` ships with a hardcoded `defaultProfile` of `{ name: 'Alexander Sterling', role: 'Creative Director', ... }`. The sidebar footer and Profile page showed this placeholder instead of the real user's name.
+
+**Fix.** New `useEffect` on `session?.user?.id` syncs the real auth values into the store:
+
+```ts
+useEffect(() => {
+  const u = session?.user;
+  if (!u) return;
+  const patch: Record<string, string> = {};
+  if (u.name)  patch.name  = u.name;
+  if (u.email) patch.email = u.email;
+  if (Object.keys(patch).length > 0) {
+    useCalendarStore.getState().updateProfile(patch);
+  }
+}, [session?.user?.id]);
+```
+
+Runs once per real session change (login/switch). `updateProfile` already persists to the `lumina-calendar` localStorage key so the name survives page refreshes.
+
+---
+
+### 37.6 useFocusStore — `applyFocusResult` + streak/coin chain (`src/store/useFocusStore.ts`)
+
+**Problem.** `finishSession` and `cancelSession` saved to DB but did not update `useStreakStore` or `useCoinsStore` from the server's `FocusSessionResult` response.
+
+**`applyFocusResult` helper**:
+```ts
+function applyFocusResult(result: FocusSessionResult | null) {
+  if (!result) return;
+  if (result.newStreak != null) {
+    useStreakStore.getState().setStreak(result.newStreak);
+  }
+  if (result.coinsEarned != null && result.coinsEarned > 0) {
+    useCoinsStore.getState().addCoins(result.coinsEarned);
+    showCoinToast(result.coinsEarned, 'Focus session complete!');
+  }
+}
+```
+
+Both `finishSession` and `cancelSession` now chain:
+```ts
+focusPersistence.createOne(payload)
+  .then(applyFocusResult)
+  .catch(() => {});
+```
+
+---
+
+### 37.7 focusPersistence — `createOne` returns result (`src/lib/persistence/focusPersistence.ts`)
+
+`createOne` was `Promise<void>`; changed to `Promise<FocusSessionResult | null>`.
+
+```ts
+export async function createOne(payload: NewFocusSession): Promise<FocusSessionResult | null> {
+  const res = await fetch('/api/focus-sessions', { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return null;
+  return res.json() as Promise<FocusSessionResult>;
+}
+```
+
+`FocusSessionResult` shape (returned by `POST /api/focus-sessions`):
+```ts
+interface FocusSessionResult {
+  id: string;
+  coinsEarned?: number;
+  newStreak?: number;
+}
+```
+
+---
+
+### 37.8 parse-event route — Gemini 429 detection (`src/app/api/intelligence/parse-event/route.ts`)
+
+**Problem.** Gemini quota errors throw an object with `{ status: 429 }`. The catch block previously returned HTTP 422 for all errors, showing "Couldn't understand that" to the user.
+
+**Fix.** Catch block now checks `err.status` and maps quota errors to HTTP 429:
+
+```ts
+const errStatus = (err as { status?: number }).status;
+if (errStatus === 429) {
+  console.warn('[POST /api/intelligence/parse-event] Gemini quota exceeded');
+  return NextResponse.json(
+    { error: 'AI service quota exceeded. Please try again later.' },
+    { status: 429 },
+  );
+}
+```
+
+---
+
+### 37.9 Profile — Recent Sessions from store (`src/components/pages/Profile.tsx`)
+
+**Problem.** Recent Sessions section was reading focus history from a stale localStorage snapshot.
+
+**Fix.** Component now subscribes to `useFocusStore`:
+```ts
+const sessionHistory = useFocusStore((s) => s.sessionHistory);
+```
+Renders the last N entries from `sessionHistory` (already hydrated from DB by `PersistenceBootstrap`). No localStorage read.
+
+---
+
+### 37.10 Files changed in v30
+
+```
+src/components/pages/GoalsPage.tsx                    | CoinsBadge chip in header; goalCompleteAwards toast; GoalCard inline target editing
+src/components/goals/GoalDetailSheet.tsx              | showCoinToast + goalCompleteAwards in handleMarkComplete
+src/components/planner/IntelligenceRecommendationCard.tsx | humanize() UUID→title + ISO→readable time
+src/components/PersistenceBootstrap.tsx               | useEffect syncing session.user.name/email → useCalendarStore.profile
+src/store/useFocusStore.ts                            | applyFocusResult helper; finishSession + cancelSession chain .then(applyFocusResult)
+src/lib/persistence/focusPersistence.ts               | createOne returns Promise<FocusSessionResult | null>
+src/app/api/intelligence/parse-event/route.ts         | err.status === 429 → HTTP 429 response
+src/components/pages/Profile.tsx                      | Recent Sessions from useFocusStore.sessionHistory
+CODEBASE_REFERENCE_Lumina_Next.md                     | v30 header + §37 NEW
+```
+
+### 37.11 Test count (unchanged from v29)
 - Vitest: 102/102
 - Playwright desktop: 54/54
 - Playwright mobile: 28/28
