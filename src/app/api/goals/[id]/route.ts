@@ -54,13 +54,20 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     await db.update(goals).set(patch).where(and(eq(goals.id, id), eq(goals.userId, userId)));
 
-    // Award coins on goal completion (fire-and-forget)
+    // Award coins on goal completion. Awaited (not fire-and-forget) so the
+    // returned newBalance is the post-award DB value — otherwise the client
+    // would refetch a stale balance and the UI would lag the toast.
+    let newBalance: number | undefined;
     if (patch.status === 'completed' && prev?.status !== 'completed') {
       const awards = goalCompleteAwards(prev?.timeframe ?? 'custom');
-      void awardCoinsBatch(userId, awards).catch(() => {});
+      try {
+        newBalance = await awardCoinsBatch(userId, awards);
+      } catch (e) {
+        console.error('[goal complete coin award]', e);
+      }
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, newBalance });
   } catch (err) {
     console.error('[PATCH /api/goals/[id]]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

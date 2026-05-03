@@ -7,6 +7,7 @@
  */
 
 import type { FocusSession } from '@/store/useFocusStore';
+import type { FocusSessionResult } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -37,17 +38,32 @@ export async function fetchAllForCurrentUser(): Promise<FocusSession[]> {
   }
 }
 
-/** Record a completed or cancelled focus session to the DB. Fire-and-forget safe. */
-export async function createOne(session: FocusSession): Promise<void> {
+/**
+ * Record a completed or cancelled focus session to the DB.
+ * Returns the server's FocusSessionResult (streak + coin updates) so the
+ * caller can apply them to the relevant stores. Returns null on error.
+ */
+export async function createOne(session: FocusSession): Promise<FocusSessionResult | null> {
   try {
-    await apiFetch('/api/focus-sessions', {
+    const res = await apiFetch('/api/focus-sessions', {
       method: 'POST',
-      body: JSON.stringify(session),
+      body: JSON.stringify({
+        ...session,
+        // Pass the browser's timezone so daily-streak date arithmetic is correct
+        // for users outside UTC. Falls back to UTC on SSR (shouldn't happen here).
+        timezone:
+          typeof window !== 'undefined'
+            ? Intl.DateTimeFormat().resolvedOptions().timeZone
+            : 'UTC',
+      }),
     });
+    if (!res.ok) return null;
+    return (await res.json()) as FocusSessionResult;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[focusPersistence] createOne failed:', err);
     }
+    return null;
   }
 }
 

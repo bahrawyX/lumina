@@ -14,7 +14,8 @@ import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useStreakStore } from '@/store/useStreakStore';
-import { useCoinsStore, selectCoinBalance, selectConsumables } from '@/store/useCoinsStore';
+import { useCoinsStore, selectConsumables } from '@/store/useCoinsStore';
+import { CoinsBadge } from '@/components/coins/CoinsBadge';
 import { timeToMinutes } from '@/utils/time/timeUtils';
 import { computeBestDay } from '@/utils/performance/bestDay';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
@@ -52,7 +53,7 @@ const DayBar: React.FC<{ day: string; mins: number; maxMins: number; isBest: boo
   return (
     <div className="flex items-end gap-2">
       <span className={`w-8 text-[11px] font-medium tabular-nums ${isBest ? 'text-primary font-bold' : 'text-muted-foreground'}`}>{day}</span>
-      <div className="flex-1 h-6 bg-muted/30 rounded-md overflow-hidden">
+      <div className="flex-1 h-6 bg-muted/30 rounded-md ">
         <div
           className={`h-full rounded-md transition-all duration-300 ${isBest ? 'bg-primary' : 'bg-primary/40'}`}
           style={{ width: `${Math.max(pct, 2)}%` }}
@@ -103,8 +104,8 @@ const StreakStatsRow: React.FC = () => {
   const { dailyStreak, sessionStreak, bestDailyStreak } = useStreakStore();
   const hydrateStreaks = useStreakStore((s) => s.hydrateFromAPI);
   // Coin balance is owned by useCoinsStore — the DB-backed single source of
-  // truth. useStreakStore no longer duplicates it.
-  const coins = useCoinsStore(selectCoinBalance);
+  // truth, rendered through the shared <CoinsBadge /> component so the
+  // value + visual stays in lockstep with the calendar brief and shop.
   const consumables = useCoinsStore(selectConsumables);
   const refetchCoins = useCoinsStore((s) => s.refetchBalance);
   const focusHistory = useFocusStore((s) => s.sessionHistory);
@@ -194,20 +195,11 @@ const StreakStatsRow: React.FC = () => {
           </div>
           {best && <span className="text-[11px] text-muted-foreground/50">{Math.floor(best.totalMinutes / 60)}h {best.totalMinutes % 60}m focused</span>}
         </div>
-        <div className="flex flex-col gap-1 p-4 rounded-2xl bg-card border border-border shadow-sm" data-testid="card-coins">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Coins</span>
-          <div className="flex items-baseline gap-1.5">
-            <CoinIcon size={22} />
-            <span className="font-display text-2xl font-bold tabular-nums leading-none text-foreground" data-testid="coins-value">
-              {coins.toLocaleString()}
-            </span>
-          </div>
-          {shieldCount > 0 && (
-            <span className="text-[11px] text-muted-foreground/60 mt-0.5" data-testid="shield-count">
-              shields: {shieldCount}
-            </span>
-          )}
-        </div>
+        <CoinsBadge
+          variant="card"
+          data-testid="card-coins"
+          caption={shieldCount > 0 ? `shields: ${shieldCount}` : undefined}
+        />
       </div>
 
       {showRecovery && (

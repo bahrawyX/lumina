@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
 import { uid } from '@/lib/uid';
+import type { FocusSessionResult } from '@/types';
+// Sibling stores — imported for .getState() calls only; no circular dep risk
+// since neither streakStore nor coinsStore imports useFocusStore.
+import { useStreakStore } from '@/store/useStreakStore';
+import { useCoinsStore } from '@/store/useCoinsStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -106,6 +111,30 @@ function loadActiveSession(): { session: ActiveSession; timerState: TimerState }
 // `lumina_focus_sessions_*` cache leaked focus history across logouts and
 // resurrected sessions after a DB wipe, so it has been removed.
 
+// ── Post-session sync ─────────────────────────────────────────────────────────
+
+/**
+ * After a focus session is saved to the DB, apply the server-returned result
+ * to the streak and coin stores. Called from finishSession and cancelSession.
+ * The server response includes the authoritative streak values and the new
+ * coin balance (from the DB transaction). Bonus coin awards are fire-and-forget
+ * on the server; invalidateBalance debounces a refetch to catch them.
+ */
+function applyFocusResult(result: FocusSessionResult | null): void {
+  if (!result || result.underThreshold) {
+    // Session was under-threshold or request failed — still invalidate so
+    // the UI doesn't show a stale balance.
+    useCoinsStore.getState().invalidateBalance();
+    return;
+  }
+  // Apply authoritative streak values from DB
+  useStreakStore.getState().applySessionResult(result);
+  // Immediately reflect the DB-transaction balance, then re-fetch to pick
+  // up any async bonus awards that committed after the main transaction.
+  useCoinsStore.getState().setBalance(result.newCoins);
+  useCoinsStore.getState().invalidateBalance();
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
@@ -198,8 +227,10 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
     const history = [record, ...get().sessionHistory];
     set({ activeSession: null, timerState: 'idle', sessionHistory: history });
     saveActiveSession(null, 'idle');
-    // Fire-and-forget DB persistence
-    focusPersistence.createOne(record);
+    // Persist to DB then apply the server's authoritative streak + coin values.
+    focusPersistence.createOne(record)
+      .then(applyFocusResult)
+      .catch(() => useCoinsStore.getState().invalidateBalance());
   },
 
   cancelSession() {
@@ -220,8 +251,10 @@ export const useFocusStore = create<FocusState & FocusActions>((set, get) => ({
       const history = [record, ...get().sessionHistory];
       set({ activeSession: null, timerState: 'idle', sessionHistory: history });
       saveActiveSession(null, 'idle');
-      // Fire-and-forget DB persistence
-      focusPersistence.createOne(record);
+      // Persist to DB then apply the server's authoritative streak + coin values.
+      focusPersistence.createOne(record)
+        .then(applyFocusResult)
+        .catch(() => useCoinsStore.getState().invalidateBalance());
     } else {
       set({ activeSession: null, timerState: 'idle' });
       saveActiveSession(null, 'idle');

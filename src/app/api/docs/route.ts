@@ -147,16 +147,16 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Award coins for first doc ever (fire-and-forget)
-    void (async () => {
-      try {
-        const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(docs)
-          .where(eq(docs.userId, userId));
-        if ((countResult?.count ?? 0) === 1) {
-          await awardCoins(userId, 15, 'first_doc', 'Created your first doc');
-        }
-      } catch (e) { console.error('[docs first-doc award]', e); }
-    })();
+    // Award coins for first doc ever. Awaited so the response carries
+    // the post-award balance.
+    let newBalance: number | undefined;
+    try {
+      const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(docs)
+        .where(eq(docs.userId, userId));
+      if ((countResult?.count ?? 0) === 1) {
+        newBalance = await awardCoins(userId, 15, 'first_doc', 'Created your first doc');
+      }
+    } catch (e) { console.error('[docs first-doc award]', e); }
 
     return NextResponse.json(
       {
@@ -176,6 +176,7 @@ export async function POST(req: NextRequest) {
         coverGradient: row.coverGradient ?? null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
+        newBalance,
       },
       { status: 201 }
     );

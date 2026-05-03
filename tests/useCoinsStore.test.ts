@@ -148,6 +148,34 @@ describe('useCoinsStore — purchaseItem', () => {
   });
 });
 
+describe('useCoinsStore — setBalance', () => {
+  beforeEach(() => {
+    resetStore();
+    useCoinsStore.setState({ balance: 50 });
+  });
+
+  it('overwrites the balance with a server-supplied value', () => {
+    useCoinsStore.getState().setBalance(123);
+    expect(useCoinsStore.getState().balance).toBe(123);
+  });
+
+  it('floors fractional balances', () => {
+    useCoinsStore.getState().setBalance(99.7);
+    expect(useCoinsStore.getState().balance).toBe(99);
+  });
+
+  it('ignores negative values', () => {
+    useCoinsStore.getState().setBalance(-1);
+    expect(useCoinsStore.getState().balance).toBe(50);
+  });
+
+  it('ignores NaN / Infinity', () => {
+    useCoinsStore.getState().setBalance(Number.NaN);
+    useCoinsStore.getState().setBalance(Number.POSITIVE_INFINITY);
+    expect(useCoinsStore.getState().balance).toBe(50);
+  });
+});
+
 describe('useCoinsStore — invalidateBalance', () => {
   beforeEach(() => {
     resetStore();

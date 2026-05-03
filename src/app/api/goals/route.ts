@@ -178,11 +178,18 @@ export async function POST(req: NextRequest) {
       return { goalId: goalRow.id, targetIds: createdTargets };
     });
 
-    // Award coins for creating a goal (fire-and-forget)
+    // Award coins for creating a goal. Awaited so the response carries the
+    // post-award balance — the client uses it to update the badge directly,
+    // no refetch race with an in-flight DB transaction.
     const award = goalCreatedAward();
-    void awardCoins(userId, award.amount, award.reason, award.label).catch(() => {});
+    let newBalance: number | undefined;
+    try {
+      newBalance = await awardCoins(userId, award.amount, award.reason, award.label);
+    } catch (e) {
+      console.error('[goal create coin award]', e);
+    }
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json({ ...result, newBalance }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/goals]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

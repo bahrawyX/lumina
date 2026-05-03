@@ -36,9 +36,12 @@ export async function createOne(goal: Record<string, unknown>): Promise<{ goalId
       body: JSON.stringify(goal),
     });
     if (!res.ok) return null;
-    // Server awards `goal_created` coins.
-    useCoinsStore.getState().invalidateBalance();
-    return await res.json();
+    const data = (await res.json()) as { goalId?: string; newBalance?: number };
+    // Server awards `goal_created` coins and returns the post-award balance.
+    if (typeof data.newBalance === 'number') {
+      useCoinsStore.getState().setBalance(data.newBalance);
+    }
+    return data;
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.createOne]', err);
     return null;
@@ -51,9 +54,21 @@ export async function updateOne(id: string, patch: Partial<Goal>): Promise<void>
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
+    if (!res.ok) return;
     // Server awards `goal_complete` coins when status flips to 'completed'.
-    if (res.ok && patch.status === 'completed') {
-      useCoinsStore.getState().invalidateBalance();
+    // The endpoint awaits the award and returns `newBalance` so the badge
+    // updates synchronously with the toast — no debounced-refetch race.
+    if (patch.status === 'completed') {
+      try {
+        const data = (await res.json()) as { newBalance?: number };
+        if (typeof data?.newBalance === 'number') {
+          useCoinsStore.getState().setBalance(data.newBalance);
+        } else {
+          useCoinsStore.getState().invalidateBalance();
+        }
+      } catch {
+        useCoinsStore.getState().invalidateBalance();
+      }
     }
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.updateOne]', err);

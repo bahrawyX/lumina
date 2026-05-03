@@ -90,11 +90,12 @@ export async function createOne(item: PlannedTaskItem): Promise<string> {
   if (!res.ok) {
     throw new Error(`createOne failed (${res.status})`);
   }
-  const json = (await res.json()) as { id: string };
-  // The server awards a one-time `planner_day` coin on the first item of
-  // any given day. We don't get the new balance back, so trigger a
-  // debounced refetch to keep the UI in sync.
-  useCoinsStore.getState().invalidateBalance();
+  const json = (await res.json()) as { id: string; newBalance?: number };
+  // Server awards a `planner_day` coin once per day on the third item.
+  // It awaits the award and returns `newBalance` when one was granted.
+  if (typeof json.newBalance === 'number') {
+    useCoinsStore.getState().setBalance(json.newBalance);
+  }
   return json.id;
 }
 

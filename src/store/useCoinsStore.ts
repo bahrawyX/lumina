@@ -42,6 +42,15 @@ interface CoinsState {
    * bursts (e.g. multi-task drag-completion) into a single GET /api/coins.
    */
   invalidateBalance: () => void;
+  /**
+   * Push a server-supplied balance into the store directly. Use when an
+   * API response carries `newBalance` so the badge updates synchronously
+   * with the toast — no race against an in-flight DB transaction.
+   *
+   * Ignores values that are negative or non-finite to defend against
+   * corrupted server responses.
+   */
+  setBalance: (newBalance: number) => void;
 
   // Selectors
   ownsItem: (itemId: string) => boolean;
@@ -140,6 +149,11 @@ export const useCoinsStore = create<CoinsState>((set, get) => ({
     scheduleInvalidate(() => {
       void useCoinsStore.getState().refetchBalance();
     });
+  },
+
+  setBalance: (newBalance) => {
+    if (typeof newBalance !== 'number' || !Number.isFinite(newBalance) || newBalance < 0) return;
+    set({ balance: Math.floor(newBalance) });
   },
 
   ownsItem: (itemId) => get().ownedItems.includes(itemId),

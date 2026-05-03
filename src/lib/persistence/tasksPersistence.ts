@@ -87,11 +87,20 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
       body: JSON.stringify(payload),
     });
     // Server awards coins (per-difficulty, first-task-of-day, burst, all-
-    // subtasks-done) when status flips to 'done'. The response is just
-    // {ok:true}, so we re-pull GET /api/coins to keep the UI balance in
-    // sync with the DB.
+    // subtasks-done) when status flips to 'done'. The endpoint awaits the
+    // award and returns `newBalance` so we can sync directly — no race
+    // with an in-flight DB transaction.
     if (res.ok && patch.status === 'done') {
-      useCoinsStore.getState().invalidateBalance();
+      try {
+        const data = (await res.json()) as { newBalance?: number };
+        if (typeof data?.newBalance === 'number') {
+          useCoinsStore.getState().setBalance(data.newBalance);
+        } else {
+          useCoinsStore.getState().invalidateBalance();
+        }
+      } catch {
+        useCoinsStore.getState().invalidateBalance();
+      }
     }
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {

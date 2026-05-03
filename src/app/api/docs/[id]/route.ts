@@ -127,26 +127,27 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       .where(and(eq(docs.id, id), eq(docs.userId, userId)))
       .returning({ updatedAt: docs.updatedAt });
 
-    // Award coins for 500+ word doc (fire-and-forget, dedupe by docId)
+    // Award coins for 500+ word doc, dedup by docId. Awaited so the
+    // response carries the post-award balance.
+    let newBalance: number | undefined;
     if (typeof body.wordCount === 'number' && body.wordCount >= 500) {
-      void (async () => {
-        try {
-          const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
-            .where(and(
-              eq(coinTransactions.userId, userId),
-              eq(coinTransactions.reason, 'doc_500_words'),
-              sql`${coinTransactions.metadata}->>'docId' = ${id}`
-            )).limit(1);
-          if (!existing) {
-            await awardCoins(userId, 10, 'doc_500_words', 'Wrote a 500+ word doc', { docId: id });
-          }
-        } catch (e) { console.error('[doc 500-word award]', e); }
-      })();
+      try {
+        const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
+          .where(and(
+            eq(coinTransactions.userId, userId),
+            eq(coinTransactions.reason, 'doc_500_words'),
+            sql`${coinTransactions.metadata}->>'docId' = ${id}`
+          )).limit(1);
+        if (!existing) {
+          newBalance = await awardCoins(userId, 10, 'doc_500_words', 'Wrote a 500+ word doc', { docId: id });
+        }
+      } catch (e) { console.error('[doc 500-word award]', e); }
     }
 
     return NextResponse.json({
       ok: true,
       updatedAt: updated?.updatedAt?.toISOString() ?? new Date().toISOString(),
+      newBalance,
     });
   } catch (err) {
     console.error('[PATCH /api/docs/[id]]', err);

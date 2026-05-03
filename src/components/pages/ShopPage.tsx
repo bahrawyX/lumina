@@ -8,11 +8,12 @@ import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
 import { toast } from 'sonner';
 import { ShopItemIcon } from '@/components/shop/ShopItemIcon';
+import { CoinsBadge } from '@/components/coins/CoinsBadge';
 
-// ── Icons ───────────────────────────────────────────────────────────────────
-
+// Small coin glyph used in per-item cost rows. The user's live balance is
+// rendered through <CoinsBadge variant="hero" /> further down.
 const CoinIcon: React.FC = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
     <circle cx="12" cy="12" r="10" /><path d="M12 6v12M8 10h8M8 14h8" />
   </svg>
 );
@@ -156,11 +157,7 @@ export default function ShopPage() {
             Spend your hard-earned coins
           </p>
         </div>
-        <div className="flex items-baseline gap-1.5 flex-shrink-0">
-          <CoinIcon />
-          <span className="font-display text-[26px] font-medium tabular-nums text-foreground leading-none">{balance}</span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">coins</span>
-        </div>
+        <CoinsBadge variant="hero" />
       </div>
 
       {/* Active consumables */}

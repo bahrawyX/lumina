@@ -117,41 +117,39 @@ export async function POST(req: NextRequest) {
       })
       .returning({ id: plannerItems.id });
 
-    // Award coins when user plans 3 tasks for today (fire-and-forget)
-    void (async () => {
-      try {
-        const today = new Date();
-        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const todayEnd = new Date(todayStart);
-        todayEnd.setDate(todayEnd.getDate() + 1);
+    // Award coins when user plans 3 tasks for today. Awaited so the
+    // response carries the post-award balance.
+    let newBalance: number | undefined;
+    try {
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
 
-        // Count today's planner items
-        const items = await db.select({ id: plannerItems.id }).from(plannerItems)
+      const items = await db.select({ id: plannerItems.id }).from(plannerItems)
+        .where(and(
+          eq(plannerItems.userId, userId),
+          sql`${plannerItems.startTime} >= ${todayStart}`,
+          sql`${plannerItems.startTime} < ${todayEnd}`
+        ));
+
+      if (items.length === 3) {
+        const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
           .where(and(
-            eq(plannerItems.userId, userId),
-            sql`${plannerItems.startTime} >= ${todayStart}`,
-            sql`${plannerItems.startTime} < ${todayEnd}`
-          ));
+            eq(coinTransactions.userId, userId),
+            eq(coinTransactions.reason, 'planner_day'),
+            sql`${coinTransactions.createdAt} >= ${todayStart}`
+          )).limit(1);
 
-        if (items.length === 3) {
-          // Check if already awarded today
-          const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
-            .where(and(
-              eq(coinTransactions.userId, userId),
-              eq(coinTransactions.reason, 'planner_day'),
-              sql`${coinTransactions.createdAt} >= ${todayStart}`
-            )).limit(1);
-
-          if (!existing) {
-            await awardCoins(userId, 15, 'planner_day', 'Planned your day');
-          }
+        if (!existing) {
+          newBalance = await awardCoins(userId, 15, 'planner_day', 'Planned your day');
         }
-      } catch (e) {
-        console.error('[planner coin award]', e);
       }
-    })();
+    } catch (e) {
+      console.error('[planner coin award]', e);
+    }
 
-    return NextResponse.json({ id: row.id }, { status: 201 });
+    return NextResponse.json({ id: row.id, newBalance }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/planner-items]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

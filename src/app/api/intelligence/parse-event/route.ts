@@ -218,6 +218,17 @@ Rules:
 
     return NextResponse.json({ parsed, raw: input });
   } catch (err) {
+    // The @google/genai SDK attaches a numeric `status` to quota/rate-limit
+    // errors. Surface these as 429 so the client can show a meaningful message
+    // rather than "Couldn't understand that".
+    const errStatus = (err as { status?: number }).status;
+    if (errStatus === 429) {
+      console.warn('[POST /api/intelligence/parse-event] Gemini quota exceeded');
+      return NextResponse.json(
+        { error: 'AI service quota exceeded. Please try again later.' },
+        { status: 429 },
+      );
+    }
     console.error('[POST /api/intelligence/parse-event]', err);
     return NextResponse.json({ error: 'Could not parse event', raw: input }, { status: 422 });
   }

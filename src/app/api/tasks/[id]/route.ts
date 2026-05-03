@@ -90,11 +90,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       .set(patch)
       .where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
 
-    // Fire-and-forget: goal target updates + coin awards on status change.
+    // Goal target updates + coin awards on status change. Coin awards are
+    // awaited (not fire-and-forget) so we can return newBalance — the
+    // client uses it to update the badge directly. Goal target updates
+    // remain fire-and-forget since they don't gate the response.
+    let newBalance: number | undefined;
     if (patch.status !== undefined) {
+      // ── Goal target auto-update (fire-and-forget) ─────────────────
       void (async () => {
         try {
-          // ── Goal target auto-update ────────────────────────────────
           const allTargets = await db.select().from(goalTargets)
             .where(eq(goalTargets.type, 'task_completion'));
 
@@ -112,69 +116,64 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
               .set({ currentValue: String(doneCount), updatedAt: new Date() })
               .where(eq(goalTargets.id, target.id));
           }
+        } catch (e) {
+          console.error('[task PATCH goal-target fan-out]', e);
+        }
+      })();
 
-          // ── Coin awards on task completion ─────────────────────────
-          if (patch.status === 'done') {
-            // Get task data for earn calculation
-            const [taskData] = await db.select({
-              difficulty: tasks.difficulty,
-              dueDate: tasks.dueDate,
-              parentTaskId: tasks.parentTaskId,
-            }).from(tasks).where(eq(tasks.id, id));
+      // ── Coin awards on task completion (awaited) ──────────────────
+      if (patch.status === 'done') {
+        try {
+          const [taskData] = await db.select({
+            difficulty: tasks.difficulty,
+            dueDate: tasks.dueDate,
+            parentTaskId: tasks.parentTaskId,
+          }).from(tasks).where(eq(tasks.id, id));
 
-            if (taskData) {
-              // Check consumable multiplier
-              const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
-              const consumables = (u?.consumables as Record<string, number>) ?? {};
-              const hasTaskMultiplier = (consumables.taskMultiplier ?? 0) > 0;
+          if (taskData) {
+            const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
+            const consumables = (u?.consumables as Record<string, number>) ?? {};
+            const hasTaskMultiplier = (consumables.taskMultiplier ?? 0) > 0;
 
-              const awards = taskCompleteAwards(
-                taskData.difficulty ?? 'medium',
-                taskData.dueDate?.toISOString().slice(0, 10) ?? null,
-                hasTaskMultiplier,
-              );
+            const awards = taskCompleteAwards(
+              taskData.difficulty ?? 'medium',
+              taskData.dueDate?.toISOString().slice(0, 10) ?? null,
+              hasTaskMultiplier,
+            );
 
-              // First task of the day bonus
-              const today = new Date();
-              const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-              const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(tasks)
-                .where(and(eq(tasks.userId, userId), eq(tasks.status, 'done'), sql`${tasks.updatedAt} >= ${todayStart}`));
-              const completedToday = countResult?.count ?? 0;
+            const today = new Date();
+            const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(tasks)
+              .where(and(eq(tasks.userId, userId), eq(tasks.status, 'done'), sql`${tasks.updatedAt} >= ${todayStart}`));
+            const completedToday = countResult?.count ?? 0;
 
-              if (completedToday === 1) {
-                awards.push(firstTaskOfDayAward());
+            if (completedToday === 1) awards.push(firstTaskOfDayAward());
+            awards.push(...dailyTaskBurstAwards(completedToday));
+
+            if (taskData.parentTaskId) {
+              const siblings = await db.select({ status: tasks.status }).from(tasks)
+                .where(eq(tasks.parentTaskId, taskData.parentTaskId));
+              if (siblings.length > 0 && siblings.every(s => s.status === 'done')) {
+                awards.push(allSubtasksCompleteAward());
               }
+            }
 
-              // Burst bonuses
-              awards.push(...dailyTaskBurstAwards(completedToday));
-
-              // Subtask completion bonus
-              if (taskData.parentTaskId) {
-                const siblings = await db.select({ status: tasks.status }).from(tasks)
-                  .where(eq(tasks.parentTaskId, taskData.parentTaskId));
-                if (siblings.length > 0 && siblings.every(s => s.status === 'done')) {
-                  awards.push(allSubtasksCompleteAward());
-                }
-              }
-
-              if (awards.length > 0) {
-                await awardCoinsBatch(userId, awards);
-                // Decrement task multiplier if used
-                if (hasTaskMultiplier) {
-                  const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
-                  updated.taskMultiplier = Math.max(0, (consumables.taskMultiplier ?? 0) - 1);
-                  await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
-                }
+            if (awards.length > 0) {
+              newBalance = await awardCoinsBatch(userId, awards);
+              if (hasTaskMultiplier) {
+                const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
+                updated.taskMultiplier = Math.max(0, (consumables.taskMultiplier ?? 0) - 1);
+                await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
               }
             }
           }
         } catch (e) {
-          console.error('[task PATCH fire-and-forget]', e);
+          console.error('[task PATCH coin award]', e);
         }
-      })();
+      }
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, newBalance });
   } catch (err) {
     console.error('[PATCH /api/tasks/[id]]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

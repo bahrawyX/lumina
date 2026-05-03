@@ -160,9 +160,13 @@ export async function createOne(params: {
     });
     if (res.status === 401) return { ok: false, reason: 'unauthorized', status: 401 };
     if (!res.ok) return { ok: false, reason: 'server', status: res.status };
-    const doc = (await res.json()) as DocContent;
+    const payload = (await res.json()) as DocContent & { newBalance?: number };
     // Server awards a one-time `first_doc` coin when creating doc #1.
-    useCoinsStore.getState().invalidateBalance();
+    if (typeof payload.newBalance === 'number') {
+      useCoinsStore.getState().setBalance(payload.newBalance);
+    }
+    const { newBalance: _nb, ...doc } = payload;
+    void _nb;
     return { ok: true, doc };
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
@@ -217,16 +221,15 @@ export async function updateOne(
     if (!res.ok) return { status: 'error' };
     let updatedAt = new Date().toISOString();
     try {
-      const data = (await res.json()) as { updatedAt?: string };
+      const data = (await res.json()) as { updatedAt?: string; newBalance?: number };
       if (typeof data?.updatedAt === 'string') updatedAt = data.updatedAt;
+      // Server awards a one-time `doc_500_words` coin when content crosses
+      // 500 words and returns `newBalance` only on the awarding request.
+      if (typeof data?.newBalance === 'number') {
+        useCoinsStore.getState().setBalance(data.newBalance);
+      }
     } catch {
       /* fallback to local timestamp */
-    }
-    // Server may award a one-time `doc_500_words` coin when content
-    // crosses 500 words. Cheap to over-trigger this — the debounce
-    // collapses many edits into one GET /api/coins.
-    if (typeof patch.contentText === 'string') {
-      useCoinsStore.getState().invalidateBalance();
     }
     return { status: 'success', updatedAt };
   } catch (err) {

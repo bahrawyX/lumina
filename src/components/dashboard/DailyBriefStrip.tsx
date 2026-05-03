@@ -6,22 +6,16 @@ import Link from 'next/link';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 import { useStreakStore } from '@/store/useStreakStore';
-import { useCoinsStore } from '@/store/useCoinsStore';
 import { useGoalsStore } from '@/store/useGoalsStore';
 import { useDailyBriefStore } from '@/store/useDailyBriefStore';
 import { useCalendarStore } from '@/store/useCalendarStore';
+import { CoinsBadge } from '@/components/coins/CoinsBadge';
 
 // ── Tiny inline icons (12px) ──────────────────────────────────────────────
 
 const CalIcon = () => (
   <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="9" y1="2" x2="9" y2="6" /><line x1="15" y1="2" x2="15" y2="6" />
-  </svg>
-);
-
-const CoinIcon = () => (
-  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" /><path d="M12 6v12M8 10h8M8 14h8" />
   </svg>
 );
 
@@ -100,9 +94,6 @@ export const DailyBriefStrip: React.FC = () => {
   const goals = useGoalsStore(s => s.goals);
   const activeGoals = useMemo(() => goals.filter(g => g.status === 'active').length, [goals]);
 
-  // Coins
-  const balance = useCoinsStore(s => s.balance);
-
   // Streak
   const dailyStreak = useStreakStore(s => s.dailyStreak);
 
@@ -155,7 +146,7 @@ export const DailyBriefStrip: React.FC = () => {
 
       {stats.dueToday > 0 && <Chip icon={<CheckIcon />} value={stats.dueToday} label="due" href="/tasks" />}
 
-      <Chip icon={<CoinIcon />} value={balance} label="coins" accent="text-amber-500" href="/shop" />
+      <CoinsBadge variant="chip" />
 
       {activeGoals > 0 && <Chip icon={<TargetIcon />} value={activeGoals} label={activeGoals === 1 ? 'goal' : 'goals'} accent="text-emerald-500" href="/goals" />}
 

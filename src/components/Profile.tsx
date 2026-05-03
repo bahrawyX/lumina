@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
+import { useFocusStore } from '../store/useFocusStore';
 import {
   ClockIcon, TargetIcon, ActivityIcon, CalendarIcon, SparkIcon as ZapIcon, PlusIcon, CloseIcon, CheckIcon as CheckCircle2Icon
 } from './icons';
@@ -114,7 +115,13 @@ const Profile: React.FC = () => {
         }),
       });
       if (!res.ok) {
-        toast.error("Couldn't understand that. Try being more specific.");
+        if (res.status === 429) {
+          toast.error('AI quota exceeded — please try again in a few minutes.');
+        } else if (res.status === 503) {
+          toast.error('AI service is unavailable. Check back soon.');
+        } else {
+          toast.error("Couldn't understand that. Try being more specific.");
+        }
         return;
       }
       const data = await res.json();
@@ -124,7 +131,7 @@ const Profile: React.FC = () => {
         toast.error("Couldn't understand that. Try being more specific.");
       }
     } catch {
-      toast.error("Couldn't understand that. Try being more specific.");
+      toast.error("Couldn't reach the server. Check your connection.");
     } finally {
       setIsParsing(false);
     }
@@ -245,7 +252,11 @@ const Profile: React.FC = () => {
     .sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime))
     .slice(0, 5);
 
-  const focusSessions = events.filter(e => e.completed && e.category === 'Focus').slice(-5).reverse();
+  // Focus sessions come from useFocusStore (DB-backed), not from calendar events.
+  // The store is hydrated by PersistenceBootstrap on login.
+  const focusSessionHistory = useFocusStore(s => s.sessionHistory);
+  // sessionHistory is already newest-first (prepended on each finish)
+  const recentFocusSessions = focusSessionHistory.slice(0, 5);
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-6 pb-24 space-y-12">
@@ -490,14 +501,25 @@ const Profile: React.FC = () => {
 
         {/* Recent Sessions */}
         <Section title="Recent Sessions">
-          {focusSessions.length > 0 ? (
+          {recentFocusSessions.length > 0 ? (
             <div className="space-y-3">
-              {focusSessions.map(e => (
-                <div key={e.id} className="flex flex-col gap-0.5 border-l-2 border-border/60 pl-3 py-0.5">
-                  <span className="text-sm font-medium text-foreground truncate">{e.title}</span>
-                  <span className="text-xs text-muted-foreground">{e.date} · {e.startTime}</span>
-                </div>
-              ))}
+              {recentFocusSessions.map(s => {
+                const startDate = new Date(s.startTime);
+                const dateLabel = startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const timeLabel = startDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                const durationMins = Math.round(s.duration / 60);
+                return (
+                  <div key={s.id} className="flex flex-col gap-0.5 border-l-2 border-border/60 pl-3 py-0.5">
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {s.taskTitle ?? 'Focus session'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {dateLabel} · {timeLabel} · {durationMins}m
+                      {!s.completed && <span className="ml-1 text-muted-foreground/50">(partial)</span>}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No completed focus sessions yet.</p>
