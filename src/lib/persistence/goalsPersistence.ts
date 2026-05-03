@@ -29,19 +29,25 @@ export async function fetchAllForCurrentUser(): Promise<Goal[]> {
   }
 }
 
-export async function createOne(goal: Record<string, unknown>): Promise<{ goalId?: string } | null> {
+export async function createOne(
+  goal: Record<string, unknown>,
+): Promise<{ goalId?: string; targetIds?: string[] } | null> {
   try {
     const res = await apiFetch('/api/goals', {
       method: 'POST',
       body: JSON.stringify(goal),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { goalId?: string; newBalance?: number };
+    const data = (await res.json()) as {
+      goalId?: string;
+      targetIds?: string[];
+      newBalance?: number;
+    };
     // Server awards `goal_created` coins and returns the post-award balance.
     if (typeof data.newBalance === 'number') {
       useCoinsStore.getState().setBalance(data.newBalance);
     }
-    return data;
+    return { goalId: data.goalId, targetIds: data.targetIds };
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.createOne]', err);
     return null;

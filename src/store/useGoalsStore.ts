@@ -5,6 +5,70 @@ import * as goalsPersistence from '@/lib/persistence/goalsPersistence';
 import { uid } from '@/lib/uid';
 import { toast } from 'sonner';
 
+// ── Optimistic-ID resolver ───────────────────────────────────────────────────
+// Goals/targets are inserted optimistically with non-UUID prefixed IDs
+// (`goal_xxx`, `target_xxx`). The DB uses UUIDs. After POST returns the real
+// IDs we record them here so subsequent PATCH/DELETE calls hit the right row.
+//   `resolveGoalDbId` waits up to 5 s for an optimistic ID to be resolved;
+//   already-UUID IDs (hydrated from DB) resolve immediately.
+const optimisticGoalIds   = new Map<string, string>();
+const optimisticTargetIds = new Map<string, string>();
+const goalIdWaiters       = new Map<string, Array<(id: string | null) => void>>();
+const targetIdWaiters     = new Map<string, Array<(id: string | null) => void>>();
+
+const RESOLVE_TIMEOUT_MS = 5000;
+
+function isOptimisticGoalId(id: string)   { return id.startsWith('goal_'); }
+function isOptimisticTargetId(id: string) { return id.startsWith('target_'); }
+
+export function resolveGoalDbId(id: string): Promise<string | null> {
+  if (!isOptimisticGoalId(id)) return Promise.resolve(id);
+  const cached = optimisticGoalIds.get(id);
+  if (cached) return Promise.resolve(cached);
+  return new Promise(resolve => {
+    const arr = goalIdWaiters.get(id) ?? [];
+    arr.push(resolve);
+    goalIdWaiters.set(id, arr);
+    setTimeout(() => resolve(optimisticGoalIds.get(id) ?? null), RESOLVE_TIMEOUT_MS);
+  });
+}
+
+export function resolveTargetDbId(id: string): Promise<string | null> {
+  if (!isOptimisticTargetId(id)) return Promise.resolve(id);
+  const cached = optimisticTargetIds.get(id);
+  if (cached) return Promise.resolve(cached);
+  return new Promise(resolve => {
+    const arr = targetIdWaiters.get(id) ?? [];
+    arr.push(resolve);
+    targetIdWaiters.set(id, arr);
+    setTimeout(() => resolve(optimisticTargetIds.get(id) ?? null), RESOLVE_TIMEOUT_MS);
+  });
+}
+
+function notifyGoalIdResolved(optId: string, dbId: string | null) {
+  if (dbId) optimisticGoalIds.set(optId, dbId);
+  const waiters = goalIdWaiters.get(optId);
+  if (waiters) {
+    waiters.forEach(w => w(dbId));
+    goalIdWaiters.delete(optId);
+  }
+}
+
+function notifyTargetIdResolved(optId: string, dbId: string | null) {
+  if (dbId) optimisticTargetIds.set(optId, dbId);
+  const waiters = targetIdWaiters.get(optId);
+  if (waiters) {
+    waiters.forEach(w => w(dbId));
+    targetIdWaiters.delete(optId);
+  }
+}
+
+/** Sync helper — returns the real ID if known, otherwise the optimistic ID itself.
+ *  Used so the local store update always finds the row, even if the real ID
+ *  has already been swapped in. */
+function syncResolveGoal(id: string)   { return optimisticGoalIds.get(id) ?? id; }
+function syncResolveTarget(id: string) { return optimisticTargetIds.get(id) ?? id; }
+
 // ── Store interface ──────────────────────────────────────────────────────────
 
 interface GoalsState {
@@ -105,7 +169,9 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
 
     set(s => ({ goals: [...s.goals, goal] }));
 
-    // Fire-and-forget persistence
+    // Persist + reconcile optimistic IDs with the server-issued UUIDs.
+    // Without this swap, every later PATCH/DELETE would target `goal_xxx`
+    // and fail with a Postgres UUID validation error (HTTP 500).
     goalsPersistence.createOne({
       title: input.title,
       description: input.description,
@@ -115,18 +181,53 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
       startDate: input.startDate,
       endDate: input.endDate,
       targets: input.targets,
+    }).then(data => {
+      if (!data?.goalId) {
+        notifyGoalIdResolved(goalId, null);
+        targets.forEach(t => notifyTargetIdResolved(t.id, null));
+        return;
+      }
+      const realGoalId  = data.goalId;
+      const realTargetIds = Array.isArray(data.targetIds) ? data.targetIds : [];
+      notifyGoalIdResolved(goalId, realGoalId);
+      targets.forEach((t, i) => {
+        const real = realTargetIds[i];
+        notifyTargetIdResolved(t.id, real ?? null);
+      });
+      // Swap the in-store IDs so future selectors / drag-drop / detail-sheet
+      // navigation use the real UUIDs.
+      set(s => ({
+        goals: s.goals.map(g => g.id === goalId
+          ? {
+              ...g,
+              id: realGoalId,
+              targets: g.targets.map((t, i) => ({
+                ...t,
+                id: realTargetIds[i] ?? t.id,
+                goalId: realGoalId,
+              })),
+            }
+          : g),
+      }));
     });
 
     return goal;
   },
 
   updateGoal: (id, patch) => {
+    const localId = syncResolveGoal(id);
     set(s => ({
       goals: s.goals.map(g =>
-        g.id === id ? { ...g, ...patch, updatedAt: new Date().toISOString() } : g
+        g.id === localId ? { ...g, ...patch, updatedAt: new Date().toISOString() } : g
       ),
     }));
-    goalsPersistence.updateOne(id, patch);
+    void resolveGoalDbId(id).then(realId => {
+      if (!realId) {
+        toast.error('Could not save goal — please retry');
+        return;
+      }
+      goalsPersistence.updateOne(realId, patch);
+    });
   },
 
   archiveGoal: (id) => {
@@ -134,18 +235,23 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
   },
 
   deleteGoal: (id) => {
-    set(s => ({ goals: s.goals.filter(g => g.id !== id) }));
-    goalsPersistence.deleteOne(id, true);
+    const localId = syncResolveGoal(id);
+    set(s => ({ goals: s.goals.filter(g => g.id !== localId) }));
+    void resolveGoalDbId(id).then(realId => {
+      if (realId) goalsPersistence.deleteOne(realId, true);
+    });
   },
 
   addTarget: (goalId, input) => {
-    const goal = get().goals.find(g => g.id === goalId);
+    const localGoalId = syncResolveGoal(goalId);
+    const goal = get().goals.find(g => g.id === localGoalId);
     if (!goal) return null;
 
     const now = new Date().toISOString();
+    const optimisticTargetId = uid('target_');
     const target: GoalTarget = {
-      id: uid('target_'),
-      goalId,
+      id: optimisticTargetId,
+      goalId: localGoalId,
       title: input.title,
       type: input.type,
       currentValue: 0,
@@ -159,26 +265,40 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
 
     set(s => ({
       goals: s.goals.map(g =>
-        g.id === goalId ? { ...g, targets: [...g.targets, target], updatedAt: now } : g
+        g.id === localGoalId ? { ...g, targets: [...g.targets, target], updatedAt: now } : g
       ),
     }));
 
-    goalsPersistence.addTarget(goalId, input);
+    void resolveGoalDbId(goalId).then(async realGoalId => {
+      if (!realGoalId) { notifyTargetIdResolved(optimisticTargetId, null); return; }
+      const data = await goalsPersistence.addTarget(realGoalId, input);
+      const realTargetId = data?.id ?? null;
+      notifyTargetIdResolved(optimisticTargetId, realTargetId);
+      if (realTargetId) {
+        set(s => ({
+          goals: s.goals.map(g => g.id === realGoalId
+            ? { ...g, targets: g.targets.map(t => t.id === optimisticTargetId ? { ...t, id: realTargetId } : t) }
+            : g),
+        }));
+      }
+    });
     return target;
   },
 
   updateTarget: (goalId, targetId, patch) => {
     const now = new Date().toISOString();
-    // Snapshot the target before optimistic update for potential rollback
-    const snap = get().goals.find(g => g.id === goalId)?.targets.find(t => t.id === targetId);
+    const localGoalId = syncResolveGoal(goalId);
+    const localTargetId = syncResolveTarget(targetId);
+    // Snapshot for rollback
+    const snap = get().goals.find(g => g.id === localGoalId)?.targets.find(t => t.id === localTargetId);
 
     set(s => ({
       goals: s.goals.map(g =>
-        g.id === goalId
+        g.id === localGoalId
           ? {
               ...g,
               targets: g.targets.map(t =>
-                t.id === targetId ? { ...t, ...patch, updatedAt: now } : t
+                t.id === localTargetId ? { ...t, ...patch, updatedAt: now } : t
               ),
               updatedAt: now,
             }
@@ -186,31 +306,40 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
       ),
     }));
 
-    void goalsPersistence.updateTarget(goalId, targetId, patch).catch(() => {
-      // Rollback to snapshot on failure
-      if (snap) {
-        set(s => ({
-          goals: s.goals.map(g =>
-            g.id === goalId
-              ? { ...g, targets: g.targets.map(t => (t.id === targetId ? snap : t)) }
-              : g
-          ),
-        }));
+    void Promise.all([resolveGoalDbId(goalId), resolveTargetDbId(targetId)]).then(([realGoalId, realTargetId]) => {
+      if (!realGoalId || !realTargetId) {
+        toast.error('Failed to save goal progress');
+        return;
       }
-      toast.error('Failed to save goal progress');
+      goalsPersistence.updateTarget(realGoalId, realTargetId, patch).catch(() => {
+        if (snap) {
+          set(s => ({
+            goals: s.goals.map(g =>
+              g.id === localGoalId
+                ? { ...g, targets: g.targets.map(t => (t.id === localTargetId ? snap : t)) }
+                : g
+            ),
+          }));
+        }
+        toast.error('Failed to save goal progress');
+      });
     });
   },
 
   deleteTarget: (goalId, targetId) => {
     const now = new Date().toISOString();
+    const localGoalId = syncResolveGoal(goalId);
+    const localTargetId = syncResolveTarget(targetId);
     set(s => ({
       goals: s.goals.map(g =>
-        g.id === goalId
-          ? { ...g, targets: g.targets.filter(t => t.id !== targetId), updatedAt: now }
+        g.id === localGoalId
+          ? { ...g, targets: g.targets.filter(t => t.id !== localTargetId), updatedAt: now }
           : g
       ),
     }));
-    goalsPersistence.deleteTarget(goalId, targetId);
+    void Promise.all([resolveGoalDbId(goalId), resolveTargetDbId(targetId)]).then(([realGoalId, realTargetId]) => {
+      if (realGoalId && realTargetId) goalsPersistence.deleteTarget(realGoalId, realTargetId);
+    });
   },
 
   updateTargetProgress: (goalId, targetId, value) => {

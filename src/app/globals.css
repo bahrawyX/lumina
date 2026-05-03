@@ -599,7 +599,7 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   opacity: 0.8;
 }
 
-/* ── Drag & drop — drop indicator + ghost effect ──────── */
+/* ── Drag & drop — drop indicator + drag-follow card ───── */
 
 /* Drop cursor line — replace the default with a primary-coloured bar */
 .ProseMirror-dropcursor {
@@ -625,18 +625,60 @@ html body .bn-container [data-radix-popper-content-wrapper] {
   box-shadow: 0 0 6px hsl(var(--primary) / 0.55);
 }
 
-/* Ghost the source block while a drag is in progress */
-.lumina-editor[data-dragging] .bn-block-outer:has(.ProseMirror-selectednode) > .bn-block {
-  opacity: 0.28;
-  filter: blur(0.4px);
-  transition: opacity 0.12s ease, filter 0.12s ease;
+/* Make the drag preview *visible* — BlockNote ships with `opacity:.001` so
+ * the user sees nothing follow the cursor. We render it as a solid card with
+ * elevation so HTML5's setDragImage shows a proper "lifted" snapshot of the
+ * block following the pointer. */
+.bn-drag-preview {
+  opacity: 1 !important;
+  background: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--primary) / 0.35) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.55), 0 0 0 1px hsl(var(--primary) / 0.15) !important;
+  padding: 8px 12px !important;
+  max-width: 480px !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 0.92rem !important;
+  /* keep the preview offscreen-but-rendered so the browser snapshot picks it
+   * up; the snapshot follows the cursor as the native drag image. */
 }
 
-/* Subtle lift on every block while dragging (shows depth) */
+/* Hide source block almost entirely during drag — gives the impression that
+ * the block has "lifted off" and is moving with the cursor. */
+.lumina-editor[data-dragging] .bn-block-outer:has(.ProseMirror-selectednode) > .bn-block {
+  opacity: 0.18;
+  transition: opacity 0.12s ease;
+}
+
+/* Subtle row highlight on hover during a drag */
 .lumina-editor[data-dragging] .bn-block-outer:not(:has(.ProseMirror-selectednode)):hover > .bn-block {
-  background: hsl(var(--muted) / 0.25);
+  background: hsl(var(--muted) / 0.18);
   border-radius: 6px;
   transition: background 0.1s ease;
+}
+
+/* ── Hide stray "white dots" widget marks the drag/+ icons render ────── */
+/* BlockNote's side-menu wrappers paint a couple of focus / select dots that
+ * leak through the dark theme as bright pixels next to the drag handle.
+ * Suppress them — the actual handle SVG is enough affordance. */
+.bn-shadcn .bn-side-menu::before,
+.bn-shadcn .bn-side-menu::after,
+.bn-shadcn [class*="sideMenu"] svg circle:not([data-keep]) {
+  display: none !important;
+}
+
+/* ── Divider block — full-width separator (replaces "half line" bug) ── */
+.bn-editor [data-content-type="divider"] hr,
+.bn-editor [data-content-type="pageBreak"] > div {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+  margin: 0.75em 0;
+}
+
+/* ── Callout block — already styled inline; this just centres typography ─ */
+.bn-editor [data-content-type="callout"] {
+  margin: 0.25em 0;
 }
 
 /* ── Feature showcase ───────────────────────────────────── */

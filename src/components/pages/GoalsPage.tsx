@@ -28,6 +28,7 @@ import { LottieOverlay } from '@/components/ui/LottieOverlay';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { CoinsBadge } from '@/components/coins/CoinsBadge';
 import { goalCompleteAwards } from '@/lib/coins/earnRules';
+import { cn } from '@/lib/utils';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -199,64 +200,89 @@ const GoalCard: React.FC<{
         </div>
       )}
 
-      {/* Interactive targets */}
+      {/* Interactive targets — each row is a clickable mini-tracker.
+          Title on the left, progress bar in the middle, action on the right. */}
       {visibleTargets.length > 0 && (
-        <div className="space-y-1.5 mb-3" onClick={e => e.stopPropagation()}>
+        <div className="space-y-2 mb-3 pt-2 border-t border-border/40" onClick={e => e.stopPropagation()}>
+          <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70 font-semibold mb-1">Sub-goals · click to update</p>
           {visibleTargets.slice(0, 3).map(target => {
             const isEditingThis = editingTargetId === target.id;
+            const pct = target.targetValue > 0
+              ? Math.min(100, Math.round((target.currentValue / target.targetValue) * 100))
+              : 0;
+            const isDone = target.type === 'boolean' ? target.currentValue >= 1 : pct >= 100;
 
             return (
-              <div key={target.id}>
-                <div className="flex items-center gap-2 min-h-[22px]">
-                  {/* Target title */}
-                  <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0">{target.title}</span>
+              <div
+                key={target.id}
+                className={cn(
+                  'rounded-lg px-2 py-1.5 transition-colors',
+                  isDone ? 'bg-emerald-500/[0.07]' : 'bg-muted/30 hover:bg-muted/50',
+                )}
+              >
+                <div className="flex items-center gap-2 min-h-[26px]">
+                  {/* Title + tiny progress bar */}
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('text-[12px] font-medium truncate', isDone ? 'text-emerald-400' : 'text-foreground')}>{target.title}</p>
+                    {target.type !== 'boolean' && (
+                      <div className="h-1 mt-1 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn('h-full rounded-full transition-all duration-300', isDone ? 'bg-emerald-400' : 'bg-primary')}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   {/* Boolean — tap to toggle */}
                   {target.type === 'boolean' && (
                     <button
                       type="button"
                       onClick={() => updateTargetProgress(goal.id, target.id, target.currentValue >= 1 ? 0 : 1)}
-                      className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition-colors flex-shrink-0 ${
-                        target.currentValue >= 1
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          : 'border-border hover:border-primary/40 text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={cn(
+                        'text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors flex-shrink-0 min-w-[88px]',
+                        isDone
+                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                          : 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15',
+                      )}
                     >
-                      {target.currentValue >= 1 ? '✓ Done' : 'Mark done'}
+                      {isDone ? '✓ Done' : 'Mark done'}
                     </button>
                   )}
 
                   {/* Number — − / value / + */}
                   {target.type === 'number' && (
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button
                         type="button"
                         onClick={() => updateTargetProgress(goal.id, target.id, Math.max(0, target.currentValue - 1))}
-                        className="w-5 h-5 rounded border border-border text-[12px] font-medium flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors leading-none"
+                        className="w-7 h-7 rounded-md border border-border text-base font-medium flex items-center justify-center hover:bg-muted hover:border-primary/40 text-foreground transition-colors leading-none"
+                        aria-label="Decrement"
                       >−</button>
                       <button
                         type="button"
                         onClick={() => { setEditingTargetId(target.id); setTargetDraft(target.currentValue); }}
-                        className="text-[10px] tabular-nums text-muted-foreground hover:text-primary transition-colors min-w-[40px] text-center"
+                        className="text-[11px] font-semibold tabular-nums text-foreground hover:text-primary transition-colors min-w-[48px] text-center"
                         title="Click to set exact value"
                       >
-                        {Math.round(target.currentValue)}/{Math.round(target.targetValue)}
-                        {target.unit ? ` ${target.unit}` : ''}
+                        {Math.round(target.currentValue)}<span className="text-muted-foreground">/{Math.round(target.targetValue)}</span>
+                        {target.unit ? <span className="text-muted-foreground/70 ml-0.5">{target.unit}</span> : null}
                       </button>
                       <button
                         type="button"
                         onClick={() => updateTargetProgress(goal.id, target.id, Math.min(target.targetValue, target.currentValue + 1))}
-                        className="w-5 h-5 rounded border border-border text-[12px] font-medium flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors leading-none"
+                        className="w-7 h-7 rounded-md border border-primary/30 bg-primary/10 text-base font-medium flex items-center justify-center hover:bg-primary/15 text-primary transition-colors leading-none"
+                        aria-label="Increment"
                       >+</button>
                     </div>
                   )}
 
-                  {/* Percentage — click value to open slider */}
+                  {/* Percentage — click pill to open slider */}
                   {target.type === 'percentage' && (
                     <button
                       type="button"
                       onClick={() => { setEditingTargetId(target.id); setTargetDraft(target.currentValue); }}
-                      className="text-[10px] tabular-nums text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
+                      className="text-[11px] font-semibold tabular-nums px-2.5 py-1 rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 transition-colors flex-shrink-0"
                       title="Click to set progress"
                     >
                       {Math.round(target.currentValue)}%
@@ -265,8 +291,8 @@ const GoalCard: React.FC<{
 
                   {/* Task completion — read-only */}
                   {target.type === 'task_completion' && (
-                    <span className="text-[10px] tabular-nums text-muted-foreground flex-shrink-0">
-                      {Math.round(target.currentValue)}/{Math.round(target.targetValue)}
+                    <span className="text-[11px] tabular-nums text-muted-foreground flex-shrink-0 px-2 py-0.5 rounded-md bg-muted/50">
+                      {Math.round(target.currentValue)}/{Math.round(target.targetValue)} tasks
                     </span>
                   )}
                 </div>

@@ -78,7 +78,9 @@ const AIIcon = () => (
   </svg>
 );
 
-// ── Custom TaskBlock with taskId stored in block props ──────────────────────
+// ── Custom TaskBlock — Notion-styled ────────────────────────────────────────
+// Full-width row with rounded hover background, custom-painted checkbox that
+// adopts the primary color on check, and strikethrough text when complete.
 const TaskBlockFactory = createReactBlockSpec(
   {
     type: 'taskBlock' as const,
@@ -92,26 +94,52 @@ const TaskBlockFactory = createReactBlockSpec(
     render: ({ block, contentRef }) => {
       const { checked, taskId } = block.props;
 
+      const toggle = () => {
+        window.dispatchEvent(
+          new CustomEvent('lumina:taskblock-toggle', {
+            detail: { blockId: block.id, taskId, checked: !checked },
+          }),
+        );
+      };
+
       return (
-        <div className="flex items-start gap-2 py-0.5 w-full">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={async (e) => {
-              const newChecked = e.target.checked;
-              window.dispatchEvent(
-                new CustomEvent('lumina:taskblock-toggle', {
-                  detail: { blockId: block.id, taskId, checked: newChecked },
-                }),
-              );
-            }}
-            className="mt-1 w-4 h-4 rounded accent-primary cursor-pointer shrink-0"
-          />
+        <div
+          data-checked={checked || undefined}
+          className={cn(
+            'group/taskblock flex items-center gap-2.5 px-2 py-1 -mx-2 rounded-md w-full',
+            'transition-colors',
+            checked
+              ? 'bg-primary/5 hover:bg-primary/[0.07]'
+              : 'hover:bg-muted/40',
+          )}
+        >
+          <button
+            type="button"
+            onClick={toggle}
+            aria-checked={checked}
+            role="checkbox"
+            contentEditable={false}
+            tabIndex={-1}
+            className={cn(
+              'shrink-0 w-[18px] h-[18px] rounded-[5px] flex items-center justify-center',
+              'transition-colors duration-150 cursor-pointer',
+              'border',
+              checked
+                ? 'bg-primary border-primary text-primary-foreground'
+                : 'bg-transparent border-muted-foreground/40 hover:border-primary/60',
+            )}
+          >
+            {checked && (
+              <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </button>
           <div
             ref={contentRef}
             className={cn(
-              'text-sm text-foreground outline-none flex-1 min-w-0',
-              checked && 'line-through text-muted-foreground',
+              'text-sm leading-[1.55] outline-none flex-1 min-w-0 transition-colors',
+              checked ? 'line-through text-muted-foreground/70' : 'text-foreground',
             )}
           />
         </div>
@@ -121,11 +149,43 @@ const TaskBlockFactory = createReactBlockSpec(
 );
 const TaskBlock = TaskBlockFactory();
 
+// ── Custom CalloutBlock — colored panel with emoji ─────────────────────────
+// Notion-style callout: rounded panel with a soft tinted background, an
+// emoji on the left, and inline-editable content on the right.
+const CalloutBlockFactory = createReactBlockSpec(
+  {
+    type: 'callout' as const,
+    propSchema: {
+      emoji: { default: '💡' as const },
+      tone:  { default: 'info' as 'info' | 'success' | 'warning' | 'danger' },
+    },
+    content: 'inline' as const,
+  },
+  {
+    render: ({ block, contentRef }) => {
+      const { emoji, tone } = block.props as { emoji: string; tone: 'info' | 'success' | 'warning' | 'danger' };
+      const toneClass =
+        tone === 'success' ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-200' :
+        tone === 'warning' ? 'bg-amber-500/10 border-amber-500/25 text-amber-200'   :
+        tone === 'danger'  ? 'bg-rose-500/10 border-rose-500/25 text-rose-200'      :
+                              'bg-primary/10 border-primary/25 text-foreground';
+      return (
+        <div className={cn('flex items-start gap-3 px-3 py-2.5 rounded-lg border w-full', toneClass)}>
+          <span className="text-base leading-none mt-0.5 select-none" contentEditable={false}>{emoji}</span>
+          <div ref={contentRef} className="flex-1 text-sm leading-relaxed outline-none min-w-0" />
+        </div>
+      );
+    },
+  },
+);
+const CalloutBlock = CalloutBlockFactory();
+
 // ── Schema: base (sync) + multi-column (lazy) ─────────────────────────────
 const baseSchema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     taskBlock: TaskBlock,
+    callout: CalloutBlock,
   },
   inlineContentSpecs: defaultInlineContentSpecs,
   styleSpecs: defaultStyleSpecs,
@@ -247,35 +307,84 @@ function getLuminaSlashMenuItems(
 
   const calloutItem: DefaultReactSuggestionItem = {
     title: 'Callout',
-    subtext: 'Highlight important information',
+    subtext: 'Highlight important info',
     onItemClick: () => {
       const cursor = editor.getTextCursorPosition();
-      editor.updateBlock(cursor.block, {
-        type: 'paragraph' as const,
-        content: [{ type: 'text' as const, text: '💡 ', styles: {} }],
-      });
+      editor.updateBlock(cursor.block, { type: 'callout' as any, props: { emoji: '💡', tone: 'info' } as any });
+      setTimeout(() => editor.focus(), 30);
     },
     aliases: ['callout', 'info', 'note', 'tip'],
     group: 'Lumina',
     icon: <CalloutIcon />,
   };
 
+  // Real divider block — renders as a true full-width <hr>, not a string of
+  // box-drawing characters. Falls back to ThematicBreak/HorizontalRule under
+  // the hood via BlockNote's `divider` block spec.
   const dividerItem: DefaultReactSuggestionItem = {
     title: 'Divider',
-    subtext: 'Horizontal line separator',
+    subtext: 'Full-width horizontal line',
     onItemClick: () => {
       const cursor = editor.getTextCursorPosition();
-      editor.updateBlock(cursor.block, {
-        type: 'paragraph' as const,
-        content: [{ type: 'text' as const, text: '───────────────────────────', styles: {} }],
-      });
+      try {
+        editor.updateBlock(cursor.block, { type: 'divider' as any });
+      } catch {
+        // Older BlockNote versions don't expose `divider` — fall through to
+        // pageBreak which also renders a full-width separator.
+        editor.updateBlock(cursor.block, { type: 'pageBreak' as any });
+      }
     },
-    aliases: ['divider', 'hr', 'line', 'separator'],
-    group: 'Lumina',
+    aliases: ['divider', 'hr', 'line', 'separator', '---'],
+    group: 'Layout',
     icon: <DividerIcon />,
   };
 
-  return [...defaults, aiItem, columnsItem, taskItem, calloutItem, dividerItem];
+  // ── Notion-parity additions ──────────────────────────────────────────────
+  // BlockNote's defaults already include H1/H2/H3, paragraph, bullet/numbered
+  // lists, check list, quote, table, image, file, audio, video, codeBlock.
+  // We add quick-launchers for the ones a user is likely to type.
+
+  const codeItem: DefaultReactSuggestionItem = {
+    title: 'Code',
+    subtext: 'Code block with syntax',
+    onItemClick: () => {
+      const cursor = editor.getTextCursorPosition();
+      editor.updateBlock(cursor.block, { type: 'codeBlock' as any });
+    },
+    aliases: ['code', 'snippet', '```'],
+    group: 'Basic',
+    icon: <span className="font-mono text-[12px]">{`</>`}</span>,
+  };
+
+  const quoteItem: DefaultReactSuggestionItem = {
+    title: 'Quote',
+    subtext: 'Block quote',
+    onItemClick: () => {
+      const cursor = editor.getTextCursorPosition();
+      editor.updateBlock(cursor.block, { type: 'quote' as any });
+    },
+    aliases: ['quote', 'blockquote', '>'],
+    group: 'Basic',
+    icon: <span className="text-base">❝</span>,
+  };
+
+  const toggleItem: DefaultReactSuggestionItem = {
+    title: 'Toggle list',
+    subtext: 'Collapsible section',
+    onItemClick: () => {
+      const cursor = editor.getTextCursorPosition();
+      try {
+        editor.updateBlock(cursor.block, { type: 'toggleListItem' as any });
+      } catch {
+        editor.updateBlock(cursor.block, { type: 'bulletListItem' as any });
+      }
+    },
+    aliases: ['toggle', 'collapse', 'expand'],
+    group: 'Basic',
+    icon: <span className="text-xs">▸</span>,
+  };
+
+  return [...defaults, aiItem, taskItem, calloutItem, codeItem, quoteItem, toggleItem, columnsItem, dividerItem];
 }
 
 // ── Custom slash menu component ─────────────────────────────────────────────
@@ -355,18 +464,38 @@ function LuminaSuggestionMenu({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// DocEditor — the main component
+// DocEditor — outer wrapper that delays mounting until the multi-column
+// extension has loaded. This is required because `useCreateBlockNote` snapshots
+// the schema on first mount; if we mounted with `baseSchema` while multiCol
+// was still pending, the resulting editor would never know about `columnList`
+// and `/columns` would silently no-op.
 // ═════════════════════════════════════════════════════════════════════════════
-export default function DocEditor({ docId, initialContent, onChange, className }: DocEditorProps) {
-  const { resolvedTheme } = useTheme();
-
-  // Wait for multi-column extension before rendering editor
+export default function DocEditor(props: DocEditorProps) {
   const [multiCol, setMultiCol] = useState(_multiColCache);
   useEffect(() => {
     if (!multiCol) {
       multiColReady.then(setMultiCol);
     }
   }, [multiCol]);
+
+  if (!multiCol) {
+    return (
+      <div className={cn('lumina-editor w-full relative px-2 lg:px-4 py-6', props.className)}>
+        <div className="h-4 w-2/3 rounded bg-muted/30 animate-pulse mb-3" />
+        <div className="h-3 w-1/2 rounded bg-muted/20 animate-pulse" />
+      </div>
+    );
+  }
+
+  return <DocEditorInner {...props} multiCol={multiCol} />;
+}
+
+interface DocEditorInnerProps extends DocEditorProps {
+  multiCol: { schema: typeof baseSchema; dropCursor: unknown };
+}
+
+function DocEditorInner({ docId, initialContent, onChange, className, multiCol }: DocEditorInnerProps) {
+  const { resolvedTheme } = useTheme();
 
   // Column picker state
   const [columnPickerOpen, setColumnPickerOpen] = useState(false);
@@ -385,10 +514,9 @@ export default function DocEditor({ docId, initialContent, onChange, className }
   // Track previous blocks for deletion detection
   const previousBlocksRef = useRef<BlockLike[]>([]);
 
-  const editorSchema = multiCol?.schema ?? baseSchema;
   const editor = useCreateBlockNote({
-    schema: editorSchema as any,
-    dropCursor: (multiCol?.dropCursor ?? undefined) as any,
+    schema: multiCol.schema as any,
+    dropCursor: multiCol.dropCursor as any,
     initialContent: (initialContent && initialContent.length > 0)
       ? initialContent as any
       : undefined,
