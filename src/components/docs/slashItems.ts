@@ -20,7 +20,7 @@ export interface SlashItemExecuteProps {
     docPos: number;
   }) => void;
   // The doc this editor is editing — passed to /task so the created task is
-  // linked back to the source doc (matches the BlockNote behavior).
+  // linked back to the source doc.
   docId?: string;
 }
 

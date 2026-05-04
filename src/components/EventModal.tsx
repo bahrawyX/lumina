@@ -406,13 +406,21 @@ function MeetingNotesSection({
   const handleCreateNotes = async () => {
     setIsCreating(true);
     try {
+      // Take the meeting-notes template's body (everything after its own H1
+      // title block) and prepend an event-specific header so the resulting
+      // doc is a proper Tiptap doc { type: 'doc', content: [...] }.
       const meetingTemplate = TEMPLATES.find((t) => t.id === 'meeting-notes');
-      const content = [
-        { type: 'heading', props: { level: 1 }, content: [{ type: 'text', text: eventTitle }], children: [] },
-        { type: 'paragraph', content: [{ type: 'text', text: `Date: ${eventDate}` }], children: [] },
-        { type: 'paragraph', content: [{ type: 'text', text: `Time: ${eventStartTime} – ${eventEndTime}` }], children: [] },
-        ...(meetingTemplate?.content.slice(1) ?? []),
-      ];
+      const templateBody =
+        ((meetingTemplate?.content as { content?: Record<string, unknown>[] } | undefined)?.content ?? []).slice(1);
+      const content = {
+        type: 'doc',
+        content: [
+          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: eventTitle }] },
+          { type: 'paragraph', content: [{ type: 'text', text: `Date: ${eventDate}` }] },
+          { type: 'paragraph', content: [{ type: 'text', text: `Time: ${eventStartTime} – ${eventEndTime}` }] },
+          ...templateBody,
+        ],
+      };
 
       const docId = await createDoc({
         title: `${eventTitle} — Notes`,

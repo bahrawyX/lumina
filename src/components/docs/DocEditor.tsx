@@ -55,9 +55,9 @@ const AI_PLACEHOLDER = '✨ Generating…';
 
 export interface DocEditorProps {
   docId: string;
-  // Tiptap JSONContent or null for brand-new empty docs. Legacy BlockNote
-  // content from the database is filtered out at the boundary (see below)
-  // until Phase 6 migrates it to proper Tiptap JSON.
+  // Tiptap JSONContent (`{ type: 'doc', content: [...] }`) or null for
+  // brand-new empty docs. Anything that doesn't match the expected shape is
+  // discarded by safeInitialContent below before Tiptap sees it.
   initialContent?: JSONContent | null;
   // Fired immediately on every change. Word count is included so DocPage's
   // saveContent (which is what runs the 1s debounce + stale-write check)
@@ -73,10 +73,9 @@ export interface DocEditorProps {
   className?: string;
 }
 
-// BlockNote stored content as an array of block objects; Tiptap stores a
-// single root JSONContent { type: 'doc', content: [...] }. If we hand the
-// editor an array, Tiptap throws on mount. Detect and discard until Phase 6
-// runs the proper migration.
+// Tiptap expects a single root JSONContent `{ type: 'doc', content: [...] }`.
+// Reject anything else (null, arrays, primitives, objects without a `type`)
+// so an unexpected DB shape can't crash the editor on mount.
 function safeInitialContent(content: JSONContent | null | undefined): JSONContent | undefined {
   if (!content) return undefined;
   if (Array.isArray(content)) return undefined;
@@ -406,7 +405,7 @@ export default function DocEditor({
       // wrapper, since it may have been merged into an existing block).
       // We catch the throw if positions have shifted (user kept editing) —
       // in that case there's no clean rollback and we just leave the
-      // partial content. Matches the BlockNote behavior.
+      // partial content.
       const removePlaceholder = () => {
         try {
           editor

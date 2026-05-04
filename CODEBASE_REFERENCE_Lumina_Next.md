@@ -2973,3 +2973,615 @@ CODEBASE_REFERENCE_Lumina_Next.md                     | v30 header + §37 NEW
 ---
 
 *End of reference. This document should be kept up to date after every significant feature addition or architectural change.*
+
+---
+
+# Lumina — Codebase Reference (Post-Migration)
+# Stack: Next.js 16 · React 19.2.3 · Tiptap 3.22.5
+# BlockNote has been fully removed. Do not reference it anywhere.
+# Last updated: post 6-phase BlockNote → Tiptap migration + QA pass
+# ═══════════════════════════════════════════════════════════════
+
+---
+
+## HOW TO USE THIS DOCUMENT
+
+This is the single source of truth for the Lumina docs editor system.
+Feed it to Claude Code at the start of any session involving the editor.
+It replaces the old CODEBASE_REFERENCE that contained BlockNote references.
+
+---
+
+## TECH STACK
+
+```
+Framework:     Next.js 16.2.x (App Router, Turbopack)
+Runtime:       React 19.2.3
+Language:      TypeScript 5 (strict)
+Styling:       Tailwind CSS 3.4 + shadcn/ui conventions
+State:         Zustand 5
+Animation:     Framer Motion 12
+ORM:           Drizzle 0.45 → Neon Postgres
+Auth:          better-auth 1.5
+AI:            Google Gemini (via /api/docs/ai-stream)
+Toasts:        sonner
+Dates:         date-fns 4
+DnD:           @dnd-kit/core + @dnd-kit/sortable
+Editor:        Tiptap 3.22.5 (replaces BlockNote — fully removed)
+```
+
+---
+
+## EDITOR ARCHITECTURE
+
+### Entry point
+
+```
+src/app/(app)/docs/[id]/page.tsx
+  └── src/components/pages/DocPage.tsx          ← owns title, cover, metadata bar
+        └── src/components/docs/DocEditor.tsx   ← loaded via next/dynamic ssr:false
+```
+
+### Why `ssr: false`
+
+ProseMirror (Tiptap's engine) mutates the DOM directly on mount. SSR produces
+HTML that doesn't match the client-mounted editor, causing hydration crashes.
+`suppressHydrationWarning` is on the wrapper div in DocPage.tsx for the same reason.
+**Do not remove either of these.**
+
+### Editor instance exposure (dev only)
+
+In development, `window.__luminaEditor` exposes the Tiptap editor instance
+for testing and the Playwright e2e suite. It is guarded by `NODE_ENV !== 'production'`
+and must never ship to production.
+
+---
+
+## INSTALLED TIPTAP PACKAGES (all at 3.22.5 unless noted)
+
+```
+@tiptap/react                        ← useEditor, EditorContent, BubbleMenu,
+                                       ReactNodeViewRenderer, NodeViewWrapper,
+                                       NodeViewContent, useEditorState
+@tiptap/pm                           ← ProseMirror peer dep wrapper
+@tiptap/starter-kit                  ← bold, italic, strike, code, blockquote,
+                                       bulletList, orderedList, listItem,
+                                       heading, horizontalRule, hardBreak,
+                                       history, doc, paragraph, text
+@tiptap/extension-placeholder
+@tiptap/extension-typography         ← smart quotes, em dashes, ellipsis
+@tiptap/extension-task-list          ← native checklist (≠ custom taskBlock)
+@tiptap/extension-task-item
+@tiptap/extension-image
+@tiptap/extension-link
+@tiptap/extension-color
+@tiptap/extension-text-style
+@tiptap/extension-highlight
+@tiptap/extension-code-block-lowlight
+@tiptap/extension-character-count
+@tiptap/extension-drag-handle-react  ← separate peer dep (not in starter-kit)
+@tiptap/extension-underline
+@tiptap/extension-table
+@tiptap/extension-table-row
+@tiptap/extension-table-cell
+@tiptap/extension-table-header
+@tiptap/extension-mathematics        ← KaTeX math (blockMath + inlineMath nodes)
+@tiptap/suggestion                   ← slash command engine
+lowlight                             ← syntax highlighting for code blocks
+tippy.js                             ← slash menu positioning
+katex                                ← KaTeX peer dep for mathematics
+```
+
+**@blocknote/* packages: ZERO. Completely removed. Do not reinstall.**
+
+---
+
+## EDITOR FILES
+
+### Core
+
+| File | Purpose |
+|------|---------|
+| `src/components/docs/DocEditor.tsx` | Main editor component. Uses `useEditor` hook. Registered extensions, state, portals, event wiring. Loaded via `next/dynamic ssr:false`. |
+| `src/components/docs/FloatingToolbar.tsx` | Animated bubble format toolbar. Uses `BubbleMenu` from `@tiptap/react/menus` (v3 API — **not** `@tiptap/react`). Uses Floating UI `options` — **not** `tippyOptions` (that was v2). |
+| `src/components/docs/SlashMenuList.tsx` | `forwardRef` component rendered inside tippy. Framer Motion entrance, keyboard nav, group labels. |
+| `src/components/docs/SlashMenuRenderer.tsx` | tippy.js + ReactRenderer bridge. Lifecycle: `onStart / onUpdate / onKeyDown / onExit`. |
+| `src/components/docs/slashItems.ts` | All 22 slash command definitions. `buildSlashItems(callbacks?)` returns `SlashItem[]`. |
+| `src/components/docs/AIPromptInput.tsx` | Floating AI prompt card. Props: `{ onSubmit, onCancel, position: {top, left} }`. Min 3 chars to enable submit. Enter = submit, Escape = cancel. |
+| `src/components/docs/ColumnRatioPicker.tsx` | 6-preset column ratio picker. Props: `{ onSelect(ratio: ColumnRatio), onClose }`. Ratio is `{ widths: number[] }`. |
+| `src/components/docs/DocLinkPicker.tsx` | Doc search picker. Debounced 300ms → `GET /api/docs/search?q=`. Shows up to 5 results. |
+| `src/components/docs/DocSaveIndicator.tsx` | "Saving…" pulsing dot / "✓ Saved" 3s fade. Reads `isSaving` + `lastSavedAt` from `useDocsStore`. |
+| `src/components/docs/DocBreadcrumb.tsx` | Parent chain breadcrumb navigation. |
+| `src/components/docs/DocRightSidebar.tsx` | Doc info panel (linked task/event). |
+
+### Extensions directory: `src/components/docs/extensions/`
+
+| File | Node/Extension name | Type |
+|------|---------------------|------|
+| `TaskBlockExtension.ts` | `taskBlock` | Custom Node (atom, draggable) |
+| `TaskBlockNodeView.tsx` | — | React NodeView for taskBlock |
+| `ToggleExtension.ts` | `toggle` | Custom Node (block, content: block+) |
+| `ToggleNodeView.tsx` | — | React NodeView for toggle |
+| `BookmarkExtension.ts` | `bookmark` | Custom Node (atom, draggable) |
+| `BookmarkNodeView.tsx` | — | React NodeView for bookmark |
+| `ColumnExtension.ts` | `column` | Custom Node (group: column, content: block+) |
+| `ColumnsExtension.ts` | `columns` | Custom Node (group: block, content: column+) |
+| `CodeBlockNodeView.tsx` | — | React NodeView for CodeBlockLowlight |
+| `SlashCommandExtension.ts` | `slashCommand` | Extension (wraps @tiptap/suggestion) |
+| `KeyboardShortcutsExtension.ts` | `keyboardShortcuts` | Extension |
+| `FocusBlockExtension.ts` | `focusBlock` | Extension (ProseMirror Decoration.node) |
+
+---
+
+## REGISTERED EXTENSIONS (exact order matters for ProseMirror)
+
+```ts
+// From DocEditor.tsx useEditor({ extensions: [...] })
+StarterKit.configure({ codeBlock: false, heading: { levels: [1,2,3] } }),
+Underline,
+Placeholder.configure({ showOnlyCurrent: true, placeholder: ({ node }) => ... }),
+CodeBlockLowlight.configure({ lowlight, defaultLanguage: 'plaintext' }).extend({
+  addNodeView() { return ReactNodeViewRenderer(CodeBlockNodeView) }
+}),
+Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true,
+  validate: url => /^(https?:\/\/|\/)/.test(url) }),  // ← accepts relative /docs/id paths
+Image.configure({ inline: false, allowBase64: true }),
+TextStyle,
+Color,
+Highlight.configure({ multicolor: true }),
+Typography,
+TaskList,
+TaskItem.configure({ nested: true }),
+CharacterCount,
+DragHandle,                          // from @tiptap/extension-drag-handle-react
+ColumnExtension,                     // ← MUST come before ColumnsExtension
+ColumnsExtension,
+ToggleExtension,
+Table.configure({ resizable: true, handleWidth: 5, cellMinWidth: 100, lastColumnResizable: false }),
+TableRow,
+TableHeader,
+TableCell,
+Mathematics,                         // blockMath + inlineMath nodes
+BookmarkExtension,
+KeyboardShortcutsExtension,
+FocusBlockExtension,
+TaskBlockExtension,
+SlashCommandExtension.configure({    // ← ALWAYS LAST
+  docId: string,
+  onOpenColumnPicker: () => void,
+  onOpenAIPrompt: () => void,
+  onOpenDocLinkPicker: () => void,
+}),
+```
+
+**ColumnExtension must be registered before ColumnsExtension** — ProseMirror
+resolves the `column+` content spec at registration time, not render time.
+**SlashCommandExtension must be last** — so all node types are registered before
+the slash menu tries to insert them.
+
+---
+
+## REGISTERED NODES (25 total)
+
+```
+paragraph, blockquote, bulletList, doc, hardBreak, heading,
+horizontalRule, listItem, orderedList, text,
+codeBlock, image, taskList, taskItem,
+column, columns,          ← custom (Tiptap Pro not on free npm — built from scratch)
+taskBlock,                ← custom Lumina task card
+toggle,                   ← custom collapsible block
+bookmark,                 ← custom URL card
+table, tableRow, tableHeader, tableCell,
+blockMath, inlineMath     ← from @tiptap/extension-mathematics (KaTeX)
+```
+
+## REGISTERED MARKS (8 total)
+
+```
+link, textStyle, bold, code, italic, strike, underline, highlight
+```
+
+---
+
+## SLASH COMMANDS (22 total)
+
+### Group "Basic" (14 items)
+
+| Title | Key aliases | Execute |
+|-------|-------------|---------|
+| Heading 1 | h1, heading1 | `setHeading({ level: 1 })` |
+| Heading 2 | h2, heading2 | `setHeading({ level: 2 })` |
+| Heading 3 | h3, heading3 | `setHeading({ level: 3 })` |
+| Paragraph | p, text, plain | `setParagraph()` |
+| Quote | blockquote, quote | `setBlockquote()` |
+| Code Block | code, pre | `setCodeBlock()` |
+| Math | math, equation, latex | `insertBlockMath('E = mc^2')` |
+| Bullet List | ul, list, bullet | `toggleBulletList()` |
+| Ordered List | ol, numbered | `toggleOrderedList()` |
+| Task List | checklist, check | `toggleTaskList()` (native — ≠ taskBlock) |
+| Toggle | toggle, collapse | `insertContent({ type: 'toggle', ... })` |
+| Table | table, grid | `insertTable({ rows:3, cols:3, withHeaderRow:true })` |
+| Divider | hr, line, separator | `setHorizontalRule()` |
+| Page Link | page, link, doc | opens `DocLinkPicker` portal |
+
+### Group "Media" (4 items)
+
+| Title | Key aliases | Execute |
+|-------|-------------|---------|
+| Image | img, image, photo | `window.prompt()` → `setImage({ src })` |
+| Video | vid, video | `window.prompt()` → inserts `<a>` link |
+| Audio | audio, sound, mp3 | `window.prompt()` → inserts `<a>` link |
+| Bookmark | bookmark, url, card | `window.prompt()` → `insertContent({ type: 'bookmark', ... })` |
+
+### Group "Lumina" (4 items)
+
+| Title | Key aliases | Execute |
+|-------|-------------|---------|
+| Task | task, todo, action | `POST /api/tasks` → `insertContent({ type: 'taskBlock', ... })` |
+| Columns | columns, col, layout | opens `ColumnRatioPicker` portal |
+| Callout | callout, note, info | `insertContent('<p>💡 </p>')` |
+| AI Assist | ai, ask, generate | opens `AIPromptInput` portal |
+
+### Filter logic (in SlashCommandExtension)
+
+```ts
+const q = query.toLowerCase()
+items.filter(item =>
+  item.title.toLowerCase().split(' ').some(w => w.startsWith(q)) ||
+  item.aliases.some(a => a.startsWith(q))
+)
+// NOTE: uses startsWith — NOT includes (includes was too broad: "h" matched "Paragraph")
+```
+
+---
+
+## CUSTOM NODE DETAILS
+
+### taskBlock
+
+```ts
+// Attrs
+{ taskId: string | null, checked: boolean, taskTitle: string }
+
+// atom: true  — ProseMirror treats as one opaque unit (no cursor inside)
+// draggable: true — DragHandle can reorder it
+
+// CustomEvent bridge (editor ↔ task board):
+'lumina:taskblock-toggle'  dispatched by TaskBlockNodeView on checkbox click
+                           → DocEditor listener calls useTaskBoardStore.updateTask()
+'lumina:task-updated'      dispatched by useTaskBoardStore after DB update
+                           → TaskBlockNodeView listener updates attrs
+'lumina:open-task'         dispatched by "Open ↗" button
+                           → AppShell listener opens TaskDetailSheet
+
+// Archive on delete: PATCH /api/tasks/{taskId} { status: 'archived' }
+// Uses taskIdRef (NOT node.attrs.taskId closure) to avoid stale closure bug
+// (Tiptap reuses React component instances when ProseMirror swaps nodes)
+// KNOWN: /api/tasks/[id] currently rejects 'archived' — server fix pending
+
+// HTML serialization: <div data-type="task-block" data-task-id="..." data-checked="..." data-task-title="...">
+```
+
+### toggle
+
+```ts
+// Attrs
+{ isOpen: boolean }  // default: true
+
+// content: 'block+'  — holds any block-level content inside
+// defining: true     — cursor enters/exits cleanly
+
+// Open/close state is stored in node attrs (persists in JSON)
+// NodeView uses local useState synced with updateAttributes
+
+// HTML serialization: <details data-type="toggle" data-open="true|false">
+```
+
+### bookmark
+
+```ts
+// Attrs
+{ url: string, title: string }
+
+// atom: true, draggable: true
+// Renders as a styled card <a> tag — entire card is clickable (opens URL in new tab)
+// No OG metadata fetching (no server-side unfurl) — URL only
+
+// HTML serialization: <div data-type="bookmark" data-url="..." data-title="...">
+```
+
+### columns / column
+
+```ts
+// ColumnsExtension: group: 'block', content: 'column+'
+// ColumnExtension:  group: 'column', content: 'block+', attrs: { ratio: number }
+
+// Custom insertColumns command:
+editor.chain().focus().insertColumns([1, 1]).run()   // 50/50
+editor.chain().focus().insertColumns([2, 1]).run()   // 70/30
+
+// @tiptap/extension-columns does NOT exist on free npm (Tiptap Pro only)
+// These are built from scratch
+
+// HTML: <div data-type="columns"> <div data-type="column" data-ratio="1"> ... </div> </div>
+```
+
+---
+
+## CRITICAL ARCHITECTURAL DECISIONS (do not revert)
+
+### 1. FocusBlockExtension uses Decoration.node — NOT classList.add
+
+`classList.add()` on ProseMirror-managed nodes gets clobbered by PM redraws.
+The correct approach is a PM plugin returning `Decoration.node`, which is part
+of PM's view layer and survives redraws. `FocusBlockExtension.ts` implements this.
+The `editor.on('selectionUpdate') + classList.add` pattern does NOT work.
+
+### 2. Block-in animation uses Web Animations API — NOT MutationObserver + setAttribute
+
+`MutationObserver + setAttribute` on PM nodes causes an infinite loop:
+PM redraw → fires observer → observer mutates → PM redraws.
+The fix uses `element.animate()` (Web Animations API) + a WeakSet to avoid
+re-animating the same node instance. `DocEditor.tsx` implements this.
+
+### 3. isPristine (empty state detection) uses useEditorState
+
+`useEditor` in Tiptap v3 does NOT re-render on document changes. Derived values
+computed from editor state (like `editor.isEmpty`) go stale without `useEditorState`:
+```ts
+const isPristine = useEditorState({
+  editor,
+  selector: ({ editor }) => editor.isEmpty,
+})
+```
+
+### 4. isFirstUpdate guard REMOVED
+
+Tiptap v3 does NOT fire `onUpdate` on hydration (verified empirically).
+The guard was swallowing the user's first real keystroke. It is gone. Do not re-add it.
+
+### 5. No second debounce in DocEditor
+
+`useDocsStore.saveContent()` already debounces at 1s with per-doc keys +
+stale-write protection. DocEditor calls `onUpdate` immediately. Adding a second
+1s timer in DocEditor would push saves to ~2s.
+
+### 6. taskIdRef pattern for archive-on-delete
+
+```ts
+// WRONG — stale closure (Tiptap reuses React instances across node swaps):
+useEffect(() => {
+  return () => { if (isBeingDeletedRef.current) fetch(`/api/tasks/${node.attrs.taskId}`, ...) }
+}, [])
+
+// CORRECT — ref updated on every render:
+const taskIdRef = useRef(node.attrs.taskId)
+useEffect(() => { taskIdRef.current = node.attrs.taskId })
+useEffect(() => {
+  return () => { if (isBeingDeletedRef.current) fetch(`/api/tasks/${taskIdRef.current}`, ...) }
+}, [])
+```
+
+### 7. /ai streaming off-by-one fix
+
+The placeholder position is computed from the post-insert cursor, NOT `insertPos + 1`.
+When ProseMirror merges the inserted paragraph into an existing empty paragraph,
+`insertPos + 1` lands inside the open token, leaving residue.
+
+### 8. Link extension accepts relative paths
+
+```ts
+Link.configure({
+  validate: url => /^(https?:\/\/|\/)/.test(url),  // ← accepts /docs/id paths
+})
+```
+
+### 9. /math uses two .run() calls
+
+```ts
+// WRONG — crashes "Position out of range":
+editor.chain().focus().deleteRange(range).insertBlockMath('...').run()
+
+// CORRECT:
+editor.chain().focus().deleteRange(range).run()
+editor.chain().focus().insertBlockMath('E = mc^2').run()
+```
+
+### 10. BubbleMenu import path
+
+```ts
+// CORRECT (v3):
+import { BubbleMenu } from '@tiptap/react/menus'
+
+// WRONG (v2 path — does not exist in v3):
+import { BubbleMenu } from '@tiptap/react'
+```
+
+---
+
+## AUTO-SAVE
+
+```
+onUpdate (Tiptap) → props.onUpdate(editor.getJSON(), editor.getText())
+                  → DocPage.tsx handleEditorUpdate (useCallback, [doc.id])
+                  → useDocsStore.saveContent(docId, content, textContent)
+                  → 1s debounce → PATCH /api/docs/[id]
+                  → 409 conflict → toast (stale-write protection, no overwrite)
+```
+
+Word count is debounced separately at 500ms to avoid DocPage re-renders per keystroke.
+
+---
+
+## KEYBOARD SHORTCUTS (KeyboardShortcutsExtension)
+
+| Shortcut | Action |
+|----------|--------|
+| Mod+U | Toggle underline |
+| Mod+Shift+H | Toggle highlight |
+| Mod+E | Toggle inline code |
+| Mod+Alt+1 | Heading 1 |
+| Mod+Alt+2 | Heading 2 |
+| Mod+Alt+3 | Heading 3 |
+| Mod+Alt+0 | Paragraph |
+| Mod+Shift+B | Toggle blockquote |
+| Mod+S | Force-save (dispatches `lumina:force-save` CustomEvent) |
+
+StarterKit provides: Mod+B (bold), Mod+I (italic), Mod+Z (undo), Mod+Shift+Z (redo),
+Tab/Shift+Tab (list indent), Mod+Shift+8 (bullet), Mod+Shift+9 (ordered).
+
+---
+
+## FOCUS MODE
+
+Stored in `localStorage` as `lumina-editor-focus-mode` ('true'/'false').
+Default: OFF. Toggle button in DocPage metadata bar.
+Implemented via `focus-mode-active` CSS class on `.lumina-editor` wrapper.
+Active block tracked by `FocusBlockExtension` (ProseMirror `Decoration.node`).
+
+```css
+.lumina-editor.focus-mode-active .ProseMirror > * { opacity: 0.4; transition: opacity 0.15s; }
+.lumina-editor.focus-mode-active .ProseMirror > .is-focused-block { opacity: 1; }
+.lumina-editor.focus-mode-active .ProseMirror:not(:focus-within) > * { opacity: 1; }
+```
+
+---
+
+## DESIGN SYSTEM (editor-specific)
+
+```
+font-sans    = Geist Sans       (body, UI, H3)
+font-mono    = Geist Mono       (code blocks, inline code, labels, copy button)
+font-display = Clash Display    (H1 @ 32px, H2 @ 24px — beats Notion's system fonts)
+```
+
+All colors via `hsl(var(--*))` or Tailwind tokens. Zero hardcoded hex in editor CSS.
+
+Palette: warm paper. Light = HSL 30–40° amber-tinted neutrals. Dark = warm off-white.
+
+---
+
+## CSS ORGANIZATION (globals.css)
+
+```
+/* [Lumina base styles] */
+/* ═══ TIPTAP EDITOR ═══ */      ← added during migration (Phases 2–6)
+  — ProseMirror root
+  — Headings (Clash Display H1/H2)
+  — Placeholder
+  — Blockquote, code, lists, task lists
+  — Images, links, marks
+  — Block-in animation (@keyframes lumina-block-in)
+  — Drag handle
+  — Tippy reset (lumina-slash theme, lumina-toolbar theme)
+  — Task block wrapper
+  — Code block NodeView
+  — Focus mode
+  — Toggle wrapper
+  — Columns layout (flex + mobile stack)
+  — Table styles
+  — AI shimmer (@keyframes ai-shimmer)
+  — Mobile overrides (font-size: 16px, drag handle hidden)
+/* [End TIPTAP EDITOR] */
+```
+
+**No .bn-* or --bn-* rules anywhere.** Zero BlockNote CSS remains.
+
+---
+
+## DATABASE
+
+```sql
+-- docs table (relevant columns only)
+content       jsonb   -- Tiptap JSON: { type: "doc", content: [...] }
+                      -- (was BlockNote JSON array — migrated via scripts/)
+content_text  text    -- plain text for PostgreSQL FTS (updated with editor.getText())
+```
+
+Migration script: `scripts/migrate-blocknote-to-tiptap.ts`
+Status: written and committed. **Not yet run on production.** Run on staging first.
+
+---
+
+## TEST SUITE
+
+```
+Vitest:     213 tests passing (104 original + 109 added during migration)
+Playwright: 29 e2e tests in tests/e2e/editor.spec.ts
+Dev harness: src/app/dev-editor-test/page.tsx (NODE_ENV guard — 404 in production)
+```
+
+### Key test files added during migration
+
+```
+tests/tiptap-packages.test.ts          verifies all packages installed, @blocknote absent
+tests/task-block-extension.test.ts     TaskBlockExtension schema
+tests/slash-items.test.ts              all 22 items, filter logic
+tests/slash-menu-list.test.tsx         SlashMenuList rendering + keyboard nav
+tests/columns-extension.test.ts        ColumnsExtension + ColumnExtension schema
+tests/toggle-extension.test.ts         ToggleExtension schema
+tests/keyboard-shortcuts-extension.test.ts  shortcuts + Mod-s event dispatch
+tests/bookmark-extension.test.ts       BookmarkExtension schema
+```
+
+---
+
+## KNOWN OUTSTANDING ITEMS (carry-forward, not regressions)
+
+| # | Severity | Item |
+|---|----------|------|
+| 1 | Medium | `/api/tasks/[id]` PATCH rejects `status:'archived'` (whitelist: todo\|doing\|done only). Client fires correctly. Fix: add 'archived' to route's zod enum. |
+| 2 | Low/UX | Image, Video, Audio, Bookmark use `window.prompt()` for URL input. Works, not polished. Fix: Radix Dialog with URL input. |
+| 3 | Low/UX | Toggle NodeView header shows hardcoded "Click to collapse/expand". Fix: render first child block text as summary. |
+| 4 | Low/UX | Video/Audio insert plain `<a>` links, not embedded players. Fix: custom VideoExtension + AudioExtension with HTML5 `<video>`/`<audio>`. |
+| 5 | Action | DB migration not yet run on production. Run: `npx tsx scripts/migrate-blocknote-to-tiptap.ts` |
+| 6 | Action | `git push origin main` — 7 commits ahead of origin. |
+
+---
+
+## APPSHELL KEYBOARD GUARD
+
+The global keydown handler in `AppShell.tsx` must skip single-key shortcuts
+when the user is typing in the editor. Confirm these checks are ALL present:
+
+```ts
+const target = e.target as HTMLElement
+if (
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement ||
+  target.isContentEditable ||
+  target.closest('[contenteditable]') !== null ||
+  target.closest('[data-node-view-wrapper]') !== null  // ← covers NodeView internals
+) return
+```
+
+The `[data-node-view-wrapper]` check is required for taskBlock, toggle, and
+bookmark NodeViews. Without it, pressing single-key shortcuts while inside a
+NodeView would trigger navigation.
+
+---
+
+## QA STATUS (post browser testing)
+
+Verified live in Chrome MCP + Playwright:
+
+| Feature | Status |
+|---------|--------|
+| H1/H2 Clash Display font | ✅ 32px / 24px confirmed via computed style |
+| H3 Geist Sans | ✅ |
+| Bold / Italic / Underline marks | ✅ |
+| Blockquote left border | ✅ |
+| taskBlock render | ✅ card, checkbox, title, "Open ↗" |
+| taskBlock checkbox toggle | ✅ instant, line-through, primary fill |
+| Toggle open/close | ✅ chevron rotates, content hides/shows |
+| Bookmark card | ✅ link icon, bold title, muted URL |
+| Columns layout | ✅ flex row, 2-column DOM |
+| Table 3×3 | ✅ header row styled |
+| KaTeX math E=mc² | ✅ renders correctly |
+| FloatingToolbar | ✅ 11 buttons, animates in/out |
+| Focus mode toggle | ✅ ON/OFF label updates |
+| Dark mode | ✅ all nodes adapt correctly |
+| Light mode | ✅ warm paper background |
+| onUpdate / word count | ✅ fires on every change |
+| Code block NodeView | ✅ language selector + copy button |

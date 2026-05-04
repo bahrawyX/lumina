@@ -43,7 +43,7 @@ interface DocsState {
 
   // Content
   setOpenDocContent: (doc: DocContent) => void;
-  saveContent: (id: string, content: Record<string, unknown>[], contentText: string, wordCount: number) => void;
+  saveContent: (id: string, content: Record<string, unknown>, contentText: string, wordCount: number) => void;
 
   // Inline tasks
   createInlineTask: (title: string, docId: string) => Promise<string | null>;

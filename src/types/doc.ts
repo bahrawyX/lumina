@@ -14,9 +14,9 @@ export interface DocTreeNode {
   updatedAt: string;
 }
 
-/** Full doc with content for editing. */
+/** Full doc with content for editing. Tiptap JSON shape: `{ type: 'doc', content: [...] }`. */
 export interface DocContent extends DocTreeNode {
-  content: Record<string, unknown>[] | null;
+  content: Record<string, unknown> | null;
   contentText: string;
   coverImage: string | null;
   coverGradient: number | null;
@@ -36,7 +36,7 @@ export interface CreateDocParams {
 /** Partial update for doc fields. */
 export interface DocPatch {
   title?: string;
-  content?: Record<string, unknown>[];
+  content?: Record<string, unknown>;
   contentText?: string;
   wordCount?: number;
   icon?: string | null;

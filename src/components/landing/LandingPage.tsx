@@ -15,7 +15,7 @@ import { SmoothScroll } from './SmoothScroll';
 export function LandingPage() {
   // CustomCursor is LANDING-PAGE-ONLY on purpose. The authenticated app
   // (calendar, tasks, docs, focus, goals) relies on native cursor affordances
-  // — drag handles, resize cursors, the BlockNote editor's text caret, etc.
+  // — drag handles, resize cursors, the Tiptap editor's text caret, etc.
   // Mounting the custom cursor globally overrode those and broke UX, so it
   // stays scoped here.
   return (

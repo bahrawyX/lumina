@@ -137,13 +137,12 @@ export default function DocPage() {
     }
   }, [openDocContent]);
 
-  // Editor content change. The Tiptap JSON document is a single object;
-  // saveContent's signature still expects an array (BlockNote shape). We
-  // wrap in a single-element array so the persistence layer's jsonb column
-  // round-trips intact, and the Phase 6 migration script will rewrite this.
+  // Editor content change. Tiptap stores a single root JSONContent
+  // (`{ type: 'doc', content: [...] }`) which we hand to saveContent as-is;
+  // the persistence layer drops it straight into the jsonb column.
   const handleEditorUpdate = useCallback(
     (content: JSONContent, plainText: string, words: number) => {
-      saveContent(docId, [content as Record<string, unknown>], plainText, words);
+      saveContent(docId, content as Record<string, unknown>, plainText, words);
     },
     [docId, saveContent]
   );

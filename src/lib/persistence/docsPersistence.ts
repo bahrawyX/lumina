@@ -117,7 +117,7 @@ export async function createOne(params: {
   title?: string;
   parentId?: string | null;
   icon?: string;
-  content?: Record<string, unknown>[];
+  content?: Record<string, unknown>;
   contentText?: string;
   linkedTaskId?: string | null;
   linkedEventId?: string | null;
