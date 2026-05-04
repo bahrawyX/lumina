@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGoalsStore, selectActiveGoals, resolveGoalDbId } from '@/store/useGoalsStore';
 import { Button } from '@/components/ui/button';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
 import type { Goal, GoalStatus, GoalTimeframe, GoalColor } from '@/types/goal';
 import { computeGoalProgress, formatFocusMinutes, getProgressBadge, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
 import { useRouter } from 'next/navigation';
@@ -580,23 +579,28 @@ export default function GoalsPage() {
       )}
 
       {/* Grid */}
+      {/*
+        We bypass boneyard-js's <Skeleton> wrapper here on purpose. If the
+        user has even one goal in memory we render it immediately — the
+        skeleton previously gated children on its `loading` prop, and at
+        least one prod-only edge case had it leaving the children hidden
+        even after dbHydrated flipped true (counter showed "X active · Y
+        total" but no card rendered). Defaulting to the data path removes
+        that whole class of failure: skeleton bones only show when goals
+        is genuinely empty AND we haven't hydrated yet.
+      */}
       <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
-        <Skeleton
-          name="page.GoalsPage.grid"
-          loading={!dbHydrated}
-          fallback={
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="rounded-xl border border-border/60 bg-card p-4 space-y-3 shadow-card">
-                  <SkeletonPrimitive className="h-4 w-3/4 rounded" />
-                  <SkeletonPrimitive className="h-1.5 w-full rounded-full" />
-                  <SkeletonPrimitive className="h-3 w-1/2 rounded" />
-                </div>
-              ))}
-            </div>
-          }
-        >
-        {filtered.length === 0 ? (
+        {!dbHydrated && goals.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="rounded-xl border border-border/60 bg-card p-4 space-y-3 shadow-card">
+                <SkeletonPrimitive className="h-4 w-3/4 rounded" />
+                <SkeletonPrimitive className="h-1.5 w-full rounded-full" />
+                <SkeletonPrimitive className="h-3 w-1/2 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           /* Empty state — editorial */
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <div className="text-5xl opacity-80" style={{ animation: 'float 4s ease-in-out infinite' }}>🎯</div>
@@ -644,7 +648,6 @@ export default function GoalsPage() {
             </AnimatePresence>
           </div>
         )}
-        </Skeleton>
       </div>
 
       {/* Dialogs — lazy, only mount once opened */}
