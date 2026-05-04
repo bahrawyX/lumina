@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     title?: string;
     parentId?: string | null;
     icon?: string;
-    content?: Record<string, unknown>[];
+    content?: Record<string, unknown>;
     contentText?: string;
     linkedTaskId?: string | null;
     linkedEventId?: string | null;

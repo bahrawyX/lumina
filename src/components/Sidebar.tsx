@@ -993,10 +993,23 @@ const AppSidebar: React.FC = () => {
                       <span className="relative z-10 font-sans text-sm truncate flex-1">Docs</span>
                     )}
                     {!isSidebarCollapsed && docsHydrated && sidebarDocs.filter(d => !d.isArchived).length > 0 && (
-                      <button
-                        type="button"
+                      // Span (not button) — this lives inside SidebarMenuButton which
+                      // already renders a <button>; nesting button-in-button is invalid
+                      // HTML and trips React's hydration validator.
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={docsTreeOpen ? 'Collapse docs tree' : 'Expand docs tree'}
+                        aria-expanded={docsTreeOpen}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDocsTreeOpen(!docsTreeOpen); }}
-                        className="relative z-10 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-colors"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDocsTreeOpen(!docsTreeOpen);
+                          }
+                        }}
+                        className="relative z-10 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
                         <motion.svg
                           width={10}
@@ -1012,7 +1025,7 @@ const AppSidebar: React.FC = () => {
                         >
                           <polyline points="9 18 15 12 9 6" />
                         </motion.svg>
-                      </button>
+                      </span>
                     )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>

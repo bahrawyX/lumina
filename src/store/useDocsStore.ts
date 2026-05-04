@@ -107,6 +107,8 @@ export const useDocsStore = create<DocsState>((set, get) => ({
       icon: params.icon,
       linkedTaskId: params.linkedTaskId,
       linkedEventId: params.linkedEventId,
+      content: params.content,
+      contentText: params.contentText,
     });
 
     if (res.ok === false) {

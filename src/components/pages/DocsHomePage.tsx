@@ -1,16 +1,36 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useDocsStore } from '@/store/useDocsStore';
 import { authClient } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import DocsEmptyAnimation from '@/components/docs/DocsEmptyAnimation';
+import {
+  meetingNotesContent,
+  weeklyReviewContent,
+  projectBriefContent,
+  dailyJournalContent,
+  TEMPLATE_REGISTRY,
+  type TemplateId,
+  type TiptapDoc,
+} from '@/components/docs/templates/templateContent';
+import { useTemplateData } from '@/components/docs/templates/useTemplateData';
+import { TemplateCards } from '@/components/docs/templates/TemplateCards';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+type CreateChoice = TemplateId; // 'blank' | the four template IDs
 
 export default function DocsHomePage() {
   const router = useRouter();
@@ -22,7 +42,11 @@ export default function DocsHomePage() {
   const clearSearch = useDocsStore((s) => s.clearSearch);
   const { data: session } = authClient.useSession();
 
+  const { fetchWeeklyReviewData, fetchDailyJournalData } = useTemplateData();
+
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadingTemplate, setLoadingTemplate] = useState<TemplateId | null>(null);
+  const [templatesExpanded, setTemplatesExpanded] = useState(true);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeDocs = docs.filter((d) => !d.isArchived);
@@ -43,22 +67,97 @@ export default function DocsHomePage() {
         search(value);
       }, 300);
     },
-    [search, clearSearch]
+    [search, clearSearch],
   );
 
-  const handleNewDoc = useCallback(async () => {
-    const id = await createDoc({});
-    if (id) router.push(`/docs/${id}`);
-  }, [createDoc, router]);
+  // ── Template-driven creation ───────────────────────────────────────────
+  const createFromTemplate = useCallback(
+    async (choice: CreateChoice) => {
+      setLoadingTemplate(choice);
+      try {
+        const today = format(new Date(), 'EEEE, MMMM d, yyyy');
+        let title = 'Untitled';
+        let content: TiptapDoc | null = null;
+        let icon: string | undefined;
 
-  // Greeting
+        switch (choice) {
+          case 'blank':
+            title = 'Untitled';
+            content = null;
+            break;
+          case 'meeting':
+            title = `Meeting Notes — ${format(new Date(), 'MMM d, yyyy')}`;
+            content = meetingNotesContent(today);
+            icon = '📋';
+            break;
+          case 'brief':
+            title = 'Project Brief';
+            content = projectBriefContent(today);
+            icon = '📁';
+            break;
+          case 'weekly': {
+            const data = await fetchWeeklyReviewData();
+            title = `Weekly Review — ${data.weekLabel}`;
+            content = weeklyReviewContent(
+              data.weekLabel,
+              data.completedTasks,
+              data.overdueTasks,
+              data.upcomingTasks,
+            );
+            icon = '🔄';
+            break;
+          }
+          case 'journal': {
+            const data = await fetchDailyJournalData();
+            title = `Journal — ${format(new Date(), 'MMMM d, yyyy')}`;
+            content = dailyJournalContent(today, data.todayTasks);
+            icon = '📓';
+            break;
+          }
+        }
+
+        const id = await createDoc({
+          title,
+          icon,
+          content: content ?? undefined,
+          contentText: content ? extractPlainText(content) : undefined,
+        });
+        if (!id) {
+          // useDocsStore.createDoc surfaces its own error toast on failure.
+          return;
+        }
+        router.push(`/docs/${id}`);
+      } catch (err) {
+        console.error('[createFromTemplate]', err);
+        toast.error("Couldn't create from template", {
+          description: 'Something went wrong building the template.',
+        });
+      } finally {
+        setLoadingTemplate(null);
+      }
+    },
+    [createDoc, fetchDailyJournalData, fetchWeeklyReviewData, router],
+  );
+
+  const handleSelectTemplate = useCallback(
+    (id: TemplateId) => {
+      void createFromTemplate(id);
+    },
+    [createFromTemplate],
+  );
+
+  const handleNewDocBlank = useCallback(() => {
+    void createFromTemplate('blank');
+  }, [createFromTemplate]);
+
+  // ── Greeting ───────────────────────────────────────────────────────────
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const userName = session?.user?.name?.split(' ')[0] ?? '';
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 md:px-8 py-6 max-w-3xl mx-auto w-full">
-      {/* Header — editorial */}
+      {/* Header */}
       <div className="flex items-end justify-between gap-4 mb-6 pb-5 border-b border-border/60">
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
@@ -71,13 +170,40 @@ export default function DocsHomePage() {
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <Button onClick={handleNewDoc} size="sm">
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="mr-1.5">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          New doc
-        </Button>
+
+        {/* New doc dropdown — blank or any template */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" disabled={loadingTemplate !== null}>
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="mr-1.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New doc
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="ml-1.5 opacity-70">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" sideOffset={6} className="w-56">
+            <DropdownMenuItem onClick={handleNewDocBlank}>
+              <span className="text-base leading-none mr-2">＋</span>
+              <span className="flex-1">Blank doc</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {TEMPLATE_REGISTRY.map((tpl) => (
+              <DropdownMenuItem key={tpl.id} onClick={() => handleSelectTemplate(tpl.id)}>
+                <span className="text-base leading-none mr-2">{tpl.emoji}</span>
+                <span className="flex-1">{tpl.title}</span>
+                {tpl.liveData && (
+                  <span className="text-[9px] px-1 py-0.5 rounded-full bg-primary/10 text-primary font-medium ml-2 tracking-wide">
+                    Live
+                  </span>
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Search */}
@@ -140,6 +266,39 @@ export default function DocsHomePage() {
         </div>
       )}
 
+      {/* Templates row — shown above the doc list when the user already has docs */}
+      {!searchQuery.trim() && activeDocs.length > 0 && (
+        <div className="mb-8">
+          <button
+            type="button"
+            onClick={() => setTemplatesExpanded((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+          >
+            <span>Templates</span>
+            <motion.svg
+              width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+              animate={{ rotate: templatesExpanded ? 90 : 0 }}
+              transition={{ duration: 0.12 }}
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </motion.svg>
+          </button>
+          <motion.div
+            initial={false}
+            animate={{ height: templatesExpanded ? 'auto' : 0, opacity: templatesExpanded ? 1 : 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <TemplateCards
+              loadingTemplate={loadingTemplate}
+              onSelect={handleSelectTemplate}
+              compact
+            />
+          </motion.div>
+        </div>
+      )}
+
       {/* Pinned docs */}
       {!searchQuery.trim() && pinnedDocs.length > 0 && (
         <div className="mb-8">
@@ -188,32 +347,27 @@ export default function DocsHomePage() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — animation, "blank doc" CTA, then 4 template cards */}
       {!searchQuery.trim() && activeDocs.length === 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center justify-center py-16 text-center"
+          className="flex flex-col items-center text-center py-10"
         >
           <DocsEmptyAnimation />
           <h2 className="text-lg font-medium text-foreground mb-1">Your docs live here</h2>
           <p className="text-sm text-muted-foreground mb-6 max-w-xs">
             Notes, plans, and briefs — connected to your real work.
           </p>
-          <Button onClick={handleNewDoc}>Create your first doc</Button>
-          <div className="flex gap-2 mt-4">
-            {['Meeting Notes', 'Project Brief', 'Weekly Review', 'Daily Journal'].map((name) => (
-              <button
-                key={name}
-                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted/60 transition-colors"
-                onClick={async () => {
-                  const id = await createDoc({ title: name });
-                  if (id) router.push(`/docs/${id}`);
-                }}
-              >
-                {name}
-              </button>
-            ))}
+          <Button onClick={handleNewDocBlank} disabled={loadingTemplate !== null}>
+            {loadingTemplate === 'blank' ? 'Creating…' : 'Create your first doc'}
+          </Button>
+
+          <div className="w-full mt-10 text-left">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.18em] mb-3">
+              Or start from a template
+            </p>
+            <TemplateCards loadingTemplate={loadingTemplate} onSelect={handleSelectTemplate} />
           </div>
         </motion.div>
       )}
@@ -221,8 +375,9 @@ export default function DocsHomePage() {
       {/* Mobile FAB */}
       <button
         type="button"
-        onClick={handleNewDoc}
-        className="md:hidden fixed bottom-20 right-4 z-40 bg-primary text-primary-foreground rounded-full w-14 h-14 shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
+        onClick={handleNewDocBlank}
+        disabled={loadingTemplate !== null}
+        className="md:hidden fixed bottom-20 right-4 z-40 bg-primary text-primary-foreground rounded-full w-14 h-14 shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
         aria-label="New document"
       >
         <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -232,4 +387,24 @@ export default function DocsHomePage() {
       </button>
     </div>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Walk a Tiptap doc and concatenate every text node's text. Used as the
+ * `contentText` mirror so FTS + word count are accurate from the moment
+ * the template-filled doc is created.
+ */
+function extractPlainText(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const n = node as { type?: string; text?: string; content?: unknown[] };
+  if (n.type === 'text' && typeof n.text === 'string') return n.text;
+  if (Array.isArray(n.content)) {
+    return n.content
+      .map((c) => extractPlainText(c))
+      .filter(Boolean)
+      .join(' ');
+  }
+  return '';
 }

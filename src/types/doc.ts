@@ -31,6 +31,10 @@ export interface CreateDocParams {
   template?: string;
   linkedTaskId?: string;
   linkedEventId?: string;
+  /** Pre-filled Tiptap JSON content — used by Smart Templates. */
+  content?: Record<string, unknown>;
+  /** Plain-text mirror of `content` for FTS / word count. */
+  contentText?: string;
 }
 
 /** Partial update for doc fields. */
