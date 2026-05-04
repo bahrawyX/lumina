@@ -71,6 +71,15 @@ const nextConfig = {
       },
     ];
   },
+  // Sidebar / mobile-nav label is "Insights" but the route lives at
+  // /intelligence (legacy name). Redirect /insights → /intelligence so
+  // every link or bookmark using the label-matching URL still resolves.
+  async redirects() {
+    return [
+      { source: '/insights', destination: '/intelligence', permanent: true },
+      { source: '/insights/:path*', destination: '/intelligence/:path*', permanent: true },
+    ];
+  },
 };
 
 export default withBundleAnalyzer(nextConfig);

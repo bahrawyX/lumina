@@ -422,25 +422,48 @@ const TourPrompt = ({ onStart, onDismiss }: { onStart: () => void; onDismiss: ()
 
 /* ── Floating tour trigger button (keep separate) ────────────────────────────────── */
 
-const FloatingTourButton = ({ onClick }: { onClick: () => void }) => (
-  <motion.button
-    onClick={onClick}
-    className="fixed bottom-24 right-5 z-[9980] w-10 h-10 rounded-full bg-primary/10 border border-primary/30 text-primary flex items-center justify-center shadow-md hover:bg-primary/20 transition-colors pointer-events-auto"
+const FloatingTourButton = ({
+  onClick,
+  onDismiss,
+}: {
+  onClick: () => void;
+  onDismiss: () => void;
+}) => (
+  <motion.div
+    className="fixed bottom-24 right-5 z-[9980] pointer-events-auto"
     initial={{ opacity: 0, scale: 0.8 }}
     animate={{ opacity: 1, scale: 1 }}
     exit={{ opacity: 0, scale: 0.8 }}
-    whileHover={{ scale: 1.08 }}
-    whileTap={{ scale: 0.94 }}
     transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-    title="Take a tour"
-    aria-label="Take a tour of Lumina"
   >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-      <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth={2.5} />
-    </svg>
-  </motion.button>
+    <div className="relative group">
+      <motion.button
+        onClick={onClick}
+        className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 text-primary flex items-center justify-center shadow-md hover:bg-primary/20 transition-colors"
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.94 }}
+        title="Take a tour"
+        aria-label="Take a tour of Lumina"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth={2.5} />
+        </svg>
+      </motion.button>
+      {/* Permanent dismiss — visible on hover so the trigger doesn't haunt
+          users forever once they've decided they don't want the tour. */}
+      <button
+        type="button"
+        onClick={onDismiss}
+        title="Hide tour"
+        aria-label="Hide tour permanently"
+        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-background border border-border text-muted-foreground hover:text-foreground hover:bg-muted shadow-sm flex items-center justify-center text-[10px] leading-none opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        ×
+      </button>
+    </div>
+  </motion.div>
 );
 
 /* ── Main overlay ────────────────────────────────────────────────── */
@@ -451,6 +474,9 @@ export default function TutorialOverlay() {
     hasCompletedTutorial, hasSeenPrompt,
     startTutorial, dismissPrompt,
   } = useTutorialStore();
+  // Reusing skipTutorial so the floating button can be permanently dismissed
+  // without requiring the user to walk through every step.
+  const dismissTour = skipTutorial;
 
   const step = STEPS[currentStep];
   const rawRect = useTargetRect(isActive && step ? step.target : null);
@@ -495,7 +521,7 @@ export default function TutorialOverlay() {
         {!hasSeenPrompt ? (
           <TourPrompt key="tour-prompt" onStart={startTutorial} onDismiss={dismissPrompt} />
         ) : (
-          <FloatingTourButton key="tour-btn" onClick={startTutorial} />
+          <FloatingTourButton key="tour-btn" onClick={startTutorial} onDismiss={dismissTour} />
         )}
       </AnimatePresence>
     );
