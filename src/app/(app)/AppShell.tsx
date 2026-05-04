@@ -28,6 +28,8 @@ import { GuestBanner } from "@/components/auth/GuestBanner";
 import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
+import { QuickCapture } from "@/components/quick-capture/QuickCapture";
+import { useQuickCaptureStore } from "@/store/useQuickCaptureStore";
 
 // Genuinely gated — QuickSwitcher only mounts once Cmd+K fires. The
 // other global surfaces (EventModal, TutorialOverlay, AmbientSoundDrawer,
@@ -288,6 +290,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (key === "q") {
+        e.preventDefault();
+        useQuickCaptureStore.getState().toggle();
+        return;
+      }
       if (key === "n") {
         e.preventDefault();
         openModal();
@@ -411,6 +418,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* DB hydration — fetches canonical records once on mount */}
         <PersistenceBootstrap />
         <TutorialOverlay />
+        <QuickCapture />
         <AmbientSoundDrawer />
         <FloatingAmbientPlayer />
         <PomodoroFloatingWidget />

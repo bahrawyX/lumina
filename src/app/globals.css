@@ -753,6 +753,34 @@ html.transitioning-theme *::after {
 
 /* End TIPTAP EDITOR section */
 
+/* ─────────────────────────────────────────────────────────
+   QUICK CAPTURE — global modal triggered by Q
+   ───────────────────────────────────────────────────────── */
+
+/* Subtle outer ring on the active type pill — keeps the active state
+   readable in both light and dark themes without overpowering the card. */
+.qc-pill-active {
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.3);
+}
+
+/* Backdrop blur — Safari still wants the -webkit prefix for backdrop-filter. */
+.qc-backdrop {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* Caret in the capture input. */
+.qc-input {
+  caret-color: hsl(var(--primary));
+}
+
+/* Smooth height transitions for the conditional context row. */
+.qc-context-row {
+  overflow: hidden;
+}
+
+/* End QUICK CAPTURE section */
+
 /* ── Feature showcase ───────────────────────────────────── */
 /*
  * The feature showcase uses a vertical-scroll-drives-horizontal-translation

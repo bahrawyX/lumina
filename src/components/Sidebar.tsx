@@ -31,6 +31,7 @@ import {
 import { useLuminaAuthClient } from './AuthProvider';
 import { useTutorialStore } from '../store/useTutorialStore';
 import { useDocsStore } from '../store/useDocsStore';
+import { useQuickCaptureStore } from '../store/useQuickCaptureStore';
 import type { DocTreeNode } from '@/types/doc';
 import { useAmbientStore } from '../store/useAmbientStore';
 import { useGoalsStore, selectActiveGoalCount } from '../store/useGoalsStore';
@@ -819,6 +820,34 @@ const AppSidebar: React.FC = () => {
                 {tooltipsReady && <TooltipContent side="right">Start Focus</TooltipContent>}
               </Tooltip>
             )}
+
+            {/* Quick Capture — same trigger as the Q hotkey */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => useQuickCaptureStore.getState().open()}
+                  aria-label="Quick capture (Q)"
+                  className={`w-full flex items-center gap-2.5 h-9 rounded-xl bg-transparent hover:bg-muted/60 border border-border/50 text-muted-foreground hover:text-foreground transition-colors duration-150 ease-out text-sm font-medium font-sans ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'
+                    }`}
+                >
+                  <svg width={14} height={14} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+                    <circle cx="7" cy="7" r="6" />
+                    <line x1="7" y1="4" x2="7" y2="10" />
+                    <line x1="4" y1="7" x2="10" y2="7" />
+                  </svg>
+                  {!isSidebarCollapsed && (
+                    <>
+                      <span>Quick capture</span>
+                      <kbd className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground/60">
+                        Q
+                      </kbd>
+                    </>
+                  )}
+                </button>
+              </TooltipTrigger>
+              {tooltipsReady && <TooltipContent side="right">Quick capture (Q)</TooltipContent>}
+            </Tooltip>
           </div>
         </SidebarHeader>
 
