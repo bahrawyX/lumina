@@ -35,7 +35,10 @@ export const GoalDialog: React.FC<{
   open: boolean;
   goal?: Goal | null;
   onClose: () => void;
-}> = ({ open, goal, onClose }) => {
+  /** Optional — fired after a NEW goal is created so the parent can show
+   *  the AI suggestion card. Receives the just-created (optimistic) goal. */
+  onCreated?: (goalId: string) => void;
+}> = ({ open, goal, onClose, onCreated }) => {
   const addGoal = useGoalsStore(s => s.addGoal);
   const updateGoal = useGoalsStore(s => s.updateGoal);
   const isEdit = Boolean(goal);
@@ -155,7 +158,7 @@ export const GoalDialog: React.FC<{
         endDate,
       });
     } else {
-      addGoal({
+      const created = addGoal({
         title: title.trim(),
         description: description.trim() || undefined,
         emoji,
@@ -165,6 +168,10 @@ export const GoalDialog: React.FC<{
         endDate,
         targets: validTargets,
       });
+      // Pass the optimistic id back so the parent can show AI suggestions.
+      // The parent will wait for the optimistic→UUID swap before calling
+      // /api/goals/[id]/suggest-tasks (resolveGoalDbId handles that).
+      if (created) onCreated?.(created.id);
     }
     onClose();
   }

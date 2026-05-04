@@ -136,13 +136,19 @@ export async function POST(req: NextRequest) {
     // Prefer client-sent taskTitle, but validate/fallback to DB lookup
     const rawTaskTitle = typeof body.taskTitle === 'string' && body.taskTitle.trim() ? body.taskTitle.trim() : null;
     let taskTitle: string | null = rawTaskTitle;
-    if (rawTaskId && !taskTitle) {
+    // Goal id can come from the client OR be inferred from the linked task.
+    // Inference matters because most clients won't track which goal a task
+    // belongs to — they just send taskId.
+    let resolvedGoalId: string | null =
+      typeof body.goalId === 'string' && body.goalId ? body.goalId : null;
+    if (rawTaskId && (!taskTitle || !resolvedGoalId)) {
       const [taskRow] = await db
-        .select({ title: tasks.title })
+        .select({ title: tasks.title, goalId: tasks.goalId })
         .from(tasks)
         .where(and(eq(tasks.id, rawTaskId), eq(tasks.userId, userId)))
         .limit(1);
-      taskTitle = taskRow?.title ?? null;
+      if (!taskTitle) taskTitle = taskRow?.title ?? null;
+      if (!resolvedGoalId) resolvedGoalId = taskRow?.goalId ?? null;
     }
 
     // All writes in a single transaction for atomicity
@@ -154,6 +160,7 @@ export async function POST(req: NextRequest) {
           userId,
           taskId: rawTaskId,
           taskTitle,
+          goalId: resolvedGoalId,
           startTime: startTs,
           endTime: endTs,
           durationMinutes,

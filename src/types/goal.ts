@@ -31,6 +31,15 @@ export interface Goal {
   targets: GoalTarget[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * Live, server-computed progress fields populated by GET /api/goals from
+   * the linked tasks + focus sessions. Optional because they aren't stored
+   * — the client only sees them after hydration.
+   */
+  progress?: number;
+  taskCount?: number;
+  completedTaskCount?: number;
+  focusMinutes?: number;
 }
 
 /** Compute progress (0–100) for a single target. */
@@ -55,9 +64,33 @@ export function computeTargetProgress(target: GoalTarget): number {
 
 /** Compute overall goal progress (0–100) = average of target progress. */
 export function computeGoalProgress(goal: Goal): number {
+  // Prefer the server-computed task-based percentage when the goal has
+  // linked tasks — that's the canonical Goal-Driven Work signal. Fall
+  // back to the manual target average for legacy / target-only goals.
+  if (typeof goal.progress === 'number' && (goal.taskCount ?? 0) > 0) {
+    return goal.progress;
+  }
   if (goal.targets.length === 0) return 0;
   const sum = goal.targets.reduce((acc, t) => acc + computeTargetProgress(t), 0);
   return Math.round(sum / goal.targets.length);
+}
+
+/** Format focused minutes as "Xh Ym" / "Y min". Returns null at 0. */
+export function formatFocusMinutes(minutes: number | undefined): string | null {
+  if (!minutes || minutes <= 0) return null;
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/** Status badge keyed off the live progress percentage. */
+export type GoalProgressBadge = 'in-progress' | 'almost' | 'complete' | null;
+export function getProgressBadge(progress: number): GoalProgressBadge {
+  if (progress >= 100) return 'complete';
+  if (progress > 75) return 'almost';
+  if (progress >= 25) return 'in-progress';
+  return null;
 }
 
 /** Color name → Tailwind class mappings */

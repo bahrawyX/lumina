@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
       linkedEventId: row.linkedEventId ?? null,
       parentTaskId: row.parentTaskId ?? null,
       depth: row.depth ?? 0,
+      goalId: row.goalId ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId } = body as {
+  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId, goalId } = body as {
     title?: string;
     description?: string;
     status?: string;
@@ -96,6 +97,7 @@ export async function POST(req: NextRequest) {
     linkedEventId?: string | null;
     linkedDocId?: string | null;
     parentTaskId?: string | null;
+    goalId?: string | null;
   };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -146,6 +148,7 @@ export async function POST(req: NextRequest) {
         linkedDocId: typeof linkedDocId === 'string' && linkedDocId.trim() ? linkedDocId : null,
         parentTaskId: resolvedParentTaskId,
         depth: resolvedDepth,
+        goalId: typeof goalId === 'string' && goalId.trim() ? goalId : null,
       })
       .returning({ id: tasks.id });
 

@@ -24,6 +24,8 @@ export interface Task {
   parentTaskId?: string | null;
   /** Nesting depth: 0 = root, 1 = subtask, 2 = sub-subtask. */
   depth?: number;
+  /** Optional FK to the parent goal — links the task into the Goal-Driven Work loop. */
+  goalId?: string | null;
 }
 
 export interface Column {

@@ -2,12 +2,14 @@
 
 import React, { useMemo, useState, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useGoalsStore, selectActiveGoals } from '@/store/useGoalsStore';
+import { useGoalsStore, selectActiveGoals, resolveGoalDbId } from '@/store/useGoalsStore';
 import { Button } from '@/components/ui/button';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
 import type { Goal, GoalStatus, GoalTimeframe, GoalColor } from '@/types/goal';
-import { computeGoalProgress, computeTargetProgress, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
+import { computeGoalProgress, formatFocusMinutes, getProgressBadge, GOAL_COLOR_MAP, TIMEFRAME_LABELS } from '@/types/goal';
+import { useRouter } from 'next/navigation';
+import confetti from 'canvas-confetti';
 // Dialog + sheet are only mounted after user interaction — lazy-load keeps
 // them out of the initial /goals bundle.
 const GoalDetailSheet = lazy(() =>
@@ -15,6 +17,9 @@ const GoalDetailSheet = lazy(() =>
 );
 const GoalDialog = lazy(() =>
   import('@/components/goals/GoalDialog').then(m => ({ default: m.GoalDialog })),
+);
+const GoalSuggestionCard = lazy(() =>
+  import('@/components/goals/GoalSuggestionCard').then(m => ({ default: m.GoalSuggestionCard })),
 );
 import {
   DropdownMenu,
@@ -51,7 +56,8 @@ const GoalCard: React.FC<{
   onComplete: (goal: Goal) => void;
   onArchive: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
-}> = React.memo(({ goal, onSelect, onEdit, onComplete, onArchive, onDelete }) => {
+  onViewTasks: (goal: Goal) => void;
+}> = React.memo(({ goal, onSelect, onEdit, onComplete, onArchive, onDelete, onViewTasks }) => {
   const progress = computeGoalProgress(goal);
   const colors = GOAL_COLOR_MAP[goal.color as GoalColor] ?? GOAL_COLOR_MAP.blue;
   const endDate = new Date(goal.endDate);
@@ -335,10 +341,49 @@ const GoalCard: React.FC<{
         </div>
       )}
 
+      {/* Goal-Driven Work summary — shown only when the goal has linked tasks */}
+      {(goal.taskCount ?? 0) > 0 && (
+        <div className="flex items-center justify-between gap-2 mt-1 mb-2 pt-2 border-t border-border/30">
+          <p className="text-[11px] text-muted-foreground tabular-nums">
+            <span className="text-foreground font-medium">{goal.completedTaskCount ?? 0}</span>
+            <span className="text-muted-foreground/70"> of </span>
+            <span className="text-foreground font-medium">{goal.taskCount}</span>
+            <span> tasks complete</span>
+            {formatFocusMinutes(goal.focusMinutes) && (
+              <>
+                <span className="text-muted-foreground/40 mx-1.5">·</span>
+                <span className="text-foreground font-medium">{formatFocusMinutes(goal.focusMinutes)}</span>
+                <span> focused</span>
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onViewTasks(goal); }}
+            className="text-[11px] font-medium text-primary hover:text-primary/80 transition-colors flex-shrink-0 whitespace-nowrap"
+          >
+            View tasks ↗
+          </button>
+        </div>
+      )}
+
       {/* Footer */}
-      <p className={`text-[11px] font-medium ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>
-        {isOverdue ? 'Overdue' : daysLeft === 0 ? 'Ends today' : daysLeft === 1 ? '1 day left' : `${daysLeft} days left`}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className={`text-[11px] font-medium ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>
+          {isOverdue ? 'Overdue' : daysLeft === 0 ? 'Ends today' : daysLeft === 1 ? '1 day left' : `${daysLeft} days left`}
+        </p>
+        {(() => {
+          const badge = getProgressBadge(progress);
+          if (!badge) return null;
+          if (badge === 'complete') {
+            return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500">Complete 🎉</span>;
+          }
+          if (badge === 'almost') {
+            return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-500">Almost there!</span>;
+          }
+          return <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">In progress</span>;
+        })()}
+      </div>
     </motion.div>
   );
 });
@@ -361,6 +406,7 @@ const TIMEFRAME_TABS: { value: GoalTimeframe | 'all'; label: string }[] = [
 ];
 
 export default function GoalsPage() {
+  const router = useRouter();
   const goals = useGoalsStore(s => s.goals);
   const dbHydrated = useGoalsStore(s => s.dbHydrated);
   const updateGoal = useGoalsStore(s => s.updateGoal);
@@ -374,6 +420,54 @@ export default function GoalsPage() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [showGoalTrophy, setShowGoalTrophy] = useState(false);
+  // Goal IDs we've offered AI suggestions for in this session. The dialog
+  // hands us the optimistic id (`goal_xxx`); we resolve it to the real
+  // server UUID before the suggestion card mounts so /api/goals/[id]/...
+  // hits an existing row.
+  const [pendingSuggestionFor, setPendingSuggestionFor] = useState<string | null>(null);
+  const [resolvedSuggestionGoalId, setResolvedSuggestionGoalId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!pendingSuggestionFor) {
+      setResolvedSuggestionGoalId(null);
+      return;
+    }
+    let cancelled = false;
+    void resolveGoalDbId(pendingSuggestionFor).then((real) => {
+      if (cancelled) return;
+      setResolvedSuggestionGoalId(real);
+    });
+    return () => { cancelled = true; };
+  }, [pendingSuggestionFor]);
+
+  const suggestionGoal = resolvedSuggestionGoalId
+    ? goals.find((g) => g.id === resolvedSuggestionGoalId) ?? null
+    : null;
+
+  // Goal-completion confetti — fires once per goal when its server-computed
+  // progress crosses to 100%. We track which goals already celebrated so a
+  // re-render or re-fetch doesn't re-fire confetti.
+  const celebratedRef = useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    for (const g of goals) {
+      if (g.status !== 'active') continue;
+      if ((g.taskCount ?? 0) === 0) continue;
+      if ((g.progress ?? 0) < 100) continue;
+      if (celebratedRef.current.has(g.id)) continue;
+      celebratedRef.current.add(g.id);
+      // Center burst — keep it brief so it doesn't grab attention forever.
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { x: 0.5, y: 0.45 },
+        ticks: 200,
+      });
+    }
+  }, [goals]);
+
+  const handleViewTasks = (goal: Goal) => {
+    router.push(`/tasks?goal=${goal.id}`);
+  };
 
   const filtered = useMemo(() => {
     return goals
@@ -471,6 +565,20 @@ export default function GoalsPage() {
         </div>
       </div>
 
+      {/* AI task suggestion card — shown above the grid for the goal that
+          was just created. Mounts only after the optimistic id resolves to
+          a real UUID, otherwise the suggestion endpoint would 404. */}
+      {suggestionGoal && (
+        <div className="flex-shrink-0 mb-2">
+          <Suspense fallback={null}>
+            <GoalSuggestionCard
+              goal={suggestionGoal}
+              onDismiss={() => { setPendingSuggestionFor(null); setResolvedSuggestionGoalId(null); }}
+            />
+          </Suspense>
+        </div>
+      )}
+
       {/* Grid */}
       <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
         <Skeleton
@@ -529,6 +637,7 @@ export default function GoalsPage() {
                     onComplete={handleComplete}
                     onArchive={handleArchive}
                     onDelete={handleDelete}
+                    onViewTasks={handleViewTasks}
                   />
                 </motion.div>
               ))}
@@ -545,6 +654,7 @@ export default function GoalsPage() {
             open={dialogOpen}
             goal={editingGoal}
             onClose={() => { setDialogOpen(false); setEditingGoal(null); }}
+            onCreated={(goalId) => setPendingSuggestionFor(goalId)}
           />
         )}
       </Suspense>

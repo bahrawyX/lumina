@@ -84,6 +84,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     else if (typeof body.linkedEventId === 'string' && body.linkedEventId.trim()) {
       patch.linkedEventId = body.linkedEventId;
     }
+    if (body.goalId === null) patch.goalId = null;
+    else if (typeof body.goalId === 'string' && body.goalId.trim()) {
+      patch.goalId = body.goalId;
+    }
 
     await db
       .update(tasks)

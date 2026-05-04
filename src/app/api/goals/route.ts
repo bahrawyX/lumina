@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { goals, goalTargets } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { goals, goalTargets, tasks, focusSessions } from '@/db/schema';
+import { eq, inArray, sum, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
 
@@ -67,22 +67,75 @@ export async function GET(req: NextRequest) {
       targetMap.set(t.goalId, arr);
     });
 
+    // ── Live progress: count tasks + sum focus minutes per goal in two
+    // grouped queries. Cheap (one row per goal at most) and avoids N+1.
+    const taskStats = new Map<string, { total: number; completed: number; focusMinutes: number }>();
+    if (goalIds.length > 0) {
+      const taskAgg = await db
+        .select({
+          goalId: tasks.goalId,
+          status: tasks.status,
+          total: sql<number>`count(*)::int`,
+          // Focus minutes attributed via the task itself: estimated minus
+          // remaining. NULL remainingFocusTime → no time logged yet.
+          focusedTotal: sql<number>`coalesce(sum(${tasks.estimatedMinutes} - coalesce(${tasks.remainingFocusTime}, ${tasks.estimatedMinutes})), 0)::int`,
+        })
+        .from(tasks)
+        .where(inArray(tasks.goalId, goalIds))
+        .groupBy(tasks.goalId, tasks.status);
+      for (const row of taskAgg) {
+        if (!row.goalId) continue;
+        const cur = taskStats.get(row.goalId) ?? { total: 0, completed: 0, focusMinutes: 0 };
+        cur.total += row.total;
+        cur.focusMinutes += row.focusedTotal;
+        if (row.status === 'done') cur.completed += row.total;
+        taskStats.set(row.goalId, cur);
+      }
+
+      // Plus any focus_sessions logged directly against the goal (e.g. via
+      // a future "focus on this goal without a task" flow).
+      const sessAgg = await db
+        .select({ goalId: focusSessions.goalId, total: sum(focusSessions.durationMinutes).mapWith(Number) })
+        .from(focusSessions)
+        .where(inArray(focusSessions.goalId, goalIds))
+        .groupBy(focusSessions.goalId);
+      for (const row of sessAgg) {
+        if (!row.goalId) continue;
+        const cur = taskStats.get(row.goalId) ?? { total: 0, completed: 0, focusMinutes: 0 };
+        cur.focusMinutes += Number(row.total ?? 0);
+        taskStats.set(row.goalId, cur);
+      }
+    }
+
     const mapped = goalRows
       .filter(g => !statusFilter || g.status === statusFilter)
-      .map(row => ({
-        id: row.id,
-        title: row.title,
-        description: row.description ?? undefined,
-        emoji: row.emoji ?? undefined,
-        color: row.color ?? undefined,
-        status: row.status,
-        timeframe: row.timeframe,
-        startDate: row.startDate.toISOString().slice(0, 10),
-        endDate: row.endDate.toISOString().slice(0, 10),
-        targets: (targetMap.get(row.id) ?? []).map(mapTarget),
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      }));
+      .map(row => {
+        const stats = taskStats.get(row.id) ?? { total: 0, completed: 0, focusMinutes: 0 };
+        const progress = stats.total > 0
+          ? Math.round((stats.completed / stats.total) * 100)
+          : 0;
+        return {
+          id: row.id,
+          title: row.title,
+          description: row.description ?? undefined,
+          emoji: row.emoji ?? undefined,
+          color: row.color ?? undefined,
+          status: row.status,
+          timeframe: row.timeframe,
+          startDate: row.startDate.toISOString().slice(0, 10),
+          endDate: row.endDate.toISOString().slice(0, 10),
+          targets: (targetMap.get(row.id) ?? []).map(mapTarget),
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+          // Live, server-computed progress fields. None of these are
+          // persisted — they're recomputed every GET so they always
+          // reflect the current task board state.
+          progress,
+          taskCount: stats.total,
+          completedTaskCount: stats.completed,
+          focusMinutes: stats.focusMinutes,
+        };
+      });
 
     return NextResponse.json(mapped);
   } catch (err) {

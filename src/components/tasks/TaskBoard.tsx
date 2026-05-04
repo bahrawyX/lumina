@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   DndContext,
   DragEndEvent,
@@ -20,6 +20,7 @@ import { motion } from 'framer-motion';
 import { useCalendarStore } from '../../store/useCalendarStore';
 import { useCalendarEventsStore } from '../../store/useCalendarEventsStore';
 import { useTaskBoardStore } from '../../store/useTaskBoardStore';
+import { useGoalsStore } from '../../store/useGoalsStore';
 import type { CalendarEvent } from '../../types';
 import type { Task, TaskPriority, TaskStatus, TaskDifficulty } from '../../types/task';
 import { COLUMNS } from '../../types/task';
@@ -178,10 +179,34 @@ export const TaskBoard: React.FC = () => {
   const dueDateFilter = useTaskBoardStore(s => s.dueDateFilter);
   const filtersActive = hasActiveFilters(searchQuery, priorityFilter, difficultyFilter, dueDateFilter);
 
+  // Goal filter (?goal=<uuid>) — Goal-Driven Work uses this to scope the
+  // board to a single goal's tasks when the user clicks "View tasks ↗" on
+  // a goal card. Cleared by stripping the param from the URL.
+  const goalFilterRouter = useRouter();
+  const searchParams = useSearchParams();
+  const goalIdFilter = searchParams?.get('goal') ?? null;
+  // Subscribe to the stable goals array (Zustand returns the same reference
+  // unless the array changes), then derive the matched goal in render —
+  // a selector that returns `find()` on every snapshot trips React's
+  // useSyncExternalStore loop guard.
+  const allGoalsForFilter = useGoalsStore(s => s.goals);
+  const goalForFilter = goalIdFilter
+    ? allGoalsForFilter.find(g => g.id === goalIdFilter) ?? null
+    : null;
+  const clearGoalFilter = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    params.delete('goal');
+    const qs = params.toString();
+    goalFilterRouter.replace(`/tasks${qs ? `?${qs}` : ''}`);
+  }, [goalFilterRouter, searchParams]);
+
   // Only root tasks (no parent) appear in kanban columns, with filters applied
   const columnTasks = useMemo<Record<TaskStatus, Task[]>>(() => {
     const map: Record<TaskStatus, Task[]> = { todo: [], doing: [], done: [] };
-    const rootTasks = tasks.filter(t => !t.parentTaskId);
+    let rootTasks = tasks.filter(t => !t.parentTaskId);
+    if (goalIdFilter) {
+      rootTasks = rootTasks.filter(t => t.goalId === goalIdFilter);
+    }
     const filtered = filtersActive
       ? filterTasks(rootTasks, tasks, searchQuery, priorityFilter, difficultyFilter, dueDateFilter)
       : rootTasks;
@@ -190,7 +215,7 @@ export const TaskBoard: React.FC = () => {
     map.doing = map.doing.sort((a, b) => a.order - b.order);
     map.done  = map.done.sort((a, b) => a.order - b.order);
     return map;
-  }, [tasks, filtersActive, searchQuery, priorityFilter, difficultyFilter, dueDateFilter]);
+  }, [tasks, filtersActive, searchQuery, priorityFilter, difficultyFilter, dueDateFilter, goalIdFilter]);
 
   // Totals for results count line
   const totalRootTasks = useMemo(() => tasks.filter(t => !t.parentTaskId).length, [tasks]);
@@ -721,6 +746,23 @@ export const TaskBoard: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Goal-Driven Work filter banner — appears when ?goal=<uuid> is set */}
+      {goalIdFilter && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-xs flex-shrink-0">
+          <span className="text-primary">🎯</span>
+          <span className="text-foreground">
+            Showing tasks for: <span className="font-semibold">{goalForFilter?.title ?? 'this goal'}</span>
+          </span>
+          <button
+            type="button"
+            onClick={clearGoalFilter}
+            className="ml-auto text-[11px] font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            × Clear filter
+          </button>
+        </div>
+      )}
+
       {/* Board header — editorial */}
       <div className="flex items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0" data-tutorial="task-board-header">
         <div className="min-w-0">

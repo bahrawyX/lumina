@@ -12,6 +12,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { users } from './users';
+import { goals } from './goals';
 
 export const taskStatusEnum = pgEnum('task_status', [
   'todo',
@@ -50,6 +51,8 @@ export const tasks = pgTable(
     remainingFocusTime: integer('remaining_focus_time'),
     linkedEventId: uuid('linked_event_id'),
     linkedDocId: uuid('linked_doc_id'),
+    /** Optional FK to the parent goal for the Goal-Driven Work loop. */
+    goalId: uuid('goal_id').references(() => goals.id, { onDelete: 'set null' }),
     /** Self-referential FK for subtask hierarchy. NULL = root task. */
     parentTaskId: uuid('parent_task_id'),
     /** Nesting depth: 0 = root, 1 = subtask, 2 = sub-subtask. Max 2. */
@@ -62,6 +65,7 @@ export const tasks = pgTable(
     index('tasks_status_idx').on(table.status),
     index('tasks_linked_event_id_idx').on(table.linkedEventId),
     index('tasks_parent_task_id_idx').on(table.parentTaskId),
+    index('tasks_goal_id_idx').on(table.goalId),
     foreignKey({
       columns: [table.parentTaskId],
       foreignColumns: [table.id],

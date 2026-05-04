@@ -1121,6 +1121,9 @@ const AppSidebar: React.FC = () => {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Goals widget — keeps active goals visible during daily work */}
+          <SidebarGoalsWidget collapsed={isSidebarCollapsed} />
         </SidebarContent>
 
         {/* ── Utility actions ───────────────────────────────────── */}
@@ -1694,6 +1697,68 @@ const SidebarDocsInlineTree: React.FC<{ docs: DocTreeNode[] }> = ({ docs }) => {
         <InlineDocItem key={node.id} node={node as TreeNode} depth={0} />
       ))}
     </div>
+  );
+};
+
+// ── SidebarGoalsWidget ───────────────────────────────────────────────────────
+// Keeps the user's active goals + live progress visible while working.
+// Hidden entirely when there are no active goals — no chrome until earned.
+
+const SidebarGoalsWidget: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
+  const router = useRouter();
+  // Subscribe to the stable goals array — deriving (filter+sort) inside the
+  // selector returns a fresh array on every snapshot and triggers React's
+  // useSyncExternalStore "getSnapshot not cached" infinite-loop warning.
+  const allGoals = useGoalsStore(s => s.goals);
+  const activeGoals = React.useMemo(
+    () => allGoals
+      .filter((g) => g.status === 'active')
+      .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime()),
+    [allGoals],
+  );
+  if (collapsed) return null;
+  if (activeGoals.length === 0) return null;
+  return (
+    <SidebarGroup className="px-2 mt-1">
+      <SidebarGroupLabel className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50 px-2 mb-1">
+        Goals
+      </SidebarGroupLabel>
+      <div className="space-y-1.5 px-2">
+        {activeGoals.slice(0, 4).map((goal) => {
+          const progress = typeof goal.progress === 'number' && (goal.taskCount ?? 0) > 0
+            ? goal.progress
+            : Math.round(
+                goal.targets.length > 0
+                  ? goal.targets.reduce((acc, t) => {
+                      const pct = t.targetValue > 0 ? (t.currentValue / t.targetValue) * 100 : 0;
+                      return acc + Math.min(100, Math.max(0, pct));
+                    }, 0) / goal.targets.length
+                  : 0,
+              );
+          const truncated = goal.title.length > 18 ? `${goal.title.slice(0, 17)}…` : goal.title;
+          return (
+            <button
+              key={goal.id}
+              type="button"
+              onClick={() => router.push(`/tasks?goal=${goal.id}`)}
+              title={`${goal.title} — ${progress}%`}
+              className="group w-full text-left rounded-lg px-2 py-1 hover:bg-muted/40 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[12px] text-foreground truncate flex-1">{truncated}</span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/70 flex-shrink-0">{progress}%</span>
+              </div>
+              <div className="h-1 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${progress >= 100 ? 'bg-emerald-400' : 'bg-primary'}`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </SidebarGroup>
   );
 };
 
