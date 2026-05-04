@@ -703,7 +703,12 @@ const AppSidebar: React.FC = () => {
         collapsed: { width: '72px' },
       }}
       transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-      className="relative hidden lg:flex flex-col h-full bg-background border-r border-border/60 z-40 "
+      // Visibility is controlled by the parent wrapper in AppShell — desktop
+      // shows it inside `hidden md:flex`, mobile shows it inside the drawer.
+      // Width is animated by the variants above (288px expanded / 72px
+      // collapsed). The inner Sidebar must NOT be its own visibility gate or
+      // it would never render in the mobile drawer overlay.
+      className="relative flex flex-col h-full bg-background border-r border-border/60 z-40"
     >
       {/* Collapse toggle */}
       <Button

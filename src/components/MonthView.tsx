@@ -267,16 +267,22 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
 
   return (
     <CalendarSurface role="grid">
-      <div className={`grid grid-cols-7 ${HEADER_CLS}`}>
-        {DAYS.map((day) => (
-          <div
-            key={day}
-            className={`py-2.5 text-center ${WEEKDAY_LABEL_CLS}`}
-          >
-            {day}
+      {/* Wrap in a horizontally-scrollable container with a min-width so
+          all 7 columns stay readable below ~1100px (laptop with sidebar +
+          mobile). The header row sits inside the same scroller so the
+          weekday labels stay aligned with their columns when scrolled. */}
+      <div className="calendar-scroll-container flex-1 min-h-0 flex flex-col overflow-x-auto overflow-y-hidden">
+        <div className="min-w-[700px] flex-1 flex flex-col min-h-0">
+          <div className={`grid grid-cols-7 ${HEADER_CLS}`}>
+            {DAYS.map((day) => (
+              <div
+                key={day}
+                className={`py-2.5 text-center ${WEEKDAY_LABEL_CLS}`}
+              >
+                {day}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
       <div className="flex-1 min-h-0 h-full overflow-hidden">
         <div
@@ -293,6 +299,8 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
               onDrop={handleDrop}
             />
           ))}
+        </div>
+      </div>
         </div>
       </div>
     </CalendarSurface>

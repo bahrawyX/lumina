@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense, lazy } from "react";
+import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -199,9 +199,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // user can interact with whatever has hydrated. Hard cap on UX wait time.
   const [hydrationTimeoutFired, setHydrationTimeoutFired] = useState(false);
   useEffect(() => {
+    if (hydrationTimeoutFired) return;
     const t = setTimeout(() => setHydrationTimeoutFired(true), 3000);
     return () => clearTimeout(t);
-  }, []);
+  }, [hydrationTimeoutFired]);
   const allHydrated = (eventsHydrated && tasksHydrated && focusHydrated) || hydrationTimeoutFired;
   const router = useRouter();
   const pathname = usePathname();
@@ -217,14 +218,53 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const setCurrentDate       = useCalendarStore((s) => s.setCurrentDate);
   const setView              = useCalendarStore((s) => s.setView);
   const setTab               = useCalendarStore((s) => s.setTab);
+  const setSidebarCollapsed  = useCalendarStore((s) => s.setSidebarCollapsed);
   const undo = useCalendarEventsStore((s) => s.undo);
   const redo = useCalendarEventsStore((s) => s.redo);
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  // Mobile sidebar drawer — completely separate state from the desktop
+  // collapsed/expanded toggle. Closes automatically on route change.
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // ── Auto-collapse the desktop sidebar at narrow laptop widths ────────────
+  // Laptop band (1024-1399px): the calendar / kanban / planner all overflow
+  // when the sidebar takes 288px, so collapse to icon mode (72px) for room.
+  // Drawer band (<1024px): the sidebar is hidden behind the hamburger; force
+  // it expanded so when the drawer opens it shows full nav, not the icon
+  // strip. Wide band (≥1400px): expand if WE auto-collapsed it (never
+  // overriding a deliberate chevron click is enforced by wasAutoCollapsedRef).
+  const wasAutoCollapsedRef = useRef(false);
+  useEffect(() => {
+    const checkWidth = () => {
+      const w = window.innerWidth;
+      const isDrawer = w < 1024;
+      const isLaptop = w >= 1024 && w < 1400;
+      const collapsed = useCalendarStore.getState().isSidebarCollapsed;
+
+      if (isDrawer && collapsed) {
+        // Drawer band — the slide-in sidebar should show full nav.
+        wasAutoCollapsedRef.current = false;
+        setSidebarCollapsed(false);
+      } else if (isLaptop && !collapsed) {
+        wasAutoCollapsedRef.current = true;
+        setSidebarCollapsed(true);
+      } else if (!isDrawer && !isLaptop && collapsed && wasAutoCollapsedRef.current) {
+        wasAutoCollapsedRef.current = false;
+        setSidebarCollapsed(false);
+      }
+    };
+    checkWidth();
+    window.addEventListener('resize', checkWidth);
+    return () => window.removeEventListener('resize', checkWidth);
+  }, [setSidebarCollapsed]);
 
   // Close the "More" sheet on route change
   useEffect(() => { setMobileMoreOpen(false); }, [pathname]);
+  // Close the mobile sidebar drawer on route change too — tapping a nav item
+  // in the drawer should navigate AND dismiss the overlay.
+  useEffect(() => { setMobileSidebarOpen(false); }, [pathname]);
 
   useOutlookSync();
 
@@ -365,15 +405,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* Hydration loading overlay */}
-      <AnimatePresence>
-        {onboardingCompleted && !allHydrated && (
-          <motion.div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-background"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-          >
+      {/* Hydration loading overlay — plain conditional render. We previously
+          wrapped this in <AnimatePresence> with an `exit` opacity tween, but
+          in some Framer Motion + React 19 + Strict-Mode combinations the
+          exit phase never finalizes after a state-driven unmount, leaving
+          the overlay pinned at opacity:1 forever. A direct unmount avoids
+          that whole class of failure — the overlay disappears in one frame
+          the moment allHydrated flips. */}
+      {onboardingCompleted && !allHydrated && (
+        <motion.div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-background"
+        >
             <div className="flex flex-col items-center gap-5">
               {/* Elegant spinning ring loader */}
               <div className="relative w-10 h-10">
@@ -402,16 +444,67 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
 
       <div
         className="flex h-screen w-full bg-background overflow-hidden text-foreground antialiased"
         style={{ animation: 'appShellFadeIn 0.4s cubic-bezier(0.4,0,0.2,1) both' }}
       >
-        <div className="hidden md:flex md:h-full">
+        <div className="hidden lg:flex lg:h-full">
           <Sidebar />
         </div>
+
+        {/* Mobile / tablet sidebar drawer — slides in from the left under a
+            backdrop. Hidden entirely on lg+ (the desktop sidebar above takes
+            over). Always mounted; visibility + slide are driven by `animate`
+            against `mobileSidebarOpen`. We avoid <AnimatePresence> here for
+            the same reason as the hydration overlay above — exit phases get
+            stuck under React 19 + Strict Mode and the drawer would never
+            unmount. pointer-events:none when closed prevents the off-screen
+            panel from intercepting clicks. */}
+        <div
+          className="lg:hidden fixed inset-0 z-[55] bg-black/50 transition-opacity duration-150"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-hidden="true"
+          style={{
+            opacity: mobileSidebarOpen ? 1 : 0,
+            pointerEvents: mobileSidebarOpen ? 'auto' : 'none',
+          }}
+        />
+        <div
+          role="dialog"
+          aria-label="Navigation menu"
+          aria-modal={mobileSidebarOpen}
+          aria-hidden={!mobileSidebarOpen}
+          className="lg:hidden fixed left-0 top-0 bottom-0 z-[60] w-[288px] flex transition-transform duration-300 ease-out"
+          style={{
+            transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+            pointerEvents: mobileSidebarOpen ? 'auto' : 'none',
+          }}
+        >
+          <Sidebar />
+        </div>
+
         <main className="flex-1 flex flex-col min-w-0 transition-all duration-500 overflow-y-auto no-scrollbar relative">
+          {/* Tablet/mobile top bar with hamburger — gives access to the full
+              sidebar (docs tree, contexts, profile) at widths where the
+              desktop sidebar is hidden and the bottom nav only covers the
+              5 primary destinations. */}
+          <div className="lg:hidden sticky top-0 z-30 flex items-center gap-2 px-3 py-2 bg-background/85 backdrop-blur-md border-b border-border/50">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open navigation menu"
+              className="flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-lg hover:bg-muted transition-colors"
+            >
+              <svg width={18} height={18} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round">
+                <line x1="2" y1="4" x2="16" y2="4" />
+                <line x1="2" y1="9" x2="16" y2="9" />
+                <line x1="2" y1="14" x2="16" y2="14" />
+              </svg>
+            </button>
+            <span className="font-logo text-base font-semibold text-foreground tracking-tight">Lumina</span>
+          </div>
+
           <GuestBanner />
           <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 relative">
             <PageTransition>{children}</PageTransition>

@@ -781,6 +781,25 @@ html.transitioning-theme *::after {
 
 /* End QUICK CAPTURE section */
 
+/* ─────────────────────────────────────────────────────────
+   CALENDAR — horizontal-scroll affordances
+   ───────────────────────────────────────────────────────── */
+
+/* Thin, theme-coloured scrollbar so the calendar's overflow-x feels native
+   instead of bolting a chunky default scrollbar onto the editorial chrome. */
+.calendar-scroll-container::-webkit-scrollbar { height: 3px; }
+.calendar-scroll-container::-webkit-scrollbar-track { background: transparent; }
+.calendar-scroll-container::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+.calendar-scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+/* End CALENDAR section */
+
 /* ── Feature showcase ───────────────────────────────────── */
 /*
  * The feature showcase uses a vertical-scroll-drives-horizontal-translation
