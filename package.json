@@ -88,6 +88,7 @@
     "tailwind-merge": "^3.5.0",
     "tippy.js": "6.3.7",
     "web-push": "^3.6.7",
+    "ws": "^8.20.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
@@ -103,6 +104,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/ui": "^4.1.4",
     "autoprefixer": "^10.4.27",
