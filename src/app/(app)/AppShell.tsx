@@ -194,7 +194,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
-  const allHydrated = eventsHydrated && tasksHydrated && focusHydrated;
+  // Safety-net: even if a hydration fetch hangs (slow network, never-resolving
+  // promise), the global z-9999 overlay must dismiss within 3 seconds so the
+  // user can interact with whatever has hydrated. Hard cap on UX wait time.
+  const [hydrationTimeoutFired, setHydrationTimeoutFired] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setHydrationTimeoutFired(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+  const allHydrated = (eventsHydrated && tasksHydrated && focusHydrated) || hydrationTimeoutFired;
   const router = useRouter();
   const pathname = usePathname();
 

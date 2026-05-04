@@ -225,29 +225,31 @@ export default function PersistenceBootstrap() {
               // Keep local persisted settings if DB prefs are unavailable.
             }),
 
+      // ── Hydration catches: ALWAYS flip dbHydrated to true on failure ──
+      // The previous `if (isDev)` guards left the global hydration overlay
+      // (AppShell.tsx z-[9999] flex items-center justify-center bg-background)
+      // stuck forever in production whenever any of the three required fetches
+      // (events, tasks, focus) failed silently — the user couldn't even see
+      // the page underneath. dbHydrated reaching `true` after a failed fetch
+      // is correct: it means "we tried, it didn't work, render with empty
+      // state instead of blocking forever".
       eventsHydrated
         ? Promise.resolve()
         : eventsPersistence.fetchAllForCurrentUser()
             .then((events) => hydrateEvents(events as any))
-            .catch(() => {
-              if (isDev) hydrateEventsFailed();
-            }),
+            .catch(() => hydrateEventsFailed()),
 
       tasksHydrated
         ? Promise.resolve()
         : tasksPersistence.fetchAllForCurrentUser()
             .then((tasks) => hydrateTasks(tasks))
-            .catch(() => {
-              if (isDev) hydrateTasksFailed();
-            }),
+            .catch(() => hydrateTasksFailed()),
 
       focusHydrated
         ? Promise.resolve()
         : focusPersistence.fetchAllForCurrentUser()
             .then((sessions) => hydrateFocus(sessions))
-            .catch(() => {
-              if (isDev) hydrateFocusFailed();
-            }),
+            .catch(() => hydrateFocusFailed()),
 
       plannerHydrated
         ? Promise.resolve()
@@ -261,25 +263,19 @@ export default function PersistenceBootstrap() {
         ? Promise.resolve()
         : docsPersistence.fetchAll()
             .then((docs) => hydrateDocs(docs))
-            .catch(() => {
-              if (isDev) hydrateDocsFailed();
-            }),
+            .catch(() => hydrateDocsFailed()),
 
       goalsHydrated
         ? Promise.resolve()
         : goalsPersistence.fetchAllForCurrentUser()
             .then((goals) => hydrateGoals(goals))
-            .catch(() => {
-              if (isDev) hydrateGoalsFailed();
-            }),
+            .catch(() => hydrateGoalsFailed()),
 
       coinsHydrated
         ? Promise.resolve()
         : coinsPersistence.fetchCoinsData()
             .then((data) => hydrateCoins(data))
-            .catch(() => {
-              if (isDev) hydrateCoinsFailed();
-            }),
+            .catch(() => hydrateCoinsFailed()),
 
       achievementsHydrated
         ? Promise.resolve()
@@ -289,9 +285,7 @@ export default function PersistenceBootstrap() {
               return res.json();
             })
             .then((data) => hydrateAchievements(Array.isArray(data) ? data : []))
-            .catch(() => {
-              if (isDev) hydrateAchievementsFailed();
-            }),
+            .catch(() => hydrateAchievementsFailed()),
 
       useStreakStore.getState().hydrateFromAPI().catch(() => {}),
 
