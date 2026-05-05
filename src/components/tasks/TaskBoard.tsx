@@ -764,7 +764,7 @@ export const TaskBoard: React.FC = () => {
       )}
 
       {/* Board header — editorial */}
-      <div className="flex items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0" data-tutorial="task-board-header">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0" data-tutorial="task-board-header">
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5">
             Workspace · {viewMode === 'kanban' ? 'Board' : 'List'}
@@ -855,7 +855,7 @@ export const TaskBoard: React.FC = () => {
         fallback={
           <div className="flex gap-3 h-full overflow-hidden pb-4 items-stretch px-1 md:px-0">
             {COLUMNS.map(col => (
-              <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[240px] flex flex-col h-full">
+              <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[240px] max-w-[320px] flex flex-col h-full">
                 <div className="mb-3 px-1 flex items-center gap-2.5 py-1">
                   <SkeletonPrimitive className="w-2 h-2 rounded-full flex-shrink-0" />
                   <SkeletonPrimitive className="h-4 w-16 rounded-md" />
@@ -892,7 +892,7 @@ export const TaskBoard: React.FC = () => {
             <motion.div
               key={col.id}
               layout
-              className="w-[85vw] snap-center shrink-0 md:w-auto md:snap-none md:shrink md:flex-1 min-w-[240px] flex flex-col h-full"
+              className="w-[85vw] snap-center shrink-0 md:w-auto md:snap-none md:shrink md:flex-1 min-w-[240px] max-w-[320px] flex flex-col h-full"
             >
               <TaskColumn
                 id={col.id}

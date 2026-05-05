@@ -532,7 +532,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                 <SkeletonPrimitive className="h-9 w-28 rounded-xl" />
               </div>
             </div>
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr_180px] gap-3 md:gap-4 min-h-0">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr] xl:grid-cols-[220px_1fr_180px] gap-3 md:gap-4 min-h-0">
               <div className="hidden md:flex flex-col gap-2">
                 <SkeletonPrimitive className="h-4 w-20 rounded" />
                 {[1, 2, 3, 4].map(i => (
@@ -558,7 +558,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                   ))}
                 </div>
               </div>
-              <div className="hidden md:flex flex-col gap-3">
+              <div className="hidden xl:flex flex-col gap-3">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="rounded-xl border border-border/40 p-3 flex flex-col gap-2">
                     <SkeletonPrimitive className="h-3 w-16 rounded" />
@@ -652,8 +652,8 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
         {/* Three-column body */}
         <div className={`flex-1 grid gap-3 md:gap-4 min-h-0 transition-[grid-template-columns] duration-200 ${
           poolOpen
-            ? 'grid-cols-1 md:grid-cols-[220px_1fr_180px] xl:grid-cols-[260px_1fr_200px]'
-            : 'grid-cols-1 md:grid-cols-[0px_1fr_180px] xl:grid-cols-[0px_1fr_200px]'
+            ? 'grid-cols-1 md:grid-cols-[220px_1fr] xl:grid-cols-[260px_1fr_200px]'
+            : 'grid-cols-1 md:grid-cols-[0px_1fr] xl:grid-cols-[0px_1fr_200px]'
         }`}>
           {/* ── Left: Task Pool ───────────────────────────────────────────── */}
           <div data-tutorial="plan-pool" className={`${
@@ -865,7 +865,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
           </div>
 
           {/* ── Right: Summary ────────────────────────────────────────────── */}
-          <div className="hidden md:flex flex-col min-h-0 overflow-y-auto no-scrollbar">
+          <div className="hidden xl:flex flex-col min-h-0 overflow-y-auto no-scrollbar">
             <FreeTimePanel summary={summary} />
           </div>
         </div>

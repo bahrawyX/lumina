@@ -90,7 +90,7 @@ const CalendarPage: React.FC = () => {
   return (
     <>
       <header className="flex flex-col md:flex-row md:items-center justify-between mb-1.5 md:mb-2 lg:mb-2 gap-2 md:gap-3 lg:gap-4 px-2 lg:px-4 py-1 md:py-1.5 flex-shrink-0">
-        <div className="flex items-center gap-3 md:gap-6 lg:gap-10 flex-wrap">
+        <div className="flex items-center gap-3 md:gap-6 lg:gap-5 flex-wrap">
           {/* View-switcher — hidden on mobile where Day view is forced */}
           <Tabs value={view} onValueChange={(v) => setView(v as ViewType)} className="hidden md:block">
             <TabsList className="h-9" data-tutorial="cal-view-tabs">
@@ -113,7 +113,7 @@ const CalendarPage: React.FC = () => {
             key={`${view}-${currentDate.getTime()}`}
             initial={{ opacity: 0, x: -5 }}
             animate={{ opacity: 1, x: 0 }}
-            className="font-display text-xl md:text-3xl lg:text-4xl font-medium tracking-[-0.035em] text-foreground leading-none"
+            className="font-display text-xl md:text-3xl font-medium tracking-[-0.035em] text-foreground leading-none"
           >
             {view === ViewType.DAY ? (
               <> {MONTHS[currentDate.getMonth()]} <span className="text-muted-foreground/40 font-light">{currentDate.getDate()}</span> </>
@@ -123,7 +123,7 @@ const CalendarPage: React.FC = () => {
           </motion.h2>
         </div>
 
-        <div className="flex items-center gap-2 md:gap-3 lg:gap-4 flex-wrap justify-end">
+        <div className="flex items-center gap-2 md:gap-3 lg:gap-2 flex-wrap justify-end">
           <div className="relative hidden sm:flex items-center">
             <SearchIcon size={14} className="absolute left-3 text-muted-foreground pointer-events-none" />
             <Input
