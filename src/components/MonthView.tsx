@@ -9,6 +9,7 @@ import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
 import EventItem from './EventItem';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { ScrollArea } from './ui/scroll-area';
+import { useIsLaptopWidth } from '../hooks/useIsLaptopWidth';
 import {
   CalendarSurface,
   CELL_CLS,
@@ -21,7 +22,11 @@ import {
   GRID_CANVAS_CLS,
 } from './ui/CalendarShared';
 
-const MAX_EVENTS_PER_CELL = 1;
+// Laptop band (1024–1399px) uses cramped cells with one compact pill;
+// wide screens (≥1400px) get the original full-size pills with up to 3
+// events per cell.
+const MAX_EVENTS_LAPTOP = 1;
+const MAX_EVENTS_WIDE = 3;
 
 /* ... types ... */
 interface MonthGridDay {
@@ -38,6 +43,7 @@ interface MonthDayCellProps {
   onDayClick: (dateStr: string, hasEvents: boolean) => void;
   onEventClick: (id: string) => void;
   onDrop: (eventId: string, dateStr: string) => void;
+  isLaptop: boolean;
 }
 
 const MONTHS = [
@@ -120,9 +126,10 @@ const OverflowPopover = memo<{
 ));
 OverflowPopover.displayName = 'OverflowPopover';
 
-const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop }) => {
+const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop, isLaptop }) => {
   const { date, dateStr, isCurrentMonth, isToday, eventsCount } = day;
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const maxEvents = isLaptop ? MAX_EVENTS_LAPTOP : MAX_EVENTS_WIDE;
 
   if (!isCurrentMonth) {
     return (
@@ -141,8 +148,8 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
     );
   }
 
-  const visibleEvents = dayEvents.slice(0, MAX_EVENTS_PER_CELL);
-  const overflowCount = eventsCount - MAX_EVENTS_PER_CELL;
+  const visibleEvents = dayEvents.slice(0, maxEvents);
+  const overflowCount = eventsCount - maxEvents;
 
   return (
     <div
@@ -182,7 +189,7 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
             key={event.id}
             event={event}
             onClick={(id) => onEventClick(id)}
-            compact
+            compact={isLaptop}
           />
         ))}
         {overflowCount > 0 && (
@@ -209,6 +216,7 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
   const currentDate = useCalendarStore(s => s.currentDate);
   const openModal   = useCalendarStore(s => s.openModal);
   const moveEvent   = useCalendarEventsStore(s => s.moveEvent);
+  const isLaptop    = useIsLaptopWidth();
   const today = new Date();
 
   // Virtual instances from recurrence expansion keep the master's `.date`
@@ -298,6 +306,7 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
               onDrop={handleDrop}
+              isLaptop={isLaptop}
             />
           ))}
         </div>
