@@ -8,6 +8,7 @@ import { GoogleProviderIcon, OutlookProviderIcon, RepeatIcon } from './icons';
 interface EventItemProps {
   event: CalendarEvent;
   onClick: (id: string) => void;
+  compact?: boolean;
 }
 
 function fmt(t: string): string {
@@ -20,7 +21,7 @@ function fmt(t: string): string {
   return `${display}:${m} ${period}`;
 }
 
-const EventItem = memo<EventItemProps>(({ event, onClick }) => {
+const EventItem = memo<EventItemProps>(({ event, onClick, compact }) => {
   const provider = event.provider
     || (event.source === 'outlook' || event.source === 'microsoft'
       ? 'microsoft'
@@ -34,6 +35,37 @@ const EventItem = memo<EventItemProps>(({ event, onClick }) => {
     ? (event.color || (provider === 'google' ? '#4285F4' : '#0078D4'))
     : (EVENT_COLORS[event.category] ?? '#6D59E0');
   const timeLabel = event.startTime ? fmt(event.startTime) : null;
+
+  if (compact) {
+    return (
+      <button
+        draggable={!isExternal}
+        onDragStart={(e) => {
+          if (isExternal) { e.preventDefault(); return; }
+          e.dataTransfer.setData('eventId', event.id);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(event.id);
+        }}
+        className={`w-full text-left flex items-center gap-1 px-1.5 py-[2px] rounded-md transition-colors duration-100 group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+          isExternal ? 'cursor-default' : 'cursor-pointer hover:brightness-95'
+        }`}
+        style={{ backgroundColor: `${color}12` }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: color }}
+        />
+        <span
+          className="truncate text-[10px] font-medium leading-none"
+          style={{ opacity: event.completed ? 0.45 : 1, color: isExternal ? color : undefined }}
+        >
+          {event.title}{timeLabel ? ` · ${timeLabel}` : ''}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <button

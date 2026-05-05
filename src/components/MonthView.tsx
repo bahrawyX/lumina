@@ -182,6 +182,7 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
             key={event.id}
             event={event}
             onClick={(id) => onEventClick(id)}
+            compact
           />
         ))}
         {overflowCount > 0 && (
