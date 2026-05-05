@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Button } from '@/components/ui/button';
 import type { CaptureType } from './classifier';
 
 interface FooterProps {
@@ -39,26 +40,20 @@ export function QuickCaptureFooter({
       <p className="text-[11px] text-muted-foreground/70 leading-relaxed flex-1 truncate">
         {hintFor(type, hasInput, hasDate)}
       </p>
-      <button
-        type="button"
+      <Button
+        size="sm"
         onClick={onSubmit}
         disabled={!canSubmit}
         aria-label="Create"
-        className={[
-          'inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors',
-          canSubmit
-            ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
-            : 'bg-muted/30 text-muted-foreground/60 border-border/40 cursor-not-allowed',
-        ].join(' ')}
+        className="gap-1.5 h-7"
       >
-        <span>Create</span>
-        <kbd className={[
-          'text-[10px] font-mono px-1.5 py-0.5 rounded border',
-          canSubmit ? 'border-primary-foreground/30 text-primary-foreground/80' : 'border-border/40 text-muted-foreground/60',
-        ].join(' ')}>
+        Create
+        <kbd className={`text-[10px] font-mono px-1 rounded ${
+          canSubmit ? 'bg-primary-foreground/10 text-primary-foreground/80' : ''
+        }`}>
           ↵
         </kbd>
-      </button>
+      </Button>
     </div>
   );
 }

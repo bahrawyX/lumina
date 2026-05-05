@@ -271,22 +271,22 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
           all 7 columns stay readable below ~1100px (laptop with sidebar +
           mobile). The header row sits inside the same scroller so the
           weekday labels stay aligned with their columns when scrolled. */}
-      <div className="calendar-scroll-container flex-1 min-h-0 flex flex-col overflow-x-auto overflow-y-hidden">
+      <div className="calendar-scroll-container flex-1 min-h-0 flex flex-col overflow-x-auto">
         <div className="min-w-[700px] flex-1 flex flex-col min-h-0">
           <div className={`grid grid-cols-7 ${HEADER_CLS}`}>
             {DAYS.map((day) => (
               <div
                 key={day}
-                className={`py-2.5 text-center ${WEEKDAY_LABEL_CLS}`}
+                className={`py-1.5 text-center ${WEEKDAY_LABEL_CLS}`}
               >
                 {day}
               </div>
             ))}
           </div>
 
-      <div className="flex-1 min-h-0 h-full overflow-hidden">
+      <div className="flex-1 min-h-0 h-full overflow-x-auto">
         <div
-          className={`h-full min-h-[660px] overflow-hidden grid grid-cols-7 grid-rows-6 p-1.5 sm:p-2 gap-1.5 sm:gap-2 ${GRID_CANVAS_CLS}`}
+          className={`h-full grid grid-cols-7 grid-rows-6 p-1 gap-0.5 ${GRID_CANVAS_CLS}`}
           style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}
         >
           {gridDays.map((day, idx) => (

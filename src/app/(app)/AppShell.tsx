@@ -307,7 +307,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (e.ctrlKey || e.metaKey) {
         if (key === "k") {
           e.preventDefault();
-          setQuickSwitcherOpen(true);
+          useQuickCaptureStore.getState().toggle();
           return;
         }
         if (key === "z") {
@@ -338,11 +338,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (key === "q") {
-        e.preventDefault();
-        useQuickCaptureStore.getState().toggle();
-        return;
-      }
       if (key === "n") {
         e.preventDefault();
         openModal();
@@ -506,7 +501,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <GuestBanner />
-          <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:p-10 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 relative">
+          <div className="w-full max-w-[1280px] mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:px-8 lg:py-1.5 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 lg:pb-1.5 relative">
             <PageTransition>{children}</PageTransition>
           </div>
         </main>

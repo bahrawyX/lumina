@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Button } from '@/components/ui/button';
 import type { CaptureType } from './classifier';
 
 const PILL_DEFS: Array<{
@@ -51,26 +52,23 @@ interface Props {
 
 export function QuickCaptureTypePills({ active, onSelect }: Props) {
   return (
-    <div role="radiogroup" aria-label="Capture type" className="flex items-center gap-1.5">
+    <div role="radiogroup" aria-label="Capture type" className="flex gap-1 p-1 bg-muted/50 rounded-lg">
       {PILL_DEFS.map((pill) => {
         const isActive = active === pill.type;
         return (
-          <button
+          <Button
             key={pill.type}
             type="button"
             role="radio"
             aria-checked={isActive}
+            variant={isActive ? 'default' : 'ghost'}
+            size="sm"
             onClick={() => onSelect(pill.type)}
-            className={[
-              'inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-colors',
-              isActive
-                ? 'qc-pill-active bg-primary/10 border-primary/40 text-primary font-medium'
-                : 'border-border/40 text-muted-foreground bg-transparent hover:bg-muted/50 hover:text-foreground',
-            ].join(' ')}
+            className="flex-1 gap-1.5 text-xs h-7"
           >
             <span className="opacity-80">{pill.icon}</span>
             <span>{pill.label}</span>
-          </button>
+          </Button>
         );
       })}
     </div>

@@ -708,7 +708,7 @@ const AppSidebar: React.FC = () => {
       // Width is animated by the variants above (288px expanded / 72px
       // collapsed). The inner Sidebar must NOT be its own visibility gate or
       // it would never render in the mobile drawer overlay.
-      className="relative flex flex-col h-full bg-background border-r border-border/60 z-40"
+      className="relative flex flex-col h-full bg-background border-r border-border/60 z-40 overflow-hidden"
     >
       {/* Collapse toggle */}
       <Button
@@ -845,7 +845,7 @@ const AppSidebar: React.FC = () => {
                     <>
                       <span>Quick capture</span>
                       <kbd className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground/60">
-                        Q
+                        {typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'}
                       </kbd>
                     </>
                   )}

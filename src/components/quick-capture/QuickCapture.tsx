@@ -47,6 +47,7 @@ function QuickCaptureModal({ onClose }: { onClose: () => void }) {
 
   // Task fields
   const [taskDueDate, setTaskDueDate] = useState<Date | null>(null);
+  const [goalId, setGoalId] = useState<string | null>(null);
 
   // Event fields
   const [eventDate, setEventDate] = useState<Date | null>(null);
@@ -82,7 +83,7 @@ function QuickCaptureModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = () => {
     if (!canSubmit) return;
     if (type === 'task') {
-      createTask(trimmed, taskDueDate);
+      createTask(trimmed, taskDueDate, goalId);
       return;
     }
     if (type === 'doc') {
@@ -213,6 +214,8 @@ function QuickCaptureModal({ onClose }: { onClose: () => void }) {
             setEventTime={setEventTime}
             eventDuration={eventDuration}
             setEventDuration={setEventDuration}
+            goalId={goalId}
+            setGoalId={setGoalId}
           />
 
           <QuickCaptureFooter

@@ -23,16 +23,16 @@ export function useQuickCaptureActions() {
   const close = useQuickCaptureStore((s) => s.close);
 
   const createTask = useCallback(
-    (title: string, dueDate: Date | null) => {
+    (title: string, dueDate: Date | null, goalId?: string | null) => {
       const trimmed = title.trim();
       if (!trimmed) return;
-      // Optimistic close — the store handles persistence + rollback on its own.
       close();
       const dueIso = dueDate ? dueDate.toISOString().slice(0, 10) : null;
       const task = useTaskBoardStore.getState().addTask({
         title: trimmed,
         status: 'todo',
         dueDate: dueIso,
+        ...(goalId ? { goalId } : {}),
       });
       if (!task) {
         toast.error("Couldn't create task");

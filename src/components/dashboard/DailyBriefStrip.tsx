@@ -130,7 +130,7 @@ export const DailyBriefStrip: React.FC = () => {
   if (!mounted) return null;
 
   return (
-    <div className="flex items-center gap-3 mb-3 flex-shrink-0 px-4 py-3 overflow-x-auto no-scrollbar text-[11px] rounded-2xl border border-border/60 bg-card shadow-card">
+    <div className="flex items-center gap-3 mb-1 flex-shrink-0 px-4 py-1.5 overflow-x-auto no-scrollbar text-[11px] rounded-2xl border border-border/60 bg-card shadow-card">
       {/* Greeting + date */}
       <span className="font-semibold text-foreground whitespace-nowrap">
         {getGreeting()}

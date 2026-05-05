@@ -89,7 +89,7 @@ const CalendarPage: React.FC = () => {
 
   return (
     <>
-      <header className="flex flex-col md:flex-row md:items-center justify-between mb-3 md:mb-6 lg:mb-10 gap-2 md:gap-4 lg:gap-6 px-2 lg:px-4 py-2 md:py-4">
+      <header className="flex flex-col md:flex-row md:items-center justify-between mb-1.5 md:mb-2 lg:mb-2 gap-2 md:gap-3 lg:gap-4 px-2 lg:px-4 py-1 md:py-1.5 flex-shrink-0">
         <div className="flex items-center gap-3 md:gap-6 lg:gap-10 flex-wrap">
           {/* View-switcher — hidden on mobile where Day view is forced */}
           <Tabs value={view} onValueChange={(v) => setView(v as ViewType)} className="hidden md:block">
@@ -206,7 +206,7 @@ const CalendarPage: React.FC = () => {
       {/* Daily brief — one-line glanceable strip */}
       <DailyBriefStrip />
 
-      <div className="flex-1 min-h-0 relative overflow-y-auto no-scrollbar">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         {/*
           View-switching used to live inside <AnimatePresence mode="wait"> with
           a 0.3s transition, meaning the outgoing grid had to finish its exit

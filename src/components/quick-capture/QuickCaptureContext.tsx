@@ -1,38 +1,36 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useGoalsStore } from '@/store/useGoalsStore';
 import type { CaptureType } from './classifier';
 
 interface ContextProps {
   type: CaptureType;
-  // Task fields
   taskDueDate: Date | null;
   setTaskDueDate: (d: Date | null) => void;
-  // Event fields
   eventDate: Date | null;
   setEventDate: (d: Date | null) => void;
-  eventTime: string; // HH:mm
+  eventTime: string;
   setEventTime: (t: string) => void;
-  eventDuration: number; // minutes
+  eventDuration: number;
   setEventDuration: (m: number) => void;
-}
-
-const DURATION_OPTIONS: Array<{ minutes: number; label: string }> = [
-  { minutes: 30, label: '30 min' },
-  { minutes: 60, label: '1 hr' },
-  { minutes: 120, label: '2 hr' },
-];
-
-function toDateInputValue(d: Date | null): string {
-  if (!d) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  goalId: string | null;
+  setGoalId: (id: string | null) => void;
 }
 
 function formatDatePill(d: Date | null): string {
-  if (!d) return 'Pick a date';
+  if (!d) return '';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const target = new Date(d);
@@ -54,19 +52,48 @@ const fadeInOut = {
   transition: { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const },
 };
 
+const todayStart = (() => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+})();
+
 export function QuickCaptureContext(props: ContextProps) {
+  const allGoals = useGoalsStore((s) => s.goals);
+  const activeGoals = useMemo(
+    () => allGoals.filter((g) => g.status === 'active'),
+    [allGoals],
+  );
+
   return (
     <div className="qc-context-row">
       <AnimatePresence initial={false} mode="wait">
         {props.type === 'task' && (
           <motion.div key="task" {...fadeInOut} className="overflow-hidden">
-            <div className="flex items-center gap-2 pt-2.5">
-              <DatePill
-                label="Due date"
-                emptyLabel="Add due date"
+            <div className="flex flex-wrap items-center gap-2 pt-2.5">
+              <DatePickerButton
                 value={props.taskDueDate}
                 onChange={props.setTaskDueDate}
+                emptyLabel="Add due date"
               />
+              {activeGoals.length > 0 && (
+                <Select
+                  value={props.goalId ?? ''}
+                  onValueChange={(v) => props.setGoalId(v || null)}
+                >
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[140px] max-w-[200px]">
+                    <SelectValue placeholder="Link to goal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No goal</SelectItem>
+                    {activeGoals.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </motion.div>
         )}
@@ -74,71 +101,57 @@ export function QuickCaptureContext(props: ContextProps) {
         {props.type === 'event' && (
           <motion.div key="event" {...fadeInOut} className="overflow-hidden">
             <div className="flex flex-wrap items-center gap-2 pt-2.5">
-              <DateTimePill
+              <DateTimePickerButton
                 date={props.eventDate}
                 time={props.eventTime}
                 onDateChange={props.setEventDate}
                 onTimeChange={props.setEventTime}
               />
-              <div className="inline-flex items-center gap-1 rounded-full border border-border/40 p-0.5 bg-transparent">
-                {DURATION_OPTIONS.map((opt) => {
-                  const isActive = props.eventDuration === opt.minutes;
-                  return (
-                    <button
-                      key={opt.minutes}
-                      type="button"
-                      onClick={() => props.setEventDuration(opt.minutes)}
-                      className={[
-                        'text-[11px] px-2 py-0.5 rounded-full transition-colors',
-                        isActive
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-muted-foreground hover:text-foreground',
-                      ].join(' ')}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <Select
+                value={String(props.eventDuration)}
+                onValueChange={(v) => props.setEventDuration(Number(v))}
+              >
+                <SelectTrigger className="h-7 text-xs w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 min</SelectItem>
+                  <SelectItem value="60">1 hour</SelectItem>
+                  <SelectItem value="90">1.5 hours</SelectItem>
+                  <SelectItem value="120">2 hours</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </motion.div>
         )}
-
-        {/* Doc has no extra fields */}
       </AnimatePresence>
     </div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────
-
-function DatePill({
-  label,
-  emptyLabel,
+function DatePickerButton({
   value,
   onChange,
+  emptyLabel,
 }: {
-  label: string;
-  emptyLabel: string;
   value: Date | null;
   onChange: (d: Date | null) => void;
+  emptyLabel: string;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
-          aria-label={label}
-          className={[
-            'inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-colors',
-            value
-              ? 'border-primary/30 text-foreground bg-primary/5'
-              : 'border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/40',
-          ].join(' ')}
+          variant="outline"
+          size="sm"
+          className={`gap-1.5 text-xs h-7 font-normal ${
+            value ? 'text-foreground' : 'text-muted-foreground'
+          }`}
         >
-          <svg width={11} height={11} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+          <svg width={12} height={12} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="3" width="10" height="9" rx="1.5" />
             <line x1="2" y1="6" x2="12" y2="6" />
           </svg>
@@ -148,18 +161,13 @@ function DatePill({
               role="button"
               tabIndex={0}
               aria-label="Clear date"
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange(null);
-              }}
+              onClick={(e) => { e.stopPropagation(); onChange(null); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onChange(null);
+                  e.preventDefault(); e.stopPropagation(); onChange(null);
                 }
               }}
-              className="ml-1 -mr-1 opacity-50 hover:opacity-100 cursor-pointer"
+              className="ml-0.5 -mr-1 opacity-50 hover:opacity-100 cursor-pointer"
             >
               <svg width={10} height={10} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
                 <line x1="4" y1="4" x2="10" y2="10" />
@@ -167,32 +175,25 @@ function DatePill({
               </svg>
             </span>
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-3">
-        <input
-          type="date"
-          autoFocus
-          value={toDateInputValue(value)}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (!v) {
-              onChange(null);
-              return;
-            }
-            const [y, m, d] = v.split('-').map(Number);
-            const next = new Date(y, m - 1, d);
-            onChange(next);
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={value ?? undefined}
+          onSelect={(d) => {
+            onChange(d ?? null);
             setOpen(false);
           }}
-          className="bg-transparent text-sm outline-none"
+          disabled={(date) => date < todayStart}
+          autoFocus
         />
       </PopoverContent>
     </Popover>
   );
 }
 
-function DateTimePill({
+function DateTimePickerButton({
   date,
   time,
   onDateChange,
@@ -209,51 +210,42 @@ function DateTimePill({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
-          aria-label="Pick date and time"
-          className={[
-            'inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-colors',
-            filled
-              ? 'border-primary/30 text-foreground bg-primary/5'
-              : 'border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/40',
-          ].join(' ')}
+          variant="outline"
+          size="sm"
+          className={`gap-1.5 text-xs h-7 font-normal ${
+            filled ? 'text-foreground' : 'text-muted-foreground'
+          }`}
         >
-          <svg width={11} height={11} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+          <svg width={12} height={12} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
             <circle cx="7" cy="7" r="5.5" />
             <polyline points="7 4 7 7 9 8.5" />
           </svg>
           {filled ? `${formatDatePill(date)} · ${time}` : 'When?'}
-        </button>
+        </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-3 space-y-2">
-        <label className="block text-[11px] uppercase tracking-wide text-muted-foreground/70 font-mono">
-          Date
-        </label>
-        <input
-          type="date"
-          autoFocus
-          value={toDateInputValue(date)}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (!v) {
-              onDateChange(null);
-              return;
-            }
-            const [y, m, d] = v.split('-').map(Number);
-            onDateChange(new Date(y, m - 1, d));
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date ?? undefined}
+          onSelect={(d) => {
+            onDateChange(d ?? null);
           }}
-          className="block w-full bg-transparent text-sm outline-none border border-border/40 rounded-md px-2 py-1"
+          disabled={(d) => d < todayStart}
+          autoFocus
         />
-        <label className="block text-[11px] uppercase tracking-wide text-muted-foreground/70 font-mono">
-          Time
-        </label>
-        <input
-          type="time"
-          value={time}
-          onChange={(e) => onTimeChange(e.target.value)}
-          className="block w-full bg-transparent text-sm outline-none border border-border/40 rounded-md px-2 py-1"
-        />
+        <div className="border-t border-border px-3 py-2">
+          <label className="block text-[11px] uppercase tracking-wide text-muted-foreground/70 font-mono mb-1">
+            Time
+          </label>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => onTimeChange(e.target.value)}
+            className="block w-full bg-transparent text-sm outline-none border border-border/40 rounded-md px-2 py-1"
+          />
+        </div>
       </PopoverContent>
     </Popover>
   );
