@@ -521,7 +521,7 @@ export default function GoalsPage() {
           <Button
             size="sm"
             onClick={() => { setEditingGoal(null); setDialogOpen(true); }}
-            className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
+            className="gap-1.5 rounded-xl h-9 md:h-8 text-xs whitespace-nowrap"
           >
             <PlusIcon />
             New Goal

@@ -67,7 +67,7 @@ export const FreeTimePanel: React.FC<FreeTimePanelProps> = React.memo(({ summary
       </div>
 
       {/* Stats */}
-      <div className="rounded-xl border border-border/50 bg-muted/20 px-4 divide-y-0">
+      <div className="rounded-xl border border-border/50 bg-muted/20 px-3 divide-y-0">
         <StatRow
           icon={<CheckIcon />}
           label="Planned"

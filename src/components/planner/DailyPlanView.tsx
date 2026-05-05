@@ -532,7 +532,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                 <SkeletonPrimitive className="h-9 w-28 rounded-xl" />
               </div>
             </div>
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr_200px] gap-3 md:gap-4 min-h-0">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr_180px] gap-3 md:gap-4 min-h-0">
               <div className="hidden md:flex flex-col gap-2">
                 <SkeletonPrimitive className="h-4 w-20 rounded" />
                 {[1, 2, 3, 4].map(i => (
@@ -652,8 +652,8 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
         {/* Three-column body */}
         <div className={`flex-1 grid gap-3 md:gap-4 min-h-0 transition-[grid-template-columns] duration-200 ${
           poolOpen
-            ? 'grid-cols-1 md:grid-cols-[260px_1fr_200px] xl:grid-cols-[290px_1fr_220px]'
-            : 'grid-cols-1 md:grid-cols-[0px_1fr_200px] xl:grid-cols-[0px_1fr_220px]'
+            ? 'grid-cols-1 md:grid-cols-[220px_1fr_180px] xl:grid-cols-[260px_1fr_200px]'
+            : 'grid-cols-1 md:grid-cols-[0px_1fr_180px] xl:grid-cols-[0px_1fr_200px]'
         }`}>
           {/* ── Left: Task Pool ───────────────────────────────────────────── */}
           <div data-tutorial="plan-pool" className={`${

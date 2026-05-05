@@ -807,7 +807,7 @@ export const TaskBoard: React.FC = () => {
           <Button
             size="sm"
             onClick={() => openCreateDialog('todo')}
-            className="gap-1.5 rounded-xl h-9 md:h-8 text-xs"
+            className="gap-1.5 rounded-xl h-9 md:h-8 text-xs whitespace-nowrap"
             aria-label="Create new task"
           >
             <PlusIcon />
@@ -855,7 +855,7 @@ export const TaskBoard: React.FC = () => {
         fallback={
           <div className="flex gap-3 h-full overflow-hidden pb-4 items-stretch px-1 md:px-0">
             {COLUMNS.map(col => (
-              <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full">
+              <div key={col.id} className="w-[85vw] shrink-0 md:w-auto md:shrink md:flex-1 min-w-[240px] flex flex-col h-full">
                 <div className="mb-3 px-1 flex items-center gap-2.5 py-1">
                   <SkeletonPrimitive className="w-2 h-2 rounded-full flex-shrink-0" />
                   <SkeletonPrimitive className="h-4 w-16 rounded-md" />
@@ -892,7 +892,7 @@ export const TaskBoard: React.FC = () => {
             <motion.div
               key={col.id}
               layout
-              className="w-[85vw] snap-center shrink-0 md:w-auto md:snap-none md:shrink md:flex-1 min-w-[260px] max-w-[340px] flex flex-col h-full"
+              className="w-[85vw] snap-center shrink-0 md:w-auto md:snap-none md:shrink md:flex-1 min-w-[240px] flex flex-col h-full"
             >
               <TaskColumn
                 id={col.id}
