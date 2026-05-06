@@ -22,11 +22,10 @@ import {
   GRID_CANVAS_CLS,
 } from './ui/CalendarShared';
 
-// Laptop band (1024–1399px) uses cramped cells with one compact pill;
-// wide screens (≥1400px) get the original full-size pills with up to 3
-// events per cell.
-const MAX_EVENTS_LAPTOP = 1;
-const MAX_EVENTS_WIDE = 3;
+// Both bands cap at one event per cell with a "+N more" overflow chip;
+// the only difference is the pill style — compact single-line for laptop,
+// full title+time pill for wide screens.
+const MAX_EVENTS_PER_CELL = 1;
 
 /* ... types ... */
 interface MonthGridDay {
@@ -129,7 +128,6 @@ OverflowPopover.displayName = 'OverflowPopover';
 const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop, isLaptop }) => {
   const { date, dateStr, isCurrentMonth, isToday, eventsCount } = day;
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const maxEvents = isLaptop ? MAX_EVENTS_LAPTOP : MAX_EVENTS_WIDE;
 
   if (!isCurrentMonth) {
     return (
@@ -148,8 +146,8 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
     );
   }
 
-  const visibleEvents = dayEvents.slice(0, maxEvents);
-  const overflowCount = eventsCount - maxEvents;
+  const visibleEvents = dayEvents.slice(0, MAX_EVENTS_PER_CELL);
+  const overflowCount = eventsCount - MAX_EVENTS_PER_CELL;
 
   return (
     <div
