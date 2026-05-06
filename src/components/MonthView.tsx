@@ -42,7 +42,6 @@ interface MonthDayCellProps {
   onDayClick: (dateStr: string, hasEvents: boolean) => void;
   onEventClick: (id: string) => void;
   onDrop: (eventId: string, dateStr: string) => void;
-  isLaptop: boolean;
 }
 
 const MONTHS = [
@@ -125,7 +124,7 @@ const OverflowPopover = memo<{
 ));
 OverflowPopover.displayName = 'OverflowPopover';
 
-const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop, isLaptop }) => {
+const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop }) => {
   const { date, dateStr, isCurrentMonth, isToday, eventsCount } = day;
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -187,7 +186,7 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
             key={event.id}
             event={event}
             onClick={(id) => onEventClick(id)}
-            compact={isLaptop}
+            compact
           />
         ))}
         {overflowCount > 0 && (
@@ -294,7 +293,10 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
       <div className="flex-1 min-h-0 h-full overflow-x-auto">
         <div
           className={`h-full grid grid-cols-7 grid-rows-6 p-1 gap-0.5 ${GRID_CANVAS_CLS}`}
-          style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}
+          // Laptop band fills available height (rows ~95–110px naturally).
+          // Wide screens have lots of vertical headroom, so cap rows at 110px
+          // to keep cells from growing into giant empty boxes.
+          style={{ gridTemplateRows: isLaptop ? 'repeat(6, minmax(0, 1fr))' : 'repeat(6, minmax(0, 110px))' }}
         >
           {gridDays.map((day, idx) => (
             <MonthDayCell
@@ -304,7 +306,6 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
               onDrop={handleDrop}
-              isLaptop={isLaptop}
             />
           ))}
         </div>
