@@ -48,17 +48,17 @@ const EventItem = memo<EventItemProps>(({ event, onClick, compact }) => {
           e.stopPropagation();
           onClick(event.id);
         }}
-        className={`w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors duration-100 group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+        className={`w-full text-left flex items-center gap-1.5 px-2 py-1 min-[1400px]:gap-2 min-[1400px]:px-2.5 min-[1400px]:py-1.5 rounded-md transition-colors duration-100 group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
           isExternal ? 'cursor-default' : 'cursor-pointer hover:brightness-95'
         }`}
         style={{ backgroundColor: `${color}12`, borderLeft: `2px solid ${color}` }}
       >
         <span
-          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+          className="w-1.5 h-1.5 min-[1400px]:w-2 min-[1400px]:h-2 rounded-full flex-shrink-0"
           style={{ backgroundColor: color }}
         />
         <span
-          className="truncate text-[11px] font-medium leading-none"
+          className="truncate text-[11px] min-[1400px]:text-[12px] font-medium leading-none"
           style={{ opacity: event.completed ? 0.45 : 1, color: isExternal ? color : undefined }}
         >
           {event.title}{timeLabel ? ` · ${timeLabel}` : ''}

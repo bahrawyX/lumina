@@ -294,9 +294,10 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
         <div
           className={`h-full grid grid-cols-7 grid-rows-6 p-1 gap-0.5 ${GRID_CANVAS_CLS}`}
           // Laptop band fills available height (rows ~95–110px naturally).
-          // Wide screens have lots of vertical headroom, so cap rows at 110px
-          // to keep cells from growing into giant empty boxes.
-          style={{ gridTemplateRows: isLaptop ? 'repeat(6, minmax(0, 1fr))' : 'repeat(6, minmax(0, 110px))' }}
+          // Wide screens have more vertical headroom, so allow rows up to
+          // 140px — a touch bigger than laptop without ballooning into
+          // giant empty boxes when the viewport is very tall.
+          style={{ gridTemplateRows: isLaptop ? 'repeat(6, minmax(0, 1fr))' : 'repeat(6, minmax(0, 140px))' }}
         >
           {gridDays.map((day, idx) => (
             <MonthDayCell
