@@ -19,6 +19,10 @@ interface ContextProps {
   type: CaptureType;
   taskDueDate: Date | null;
   setTaskDueDate: (d: Date | null) => void;
+  taskPriority: 'low' | 'medium' | 'high';
+  setTaskPriority: (p: 'low' | 'medium' | 'high') => void;
+  taskDifficulty: 'easy' | 'medium' | 'hard';
+  setTaskDifficulty: (d: 'easy' | 'medium' | 'hard') => void;
   eventDate: Date | null;
   setEventDate: (d: Date | null) => void;
   eventTime: string;
@@ -76,6 +80,32 @@ export function QuickCaptureContext(props: ContextProps) {
                 onChange={props.setTaskDueDate}
                 emptyLabel="Add due date"
               />
+              <Select
+                value={props.taskPriority}
+                onValueChange={(v) => props.setTaskPriority(v as 'low' | 'medium' | 'high')}
+              >
+                <SelectTrigger className="h-7 text-xs w-auto min-w-[110px]" aria-label="Priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low priority</SelectItem>
+                  <SelectItem value="medium">Medium priority</SelectItem>
+                  <SelectItem value="high">High priority</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={props.taskDifficulty}
+                onValueChange={(v) => props.setTaskDifficulty(v as 'easy' | 'medium' | 'hard')}
+              >
+                <SelectTrigger className="h-7 text-xs w-auto min-w-[110px]" aria-label="Difficulty">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="easy">Easy</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="hard">Hard</SelectItem>
+                </SelectContent>
+              </Select>
               {activeGoals.length > 0 && (
                 <Select
                   value={props.goalId ?? ''}

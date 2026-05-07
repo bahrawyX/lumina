@@ -23,7 +23,13 @@ export function useQuickCaptureActions() {
   const close = useQuickCaptureStore((s) => s.close);
 
   const createTask = useCallback(
-    (title: string, dueDate: Date | null, goalId?: string | null) => {
+    (
+      title: string,
+      dueDate: Date | null,
+      goalId?: string | null,
+      priority: 'low' | 'medium' | 'high' = 'medium',
+      difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+    ) => {
       const trimmed = title.trim();
       if (!trimmed) return;
       close();
@@ -31,6 +37,8 @@ export function useQuickCaptureActions() {
       const task = useTaskBoardStore.getState().addTask({
         title: trimmed,
         status: 'todo',
+        priority,
+        difficulty,
         dueDate: dueIso,
         ...(goalId ? { goalId } : {}),
       });

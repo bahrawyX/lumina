@@ -47,6 +47,8 @@ function QuickCaptureModal({ onClose }: { onClose: () => void }) {
 
   // Task fields
   const [taskDueDate, setTaskDueDate] = useState<Date | null>(null);
+  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [taskDifficulty, setTaskDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [goalId, setGoalId] = useState<string | null>(null);
 
   // Event fields
@@ -83,7 +85,7 @@ function QuickCaptureModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = () => {
     if (!canSubmit) return;
     if (type === 'task') {
-      createTask(trimmed, taskDueDate, goalId);
+      createTask(trimmed, taskDueDate, goalId, taskPriority, taskDifficulty);
       return;
     }
     if (type === 'doc') {
@@ -208,6 +210,10 @@ function QuickCaptureModal({ onClose }: { onClose: () => void }) {
             type={memoType}
             taskDueDate={taskDueDate}
             setTaskDueDate={setTaskDueDate}
+            taskPriority={taskPriority}
+            setTaskPriority={setTaskPriority}
+            taskDifficulty={taskDifficulty}
+            setTaskDifficulty={setTaskDifficulty}
             eventDate={eventDate}
             setEventDate={setEventDate}
             eventTime={eventTime}

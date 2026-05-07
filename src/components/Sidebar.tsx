@@ -1470,12 +1470,12 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
               <>
                 <motion.div
                   layoutId="sidebar-active-nav-bg"
-                  className="absolute inset-0 rounded-lg bg-foreground/[0.025] dark:bg-foreground/[0.04]"
+                  className="absolute inset-0 rounded-lg bg-primary/[0.08] dark:bg-primary/[0.12]"
                   transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
                 />
                 <motion.div
                   layoutId="sidebar-active-nav-rail"
-                  className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r-full bg-primary"
+                  className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.6)]"
                   transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
                 />
               </>

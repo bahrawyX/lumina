@@ -217,7 +217,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const setFocusMode         = useCalendarStore((s) => s.setFocusMode);
   const setCurrentDate       = useCalendarStore((s) => s.setCurrentDate);
   const setView              = useCalendarStore((s) => s.setView);
-  const setTab               = useCalendarStore((s) => s.setTab);
   const setSidebarCollapsed  = useCalendarStore((s) => s.setSidebarCollapsed);
   const undo = useCalendarEventsStore((s) => s.undo);
   const redo = useCalendarEventsStore((s) => s.redo);
@@ -338,31 +337,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (key === "n") {
-        e.preventDefault();
-        openModal();
+      // Calendar-scoped shortcuts: only fire on /calendar so single-letter
+      // bindings (m/w/d/n/t/f) don't hijack typing-like actions on Goals,
+      // Pomodoro, Plan, etc. Navigation prefixed with `g` (handled above)
+      // remains global.
+      if (pathname === "/calendar") {
+        if (key === "n") {
+          e.preventDefault();
+          openModal();
+          return;
+        }
+        if (key === "t") {
+          e.preventDefault();
+          setCurrentDate(new Date());
+          return;
+        }
+        if (key === "f") {
+          e.preventDefault();
+          setFocusMode(!isFocusMode);
+          return;
+        }
+        if (key === "m") { setView(ViewType.MONTH); return; }
+        if (key === "w") { setView(ViewType.WEEK); return; }
+        if (key === "d") { setView(ViewType.DAY); return; }
       }
-      if (key === "t") {
-        e.preventDefault();
-        setCurrentDate(new Date());
-      }
-      if (key === "f") {
-        e.preventDefault();
-        setFocusMode(!isFocusMode);
-      }
-      if (key === "p") {
-        e.preventDefault();
-        setTab("profile");
-        router.push("/intelligence");
-      }
-      if (key === "c") {
-        e.preventDefault();
-        setTab("calendar");
-        router.push("/calendar");
-      }
-      if (key === "m") setView(ViewType.MONTH);
-      if (key === "w") setView(ViewType.WEEK);
-      if (key === "d") setView(ViewType.DAY);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -374,11 +372,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setCurrentDate,
     undo,
     redo,
-    setTab,
     isFocusMode,
     setFocusMode,
     router,
     setView,
+    pathname,
   ]);
 
   // Warn guest users before closing/refreshing the tab so they don't lose data.
