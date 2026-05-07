@@ -42,6 +42,7 @@ interface MonthDayCellProps {
   onDayClick: (dateStr: string, hasEvents: boolean) => void;
   onEventClick: (id: string) => void;
   onDrop: (eventId: string, dateStr: string) => void;
+  isLaptop: boolean;
 }
 
 const MONTHS = [
@@ -124,7 +125,7 @@ const OverflowPopover = memo<{
 ));
 OverflowPopover.displayName = 'OverflowPopover';
 
-const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop }) => {
+const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop, isLaptop }) => {
   const { date, dateStr, isCurrentMonth, isToday, eventsCount } = day;
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -186,7 +187,7 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
             key={event.id}
             event={event}
             onClick={(id) => onEventClick(id)}
-            compact
+            compact={isLaptop}
           />
         ))}
         {overflowCount > 0 && (
@@ -272,7 +273,10 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
   );
 
   return (
-    <CalendarSurface role="grid">
+    // Wide desktops (>= 1400px) get a content-sized surface so the card itself
+    // shrinks instead of stretching to fill the viewport. Laptop band keeps the
+    // original flex-1 h-full chain so its rows still distribute fluidly.
+    <CalendarSurface role="grid" className={isLaptop ? '' : '!flex-none !h-auto'}>
       {/* Wrap in a horizontally-scrollable container with a min-width so
           all 7 columns stay readable below ~1100px (laptop with sidebar +
           mobile). The header row sits inside the same scroller so the
@@ -294,10 +298,10 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
         <div
           className={`h-full grid grid-cols-7 grid-rows-6 p-1 gap-0.5 ${GRID_CANVAS_CLS}`}
           // Laptop band fills available height (rows ~95–110px naturally).
-          // Wide screens have more vertical headroom, so allow rows up to
-          // 140px — a touch bigger than laptop without ballooning into
-          // giant empty boxes when the viewport is very tall.
-          style={{ gridTemplateRows: isLaptop ? 'repeat(6, minmax(0, 1fr))' : 'repeat(6, minmax(0, 140px))' }}
+          // Wide screens use a fixed 110px track so the cell sizes to fit just
+          // one full event card + the "+N more" overflow chip — anything taller
+          // is wasted vertical space on a 1-event cap.
+          style={{ gridTemplateRows: isLaptop ? 'repeat(6, minmax(0, 1fr))' : 'repeat(6, 110px)' }}
         >
           {gridDays.map((day, idx) => (
             <MonthDayCell
@@ -307,6 +311,7 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
               onDrop={handleDrop}
+              isLaptop={isLaptop}
             />
           ))}
         </div>
