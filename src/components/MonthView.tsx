@@ -273,9 +273,9 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
   );
 
   return (
-    // Wide desktops (>= 1400px) get a content-sized surface so the card itself
-    // shrinks instead of stretching to fill the viewport. Laptop band keeps the
-    // original flex-1 h-full chain so its rows still distribute fluidly.
+    // On wide desktops the surface is content-sized; centre it in the
+    // available vertical space so there's no raw empty gap at the bottom.
+    <div className={isLaptop ? 'h-full' : 'h-full flex flex-col justify-center'}>
     <CalendarSurface role="grid" className={isLaptop ? '' : '!flex-none !h-auto'}>
       {/* Wrap in a horizontally-scrollable container with a min-width so
           all 7 columns stay readable below ~1100px (laptop with sidebar +
@@ -319,6 +319,7 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
         </div>
       </div>
     </CalendarSurface>
+    </div>
   );
 };
 
