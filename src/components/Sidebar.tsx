@@ -1211,7 +1211,7 @@ const AppSidebar: React.FC = () => {
                 Profile
               </DropdownMenuItem>
 
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setNotificationSettingsOpen(true)}>
                 <SettingsIcon size={14} className="text-muted-foreground" />
                 Settings
               </DropdownMenuItem>

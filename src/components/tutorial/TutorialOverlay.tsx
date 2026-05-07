@@ -21,8 +21,8 @@ const STEPS: TutorialStep[] = [
     target: 'new-entry',
     icon: '✦',
     title: 'Quick Add',
-    desc: 'Add events, tasks, or notes from here.',
-    hint: 'Shortcut: N',
+    desc: 'Capture an event, task, or doc from anywhere — date, priority, difficulty, and goal link in one shot.',
+    hint: 'Shortcut: Ctrl+K (Cmd+K on Mac)',
   },
   {
     target: 'ignite-flow',
@@ -40,7 +40,7 @@ const STEPS: TutorialStep[] = [
     target: 'cal-view-tabs',
     icon: '⊞',
     title: 'Switch Views',
-    desc: 'Toggle between Month, Week, and Day views. Keyboard shortcuts: M, W, D.',
+    desc: 'Toggle between Month, Week, and Day views. While you\'re on Calendar: M, W, D switch view, T jumps to today, N opens new event, F toggles focus mode.',
     optional: true,
   },
   {
@@ -131,6 +131,14 @@ const STEPS: TutorialStep[] = [
     icon: '◈',
     title: 'Contexts',
     desc: 'Tag tasks and events by context — Work, Health, Personal — to filter your view in one click.',
+  },
+  {
+    // Last step has no anchor — it falls back to the centered card layout.
+    target: '__shortcuts__',
+    icon: '⌘',
+    title: 'Keyboard Shortcuts',
+    desc: 'Global: Ctrl+K Quick Capture, Ctrl+Z / Ctrl+Shift+Z Undo / Redo, then G then C/T/P/R/F/I to jump to Calendar, Tasks, Plan, Performance, Focus, Insights. On Calendar only: M/W/D Month/Week/Day, T today, N new event, F focus mode.',
+    optional: true,
   },
 ];
 
