@@ -316,6 +316,7 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
       const state = history[newIndex];
       saveState(state.events, userId);
       set({ events: state.events, historyIndex: newIndex });
+      triggerIntelligence();
     }
   },
 
@@ -326,6 +327,7 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
       const state = history[newIndex];
       saveState(state.events, userId);
       set({ events: state.events, historyIndex: newIndex });
+      triggerIntelligence();
     }
   },
 }));

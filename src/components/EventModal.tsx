@@ -124,6 +124,9 @@ const EventModal: React.FC = () => {
     }
 
     const finalEvent: CalendarEvent = {
+      // Spread localEvent first so non-form fields (linkedTaskId, completed,
+      // organizer, readOnly, source, provider, etc.) are preserved on update.
+      ...(localEvent || {}),
       id: localEvent?.id || uid('ev_'),
       title: result.data.title,
       description: result.data.description || "",

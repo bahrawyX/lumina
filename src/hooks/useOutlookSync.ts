@@ -25,7 +25,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { authClient } from '../lib/auth-client';
 import { ViewType } from '../types';
-import type { CalendarEvent, EventProvider } from '../types';
+import type { CalendarEvent, EventCategory, EventProvider } from '../types';
 import { getCached, setCache } from '../lib/calendar/externalEventsCache';
 import type { ApiExternalEvent } from '../lib/calendar/externalEventTypes';
 
@@ -33,6 +33,52 @@ import type { ApiExternalEvent } from '../lib/calendar/externalEventTypes';
 // stale when the poll fires, guaranteeing a refresh without needing force=true.
 const POLL_INTERVAL_MS = 10 * 60 * 1_000; // 10 minutes  (cache TTL = 5 min)
 const FOCUS_SYNC_MIN_INTERVAL_MS = 30 * 1000;
+
+// ── Context demo events ────────────────────────────────────────────────────
+
+/**
+ * Create one demo event for each built-in context so the calendar has visible
+ * content before the user adds their own events.  Stored session-only in
+ * usePlannerStore.demoLocalEvents — never written to the DB.
+ */
+function createContextDemoEvents(): CalendarEvent[] {
+  const today = new Date();
+  const dayOffset = (n: number): string => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + n);
+    return d.toISOString().split('T')[0];
+  };
+
+  const contexts: Array<{
+    name: string;
+    color: string;
+    category: EventCategory;
+    days: number;
+    start: string;
+    end: string;
+  }> = [
+    { name: 'Critical',  color: '#EF4444', category: 'Critical',  days: -1, start: '08:00', end: '09:00' },
+    { name: 'Focus',     color: '#6D59E0', category: 'Focus',     days:  0, start: '10:00', end: '11:30' },
+    { name: 'Work',      color: '#475569', category: 'Work',      days:  1, start: '14:00', end: '15:00' },
+    { name: 'Social',    color: '#F59E0B', category: 'Social',    days:  2, start: '18:00', end: '19:30' },
+    { name: 'Personal',  color: '#10B981', category: 'Personal',  days:  3, start: '07:30', end: '08:15' },
+    { name: 'Health',    color: '#EC4899', category: 'Health',    days:  4, start: '06:30', end: '07:30' },
+  ];
+
+  return contexts.map((ctx) => ({
+    id: `demo_ctx_${ctx.name.toLowerCase()}_001`,
+    title: `${ctx.name} — demo event`,
+    description: `Example ${ctx.name} event. Create your own to get started.`,
+    date: dayOffset(ctx.days),
+    startTime: ctx.start,
+    endTime: ctx.end,
+    category: ctx.category,
+    color: ctx.color,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    readOnly: true,
+    draggable: false,
+  }));
+}
 
 export function triggerExternalSync(): void {
   if (typeof window === 'undefined') return;
@@ -122,11 +168,18 @@ function apiToCalendarEvent(e: ApiExternalEvent): CalendarEvent {
 export function useOutlookSync() {
   const view        = useCalendarStore((s) => s.view);
   const currentDate = useCalendarStore((s) => s.currentDate);
-  const setGoogleEvents  = usePlannerStore((s) => s.setGoogleEvents);
-  const setOutlookEvents = usePlannerStore((s) => s.setOutlookEvents);
-  const setIsSyncing = usePlannerStore((s) => s.setIsSyncing);
+  const setGoogleEvents    = usePlannerStore((s) => s.setGoogleEvents);
+  const setOutlookEvents   = usePlannerStore((s) => s.setOutlookEvents);
+  const setDemoLocalEvents = usePlannerStore((s) => s.setDemoLocalEvents);
+  const setIsSyncing    = usePlannerStore((s) => s.setIsSyncing);
   const setLastSyncedAt = usePlannerStore((s) => s.setLastSyncedAt);
-  const setSyncError = usePlannerStore((s) => s.setSyncError);
+  const setSyncError    = usePlannerStore((s) => s.setSyncError);
+
+  // Seed context demo events on first mount — visible immediately, no DB/timing dependency.
+  useEffect(() => {
+    setDemoLocalEvents(createContextDemoEvents());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;

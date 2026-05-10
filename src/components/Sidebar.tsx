@@ -216,7 +216,6 @@ const AppSidebar: React.FC = () => {
   const updateContext       = useCalendarStore((s) => s.updateContext);
   const deleteContext       = useCalendarStore((s) => s.deleteContext);
   const outlookConnected    = usePlannerStore((s) => s.outlookConnected);
-  const outlookSyncing      = usePlannerStore((s) => s.outlookSyncing);
   const setOutlookConnected = usePlannerStore((s) => s.setOutlookConnected);
   const setOutlookEvents    = usePlannerStore((s) => s.setOutlookEvents);
   const setGoogleEvents     = usePlannerStore((s) => s.setGoogleEvents);
