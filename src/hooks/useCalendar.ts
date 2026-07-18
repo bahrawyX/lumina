@@ -44,6 +44,7 @@ export const useCalendar = () => {
   const events        = useCalendarEventsStore((s) => s.events);
   const outlookEvents     = usePlannerStore((s) => s.outlookEvents);
   const googleEvents      = usePlannerStore((s) => s.googleEvents);
+  const appleEvents       = usePlannerStore((s) => s.appleEvents);
   const demoLocalEvents   = usePlannerStore((s) => s.demoLocalEvents);
 
   const visibleRange = useMemo(() => {
@@ -72,19 +73,23 @@ export const useCalendar = () => {
       .filter((e) => e.date >= startStr && e.date <= endStr)
       .map((e) => ({ ...e, instanceDate: e.date }));
 
+    const appleInstances: EventInstance[] = appleEvents
+      .filter((e) => e.date >= startStr && e.date <= endStr)
+      .map((e) => ({ ...e, instanceDate: e.date }));
+
     // Demo events (context previews, onboarding) — session-only, never persisted.
     const demoInstances: EventInstance[] = demoLocalEvents
       .filter((e) => e.date >= startStr && e.date <= endStr)
       .map((e) => ({ ...e, instanceDate: e.date }));
 
-    // Keep a stable preference order for duplicate external events.
     const dedupedExternal = dedupeExternalInstances([
       ...googleInstances,
       ...outlookInstances,
+      ...appleInstances,
     ]);
 
     return [...localInstances, ...demoInstances, ...dedupedExternal];
-  }, [events, googleEvents, outlookEvents, demoLocalEvents, visibleRange]);
+  }, [events, googleEvents, outlookEvents, appleEvents, demoLocalEvents, visibleRange]);
 
   const filteredInstances = useMemo(() => {
     const query = searchQuery.toLowerCase();
@@ -98,8 +103,8 @@ export const useCalendar = () => {
       if (!matchesSearch || !matchesFilter) return false;
 
       if (isFocusMode) {
-        const provider = e.provider || (e.source === 'outlook' ? 'microsoft' : 'local');
-        if (provider === 'microsoft' || provider === 'google') return true;
+        const provider = e.provider || (e.source === 'outlook' ? 'microsoft' : e.source === 'apple' ? 'apple' : 'local');
+        if (provider === 'microsoft' || provider === 'google' || provider === 'apple') return true;
         const isFocusCategory = e.category === 'Focus' || e.category === 'Critical';
         const isFuture = e.instanceDate >= todayStr;
         return isFocusCategory && isFuture;

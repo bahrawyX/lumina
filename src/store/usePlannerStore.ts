@@ -7,6 +7,8 @@ interface PlannerState {
   outlookEvents: CalendarEvent[];
   /** Google Calendar events — fetched from provider API, browser-cached only. NOT in DB. */
   googleEvents: CalendarEvent[];
+  /** Apple Calendar events — fetched from provider API, browser-cached only. NOT in DB. */
+  appleEvents: CalendarEvent[];
   /** Session-only demo events (context previews, onboarding) — never persisted. */
   demoLocalEvents: CalendarEvent[];
   outlookConnected: boolean;
@@ -16,6 +18,7 @@ interface PlannerState {
 
   setOutlookEvents: (events: CalendarEvent[]) => void;
   setGoogleEvents:  (events: CalendarEvent[]) => void;
+  setAppleEvents:   (events: CalendarEvent[]) => void;
   setDemoLocalEvents: (events: CalendarEvent[]) => void;
   setOutlookConnected: (connected: boolean) => void;
   setIsSyncing: (syncing: boolean) => void;
@@ -30,6 +33,7 @@ export const usePlannerStore = create<PlannerState>()(
     (set) => ({
       outlookEvents: [],
       googleEvents:  [],
+      appleEvents:   [],
       demoLocalEvents: [],
       outlookConnected: false,
       isSyncing: false,
@@ -38,12 +42,13 @@ export const usePlannerStore = create<PlannerState>()(
 
       setOutlookEvents:    (outlookEvents)    => set({ outlookEvents }),
       setGoogleEvents:     (googleEvents)     => set({ googleEvents }),
+      setAppleEvents:      (appleEvents)      => set({ appleEvents }),
       setDemoLocalEvents:  (demoLocalEvents)  => set({ demoLocalEvents }),
       setOutlookConnected: (outlookConnected) => set({ outlookConnected }),
       setIsSyncing:        (isSyncing)        => set({ isSyncing }),
       setLastSyncedAt:     (lastSyncedAt)     => set({ lastSyncedAt }),
       setSyncError:        (syncError)        => set({ syncError }),
-      clearExternalEvents: () => set({ outlookEvents: [], googleEvents: [], demoLocalEvents: [] }),
+      clearExternalEvents: () => set({ outlookEvents: [], googleEvents: [], appleEvents: [], demoLocalEvents: [] }),
     }),
     {
       name: 'lumina-planner',
