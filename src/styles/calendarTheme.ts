@@ -44,7 +44,7 @@ export const cal = {
 
   /* ── "Today" circle badge (day number) ── */
   todayBadge:
-    'bg-primary text-white shadow-sm',
+    'bg-primary text-white shadow-sm shadow-primary/30',
 
   /* ── Normal day number (within current month / visible week) ── */
   dayNumber:
