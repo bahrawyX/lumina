@@ -17,6 +17,7 @@ import { tasks } from './tasks';
 import { goals } from './goals';
 import { goalTargets } from './goalTargets';
 import { coinTransactions } from './coinTransactions';
+import { dailyRewardCaps } from './dailyRewardCaps';
 import { users } from './users';
 import { verifications } from './verifications';
 
@@ -40,6 +41,7 @@ export * from './docs';
 export * from './goals';
 export * from './goalTargets';
 export * from './coinTransactions';
+export * from './dailyRewardCaps';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),
@@ -59,6 +61,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 	docs: many(docs),
 	goals: many(goals),
 	coinTransactions: many(coinTransactions),
+	dailyRewardCaps: many(dailyRewardCaps),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -235,6 +238,13 @@ export const goalTargetsRelations = relations(goalTargets, ({ one }) => ({
 export const coinTransactionsRelations = relations(coinTransactions, ({ one }) => ({
 	user: one(users, {
 		fields: [coinTransactions.userId],
+		references: [users.id],
+	}),
+}));
+
+export const dailyRewardCapsRelations = relations(dailyRewardCaps, ({ one }) => ({
+	user: one(users, {
+		fields: [dailyRewardCaps.userId],
 		references: [users.id],
 	}),
 }));

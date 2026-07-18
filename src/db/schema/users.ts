@@ -1,4 +1,5 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const users = pgTable(
   'users',
@@ -57,7 +58,13 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('users_email_idx').on(table.email)]
+  (table) => [
+    index('users_email_idx').on(table.email),
+    // Non-negative balance invariant. Modeled here (not only in migration 0018)
+    // so a future `db:push` reconciling the DB against schema.ts does NOT
+    // silently drop it — a DB-only constraint is exactly what push removes.
+    check('users_coins_nonneg', sql`${table.coins} >= 0`),
+  ]
 );
 
 export type UserRow = typeof users.$inferSelect;
