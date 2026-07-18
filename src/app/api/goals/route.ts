@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { goals, goalTargets, tasks, focusSessions } from '@/db/schema';
 import { eq, inArray, sum, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
+import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
 
 function parseLinkedTaskIds(raw: string | null): string[] {
@@ -234,10 +235,13 @@ export async function POST(req: NextRequest) {
     // Award coins for creating a goal. Awaited so the response carries the
     // post-award balance — the client uses it to update the badge directly,
     // no refetch race with an in-flight DB transaction.
-    const award = goalCreatedAward();
     let newBalance: number | undefined;
     try {
-      newBalance = await awardCoins(userId, award.amount, award.reason, award.label);
+      // Keyed by goalId — idempotent per created goal.
+      const res = await awardCoins(userId, [
+        scopeAward(goalCreatedAward(), { entityId: result.goalId, sourceType: 'goal', utcDate: utcDateKey(new Date()) }),
+      ]);
+      newBalance = res.newBalance;
     } catch (e) {
       console.error('[goal create coin award]', e);
     }

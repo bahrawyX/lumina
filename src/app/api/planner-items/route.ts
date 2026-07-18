@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { plannerItems, coinTransactions } from '@/db/schema';
+import { plannerItems } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
+import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
@@ -134,16 +135,13 @@ export async function POST(req: NextRequest) {
         ));
 
       if (items.length === 3) {
-        const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
-          .where(and(
-            eq(coinTransactions.userId, userId),
-            eq(coinTransactions.reason, 'planner_day'),
-            sql`${coinTransactions.createdAt} >= ${todayStart}`
-          )).limit(1);
-
-        if (!existing) {
-          newBalance = await awardCoins(userId, 15, 'planner_day', 'Planned your day');
-        }
+        // Idempotent via ledger key `planner_day:<utc-date>` — no check-then-award race (M1).
+        const entry = scopeAward(
+          { amount: 15, reason: 'planner_day', label: 'Planned your day' },
+          { utcDate: utcDateKey(new Date()) },
+        );
+        const res = await awardCoins(userId, [entry]);
+        newBalance = res.newBalance;
       }
     } catch (e) {
       console.error('[planner coin award]', e);

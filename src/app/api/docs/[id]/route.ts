@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { docs, coinTransactions } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { docs } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
+import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { computeWordCount } from '@/lib/docs/wordCount';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -97,8 +99,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
     if (body.content !== undefined) patch.content = body.content;
-    if (typeof body.contentText === 'string') patch.contentText = body.contentText;
-    if (typeof body.wordCount === 'number') patch.wordCount = body.wordCount;
+    // H3: word count is recomputed server-side from contentText — never trust the
+    // client value (a `{wordCount:500}` PATCH on an empty doc must not earn coins).
+    let computedWordCount: number | undefined;
+    if (typeof body.contentText === 'string') {
+      patch.contentText = body.contentText;
+      computedWordCount = computeWordCount(body.contentText);
+      patch.wordCount = computedWordCount;
+    }
     if (typeof body.icon === 'string' || body.icon === null) patch.icon = body.icon;
     if (typeof body.coverImage === 'string' || body.coverImage === null) patch.coverImage = body.coverImage;
     if (typeof body.coverGradient === 'number' || body.coverGradient === null) patch.coverGradient = body.coverGradient;
@@ -130,17 +138,16 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // Award coins for 500+ word doc, dedup by docId. Awaited so the
     // response carries the post-award balance.
     let newBalance: number | undefined;
-    if (typeof body.wordCount === 'number' && body.wordCount >= 500) {
+    if (computedWordCount !== undefined && computedWordCount >= 500) {
       try {
-        const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
-          .where(and(
-            eq(coinTransactions.userId, userId),
-            eq(coinTransactions.reason, 'doc_500_words'),
-            sql`${coinTransactions.metadata}->>'docId' = ${id}`
-          )).limit(1);
-        if (!existing) {
-          newBalance = await awardCoins(userId, 10, 'doc_500_words', 'Wrote a 500+ word doc', { docId: id });
-        }
+        // Gated on the server-computed count; idempotent per doc via the ledger
+        // key `doc_500_words:<docId>` — re-sending the PATCH cannot re-award.
+        const entry = scopeAward(
+          { amount: 10, reason: 'doc_500_words', label: 'Wrote a 500+ word doc' },
+          { entityId: id, sourceType: 'doc', utcDate: utcDateKey(new Date()) },
+        );
+        const res = await awardCoins(userId, [entry]);
+        newBalance = res.newBalance;
       } catch (e) { console.error('[doc 500-word award]', e); }
     }
 

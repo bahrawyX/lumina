@@ -4,6 +4,8 @@ import { getDatabase } from '@/lib/db';
 import { docs } from '@/db/schema';
 import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
+import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { firstDocEverAward } from '@/lib/coins/earnRules';
 
 /** GET /api/docs — return flat list of DocTreeNode[] for sidebar (no content field). */
 export async function GET(req: NextRequest) {
@@ -154,7 +156,9 @@ export async function POST(req: NextRequest) {
       const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(docs)
         .where(eq(docs.userId, userId));
       if ((countResult?.count ?? 0) === 1) {
-        newBalance = await awardCoins(userId, 15, 'first_doc', 'Created your first doc');
+        // Once per user ever — ledger key `first_doc` (idempotent).
+        const res = await awardCoins(userId, [scopeAward(firstDocEverAward(), { utcDate: utcDateKey(new Date()) })]);
+        newBalance = res.newBalance;
       }
     } catch (e) { console.error('[docs first-doc award]', e); }
 

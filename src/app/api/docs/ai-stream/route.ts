@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { GoogleGenAI } from '@google/genai';
 import { awardCoins } from '@/lib/coins/awardCoins';
-import { getDatabase } from '@/lib/db';
-import { coinTransactions } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { aiInDocsAward } from '@/lib/coins/earnRules';
 
 // Simple in-memory rate limiter: userId → timestamp[]
 const rateLimitMap = new Map<string, number[]>();
@@ -54,20 +53,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
   }
 
-  // Award coins for using AI in docs (once per day, fire-and-forget)
-  void (async () => {
-    try {
-      const db = getDatabase();
-      const today = new Date();
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const [existing] = await db.select({ id: coinTransactions.id }).from(coinTransactions)
-        .where(and(eq(coinTransactions.userId, userId), eq(coinTransactions.reason, 'ai_docs'), sql`${coinTransactions.createdAt} >= ${todayStart}`))
-        .limit(1);
-      if (!existing) {
-        await awardCoins(userId, 5, 'ai_docs', 'Used AI in docs');
-      }
-    } catch (e) { console.error('[ai-docs coin award]', e); }
-  })();
+  // Award coins for using AI in docs — once per UTC day, idempotent via the
+  // ledger key `ai_docs:<utc-date>` (M2, no check-then-award race).
+  void awardCoins(userId, [scopeAward(aiInDocsAward(), { utcDate: utcDateKey(new Date()) })])
+    .catch((e) => console.error('[ai-docs coin award]', e));
 
   try {
     const ai = new GoogleGenAI({ apiKey });

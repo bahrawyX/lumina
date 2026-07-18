@@ -3,7 +3,8 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks, goalTargets, users } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { awardCoinsBatch } from '@/lib/coins/awardCoins';
+import { awardCoins } from '@/lib/coins/awardCoins';
+import { scopeAward, scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 
 function normalizeTimeString(value: unknown): string | null {
@@ -89,6 +90,18 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       patch.goalId = body.goalId;
     }
 
+    // C2: capture the prior status so the completion award fires only on a real
+    // not-done → done transition — re-completing (done→todo→done) must not re-award.
+    let prevTaskStatus: string | undefined;
+    if (patch.status === 'done') {
+      const [prevT] = await db
+        .select({ status: tasks.status })
+        .from(tasks)
+        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+        .limit(1);
+      prevTaskStatus = prevT?.status;
+    }
+
     await db
       .update(tasks)
       .set(patch)
@@ -126,13 +139,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       })();
 
       // ── Coin awards on task completion (awaited) ──────────────────
-      if (patch.status === 'done') {
+      // C2: only on a real not-done → done transition. Idempotency is also
+      // enforced at the ledger (keys below) as a backstop.
+      if (patch.status === 'done' && prevTaskStatus !== 'done') {
         try {
           const [taskData] = await db.select({
             difficulty: tasks.difficulty,
             dueDate: tasks.dueDate,
             parentTaskId: tasks.parentTaskId,
-          }).from(tasks).where(eq(tasks.id, id));
+          }).from(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
 
           if (taskData) {
             const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
@@ -154,20 +169,33 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             if (completedToday === 1) awards.push(firstTaskOfDayAward());
             awards.push(...dailyTaskBurstAwards(completedToday));
 
+            // Task rules keyed by this task; per-day rules keyed by date (scopeAward).
+            const utcDate = utcDateKey(new Date());
+            const entries = scopeAwards(awards, { entityId: id, sourceType: 'task', utcDate });
+
+            // All-subtasks bonus is keyed by the PARENT (once per parent), not this task.
             if (taskData.parentTaskId) {
               const siblings = await db.select({ status: tasks.status }).from(tasks)
-                .where(eq(tasks.parentTaskId, taskData.parentTaskId));
+                .where(and(eq(tasks.parentTaskId, taskData.parentTaskId), eq(tasks.userId, userId)));
               if (siblings.length > 0 && siblings.every(s => s.status === 'done')) {
-                awards.push(allSubtasksCompleteAward());
+                entries.push(scopeAward(allSubtasksCompleteAward(), {
+                  entityId: taskData.parentTaskId, sourceType: 'task', utcDate,
+                }));
               }
             }
 
-            if (awards.length > 0) {
-              newBalance = await awardCoinsBatch(userId, awards);
-              if (hasTaskMultiplier) {
-                const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
-                updated.taskMultiplier = Math.max(0, (consumables.taskMultiplier ?? 0) - 1);
-                await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
+            if (entries.length > 0) {
+              const res = await awardCoins(userId, entries);
+              newBalance = res.newBalance;
+              // Consume one task-multiplier ONLY if its bonus was actually granted
+              // (not a dedupe duplicate) — atomic decrement on the live JSON column.
+              const multiplierGranted = res.outcomes.some(
+                (o) => o.dedupeKey === `task_multiplier_2x:${id}` && o.awarded,
+              );
+              if (multiplierGranted) {
+                await db.update(users).set({
+                  consumables: sql`jsonb_set(coalesce(${users.consumables}, '{}'::jsonb), '{taskMultiplier}', to_jsonb(greatest(0, coalesce((${users.consumables}->>'taskMultiplier')::int, 0) - 1)))`,
+                }).where(eq(users.id, userId));
               }
             }
           }
