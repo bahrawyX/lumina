@@ -3,7 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { focusSessions, users, achievements, tasks } from '@/db/schema';
-import { computeStreakUpdate } from '@/utils/streaks/streakUtils';
+import { computeStreakUpdate, rewardedSessionMinutes, isDurationTampered } from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 import { awardCoinsBatch } from '@/lib/coins/awardCoins';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
@@ -73,23 +73,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid timestamps' }, { status: 400 });
   }
 
-  // Wall-clock elapsed is the source of truth: the client cannot lie about
-  // how much real time has passed.
+  // Wall-clock elapsed is the server-trusted source of truth for how much real
+  // time passed — the client cannot lengthen a session by inflating `duration`.
   const wallSeconds = (endTs.getTime() - startTs.getTime()) / 1000;
 
-  // Planned duration is optional — only the Pomodoro flow sends it. The
-  // free-form focus timer and stopwatch leave it unset and bypass the
-  // completion threshold (there is no "planned" target to compare against).
+  // C1: `duration` (seconds) is a client hint only. A reported focus length that
+  // exceeds real elapsed time beyond a small skew/rounding tolerance is a
+  // fabricated session — reject it. Logged without PII.
+  if (isDurationTampered(wallSeconds, duration)) {
+    console.warn('[focus-sessions] rejected: reported duration exceeds elapsed time', {
+      userId,
+      wallSeconds: Math.round(wallSeconds),
+      reportedDurationSecs: Math.round(duration),
+    });
+    return NextResponse.json({ error: 'Reported duration exceeds elapsed time' }, { status: 400 });
+  }
+
+  // Planned duration is optional — only the Pomodoro flow sends it. When it is
+  // omitted (free-form timer / stopwatch) we fall back to the client's reported
+  // `duration` as the completion target so the 75% gate applies to every session.
   const plannedDurationSecs = typeof body.plannedDurationSecs === 'number' && body.plannedDurationSecs > 0
     ? body.plannedDurationSecs
     : null;
+  const completionTargetSecs = plannedDurationSecs ?? duration;
 
   // 75% completion gate — only rewards sessions that actually ran their course.
   // A user who starts a 25-min Pomodoro and stops it after 10 seconds must not
   // earn coins, streak credit, or achievements.
-  const underThreshold = plannedDurationSecs !== null && wallSeconds < 0.75 * plannedDurationSecs;
+  const underThreshold = wallSeconds < 0.75 * completionTargetSecs;
 
-  const durationMinutes = Math.max(1, Math.round(duration / 60));
+  // C1: the rewarded length is derived server-side and bounded — never more than
+  // real elapsed time, never more than the client claims, never above the hard
+  // cap (MAX_SESSION_MINUTES). This value drives every coin/streak award below.
+  const durationMinutes = rewardedSessionMinutes(wallSeconds, duration);
   const timezone = typeof body.timezone === 'string' ? body.timezone : 'UTC';
 
   try {
