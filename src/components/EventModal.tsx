@@ -10,6 +10,7 @@ import { CATEGORIES } from "../constants";
 import { uid } from "../lib/uid";
 import { timeToMinutes, minutesToTime } from "../utils/dateUtils";
 import { GoogleProviderIcon, OutlookProviderIcon, TrashIcon } from "./icons";
+import { AppleProviderIcon } from "./icons/ProviderIcons";
 import RecurrenceSelector from "./RecurrenceSelector";
 import EditRecurrenceDialog from "./EditRecurrenceDialog";
 
@@ -24,8 +25,8 @@ import TimePicker from "./TimePicker";
 import { useDocsStore } from "@/store/useDocsStore";
 import { TEMPLATES } from "@/lib/docs/templates";
 
-/** Intentional brand colors per Google/Microsoft identity guidelines */
-const GOOGLE_BRAND_COLOR = '#4285F4';
+/** Brand-accent colors used for the tinted external-event cards. */
+const GOOGLE_BRAND_COLOR = '#34A853';
 const OUTLOOK_BRAND_COLOR = '#0078D4';
 
 /* ── Zod schema ──────────────────────────────────────────────────────────── */
@@ -56,20 +57,31 @@ const EventModal: React.FC = () => {
   const updateEvent = useCalendarEventsStore(s => s.updateEvent);
   const deleteEvent = useCalendarEventsStore(s => s.deleteEvent);
   const localEvent = events.find((e) => e.id === selectedEventId);
+  const customCategories = useCalendarStore(s => s.customCategories);
+  const allCategories = React.useMemo(
+    () => [...CATEGORIES, ...customCategories],
+    [customCategories]
+  );
   const outlookEvents = usePlannerStore((s) => s.outlookEvents);
   const googleEvents = usePlannerStore((s) => s.googleEvents);
+  const appleEvents = usePlannerStore((s) => s.appleEvents);
   const outlookEvent = outlookEvents.find((e) => e.id === selectedEventId);
   const googleEvent = googleEvents.find((e) => e.id === selectedEventId);
-  const activeEvent = localEvent || outlookEvent || googleEvent;
+  const appleEvent = appleEvents.find((e) => e.id === selectedEventId);
+  const activeEvent = localEvent || outlookEvent || googleEvent || appleEvent;
   const provider = activeEvent?.provider
     || (activeEvent?.source === 'outlook' || activeEvent?.source === 'microsoft'
       ? 'microsoft'
       : activeEvent?.source === 'google'
         ? 'google'
-        : 'local');
-  const isExternalEvent = provider === 'google' || provider === 'microsoft';
+        : activeEvent?.source === 'apple'
+          ? 'apple'
+          : 'local');
+  const isExternalEvent = provider === 'google' || provider === 'microsoft' || provider === 'apple';
   const isGoogleEvent = provider === 'google';
-  const externalColor = activeEvent?.color || (isGoogleEvent ? GOOGLE_BRAND_COLOR : OUTLOOK_BRAND_COLOR);
+  const isAppleEvent = provider === 'apple';
+  const APPLE_BRAND_COLOR = '#A8A9B0';
+  const externalColor = activeEvent?.color || (isAppleEvent ? APPLE_BRAND_COLOR : isGoogleEvent ? GOOGLE_BRAND_COLOR : OUTLOOK_BRAND_COLOR);
 
   const [formData, setFormData] = useState<Partial<CalendarEvent>>({
     title: "", description: "", date: "",
@@ -135,7 +147,7 @@ const EventModal: React.FC = () => {
       endTime: result.data.endTime,
       category: result.data.category as EventCategory,
       location: formData.location || "",
-      color: CATEGORIES.find((c) => c.name === result.data.category)?.color || 'hsl(var(--primary))',
+      color: allCategories.find((c) => c.name === result.data.category)?.color || 'hsl(var(--primary))',
       timezone: localEvent?.timezone || timezone,
       recurrence: recurrence ?? undefined,
     };
@@ -164,27 +176,37 @@ const EventModal: React.FC = () => {
               {isExternalEvent && (
                 isGoogleEvent
                   ? <GoogleProviderIcon size={16} className="flex-shrink-0" />
-                  : <OutlookProviderIcon size={16} className="flex-shrink-0" />
+                  : isAppleEvent
+                    ? <AppleProviderIcon size={18} className="flex-shrink-0 text-[#1d1d1f] dark:text-[#C0C0C0]" />
+                    : <OutlookProviderIcon size={16} className="flex-shrink-0" />
               )}
               {isGoogleEvent
                 ? 'Google Calendar Event'
-                : provider === 'microsoft'
-                  ? 'Outlook Event'
-                  : activeEvent
-                    ? 'Edit Event'
-                    : 'Add Event'}
+                : isAppleEvent
+                  ? 'Apple Calendar Event'
+                  : provider === 'microsoft'
+                    ? 'Outlook Event'
+                    : activeEvent
+                      ? 'Edit Event'
+                      : 'Add Event'}
             </DialogTitle>
           </div>
           {isExternalEvent && (
             <p className="text-xs text-muted-foreground mt-1">
-              This event is synced from {isGoogleEvent ? 'Google Calendar' : 'Outlook'} and cannot be edited in Lumina.
+              This event is synced from {isGoogleEvent ? 'Google Calendar' : isAppleEvent ? 'Apple Calendar' : 'Outlook'} and cannot be edited here.
             </p>
           )}
         </DialogHeader>
 
 
         {/* Form */}
-        <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[65vh]">
+        <div
+          className="modal-scroll px-6 py-5 space-y-4 overflow-y-auto max-h-[65vh]"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+          }}
+        >
 
           {/* Event Name */}
           <div className="space-y-1.5">

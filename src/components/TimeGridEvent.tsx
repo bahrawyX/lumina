@@ -11,6 +11,7 @@ import {
   OutlookProviderIcon,
   RepeatIcon,
 } from './icons';
+import { AppleProviderIcon } from './icons/ProviderIcons';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 interface TimeGridEventProps {
@@ -29,6 +30,18 @@ interface TimeGridEventProps {
   onPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void;
 }
 
+function hexToRgb(hex: string): string | null {
+  if (!hex || hex[0] !== '#') return null;
+  let cleaned = hex.slice(1);
+  if (cleaned.length === 3) cleaned = cleaned.split('').map((c) => c + c).join('');
+  if (cleaned.length !== 6) return null;
+  const r = parseInt(cleaned.slice(0, 2), 16);
+  const g = parseInt(cleaned.slice(2, 4), 16);
+  const b = parseInt(cleaned.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+  return `${r},${g},${b}`;
+}
+
 function getEventInitials(title: string): string {
   const cleanedWords = title
     .trim()
@@ -44,10 +57,6 @@ function getEventInitials(title: string): string {
   return oneWord.slice(0, 2).toUpperCase();
 }
 
-/**
- * EventContent — pure presentational layer (title, time, badges).
- * Separated so positional changes to EventShell don't re-render text content.
- */
 const EventContent = React.memo<{
   event: EventInstance;
   duration: number;
@@ -55,7 +64,7 @@ const EventContent = React.memo<{
   isVeryShort: boolean;
   isNarrow: boolean;
   isExternal: boolean;
-  provider: 'local' | 'google' | 'microsoft';
+  provider: 'local' | 'google' | 'microsoft' | 'apple';
   accentColor: string;
   forceInitialsMode: boolean;
   adaptiveTitleCompaction: boolean;
@@ -83,17 +92,17 @@ const EventContent = React.memo<{
           {isExternal && !isVeryShort && (
             provider === 'google'
               ? <GoogleProviderIcon size={isShort ? 10 : 12} className="flex-shrink-0" />
-              : <OutlookProviderIcon size={isShort ? 10 : 12} className="flex-shrink-0 opacity-80" />
+              : provider === 'apple'
+                ? <AppleProviderIcon size={isShort ? 10 : 12} className="flex-shrink-0 text-[#1d1d1f] dark:text-[#C0C0C0]" />
+                : <OutlookProviderIcon size={isShort ? 10 : 12} className="flex-shrink-0 opacity-80" />
           )}
           {(forceInitialsMode || useCompactTitle) ? (
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <h4
-                    className={`font-bold leading-tight overflow-hidden ${
-                      isExternal ? '' : 'text-foreground'
-                    } ${isVeryShort ? 'text-[8px]' : isShort ? 'text-[9px]' : 'text-[11px]'}`}
-                    style={{ color: isExternal ? accentColor : undefined }}
+                    className={`font-bold leading-tight overflow-hidden ${isVeryShort ? 'text-[8px]' : isShort ? 'text-[9px]' : 'text-[11px]'}`}
+                    style={{ color: accentColor }}
                   >
                     {displayTitle}
                   </h4>
@@ -121,14 +130,11 @@ const EventContent = React.memo<{
         </div>
       </div>
 
-      {/* Start time — always shown unless the card is too tiny to fit a second line */}
       {!isVeryShort && (
-        <div className="flex items-center gap-1.5 opacity-60">
-          <span className={`font-bold leading-none ${
-            isExternal ? '' : 'text-muted-foreground'
-          } ${(isShort || forceInitialsMode) ? 'text-[8px]' : 'text-[9px]'}`} style={{
-            color: isExternal ? accentColor : undefined,
-            opacity: isExternal ? 0.75 : undefined,
+        <div className="flex items-center gap-1.5">
+          <span className={`font-bold leading-none ${(isShort || forceInitialsMode) ? 'text-[8px]' : 'text-[9px]'}`} style={{
+            color: accentColor,
+            opacity: 0.7,
           }}>
             {formatTime(event.startTime)}
           </span>
@@ -140,7 +146,6 @@ const EventContent = React.memo<{
         </div>
       )}
 
-      {/* Location — only for full-size cards */}
       {!isShort && !forceInitialsMode && event.location && duration > 45 && (
         <span className="text-[9px] text-muted-foreground/70 italic truncate mt-auto leading-none flex items-center gap-1">
           <ExternalLink size={8} /> {event.location}
@@ -168,12 +173,6 @@ const EventContent = React.memo<{
 );
 EventContent.displayName = 'EventContent';
 
-/**
- * EventShell — handles position, drag, resize, and visual state.
- * Uses CSS transitions instead of framer-motion for all static events.
- * Only the actively-dragged event gets willChange: transform.
- * `contain: layout style paint` isolates each card's rendering cost.
- */
 const TimeGridEvent = React.memo<TimeGridEventProps>(({
   event,
   onClick,
@@ -191,17 +190,33 @@ const TimeGridEvent = React.memo<TimeGridEventProps>(({
   const pointerDownPos = React.useRef({ x: 0, y: 0 });
 
   const { top, height } = getEventPosition(event.startTime, event.endTime);
-  const provider: 'local' | 'google' | 'microsoft' =
+  const provider: 'local' | 'google' | 'microsoft' | 'apple' =
     event.provider === 'google' ? 'google'
     : event.provider === 'microsoft' || event.provider === 'outlook' ? 'microsoft'
+    : event.provider === 'apple' ? 'apple'
     : event.source === 'outlook' || event.source === 'microsoft' ? 'microsoft'
     : event.source === 'google' ? 'google'
+    : event.source === 'apple' ? 'apple'
     : 'local';
-  const isExternal = provider === 'microsoft' || provider === 'google';
+  const isExternal = provider === 'microsoft' || provider === 'google' || provider === 'apple';
+
+  const APPLE_ACCENT = '#A8A9B0';
+
+  const externalRgb =
+    provider === 'apple' ? '168,169,176'
+    : provider === 'google' ? '52,168,83'
+    : provider === 'microsoft' ? '0,120,212'
+    : '0,0,0';
+  const externalAccent =
+    provider === 'apple' ? APPLE_ACCENT
+    : provider === 'google' ? '#34A853'
+    : '#0078D4';
 
   const color = isExternal
-    ? (event.color || (provider === 'google' ? '#4285F4' : '#0078D4'))
-    : (EVENT_COLORS[event.category] || '#7C5CFC');
+    ? externalAccent
+    : (event.color || EVENT_COLORS[event.category] || '#7C5CFC');
+
+  const localRgb = !isExternal ? hexToRgb(color) : null;
 
   const duration = timeToMinutes(event.endTime) - timeToMinutes(event.startTime);
   const isShort = duration < 30;
@@ -243,23 +258,30 @@ const TimeGridEvent = React.memo<TimeGridEventProps>(({
         height: `${height}px`,
         left: `calc(${left} + 5px)`,
         width: `calc(${width} - 10px)`,
-        backgroundColor: isExternal
-          ? `${color}14`
-          : `${color}${isSelected ? '1c' : '10'}`,
-        borderLeft: isExternal
-          ? `3.5px solid ${color}`
-          : `3px solid ${color}${isSelected ? 'cc' : '70'}`,
-        borderTop: `1px solid ${color}12`,
-        borderRight: `1px solid ${color}08`,
-        borderBottom: `1px solid ${color}08`,
+        ...(isExternal ? {
+          background: `linear-gradient(135deg, rgba(${externalRgb},0.16) 0%, rgba(${externalRgb},0.06) 100%)`,
+          border: `1px solid rgba(${externalRgb},0.22)`,
+        } : localRgb ? {
+          background: `linear-gradient(135deg, rgba(${localRgb},0.16) 0%, rgba(${localRgb},0.06) 100%)`,
+          border: `1px solid rgba(${localRgb},0.22)`,
+        } : {
+          backgroundColor: `${color}${isSelected ? '1c' : '10'}`,
+          border: `1px solid ${color}18`,
+        }),
         padding: '6px 8px',
         zIndex: isSelected ? 20 : 10,
         boxSizing: 'border-box',
         opacity: isDraggedOrigin ? 0.35 : isGhost ? 0.28 : isDimmed ? 0.68 : 1,
         filter: isDraggedOrigin ? 'saturate(0)' : 'saturate(1)',
-        boxShadow: isDraggedOrigin || isGhost ? 'none' : isSelected
-          ? `0 4px 18px ${color}30, 0 1px 4px ${color}1a`
-          : '0 1px 3px rgba(0,0,0,0.06)',
+        boxShadow: isDraggedOrigin || isGhost ? 'none' : isExternal
+          ? `0 1px 4px rgba(${externalRgb},0.12), 0 0 0 0.5px rgba(${externalRgb},0.08)`
+          : localRgb
+            ? (isSelected
+                ? `0 4px 18px rgba(${localRgb},0.22), 0 1px 4px rgba(${localRgb},0.14)`
+                : `0 1px 3px rgba(${localRgb},0.10)`)
+            : isSelected
+              ? `0 4px 18px ${color}30, 0 1px 4px ${color}1a`
+              : '0 1px 3px rgba(0,0,0,0.06)',
         willChange: isDraggedOrigin ? 'transform' : undefined,
         contain: 'layout style paint',
         transition: isDraggedOrigin ? 'none' : 'opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease-out',

@@ -14,6 +14,20 @@
       "runtimeArgs": ["run", "start"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "lumina-calendar-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3099,
+      "cwd": ".claude/worktrees/gifted-northcutt-0a0eef/lumina-calendar"
+    },
+    {
+      "name": "bahrawys-calendar",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3098,
+      "cwd": "C:\\Users\\PC\\Documents\\GitHub\\bahrawys-calender"
     }
   ]
 }
