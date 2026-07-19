@@ -108,6 +108,8 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
           showCoinToast(data.coinsEarned, 'Task completed');
           // Confetti (owned cosmetic) fires on the SAME real-award gate as the
           // toast — it no longer bursts on a re-completion that awarded nothing.
+          // No full trophy here: too heavy for the frequency of task completions;
+          // the trophy stays goal-only (both on the coinsEarned > 0 gate).
           if (useCoinsStore.getState().activeCosmetics.confetti) void triggerConfetti();
         }
       } catch {

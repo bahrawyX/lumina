@@ -28,7 +28,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { format, differenceInDays, isPast } from 'date-fns';
-import { LottieOverlay } from '@/components/ui/LottieOverlay';
 import { CoinsBadge } from '@/components/coins/CoinsBadge';
 import { cn } from '@/lib/utils';
 
@@ -418,7 +417,6 @@ export default function GoalsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
-  const [showGoalTrophy, setShowGoalTrophy] = useState(false);
   // Goal IDs we've offered AI suggestions for in this session. The dialog
   // hands us the optimistic id (`goal_xxx`); we resolve it to the real
   // server UUID before the suggestion card mounts so /api/goals/[id]/...
@@ -484,24 +482,15 @@ export default function GoalsPage() {
       }
     });
     updateGoal(goal.id, { status: 'completed' });
-    setShowGoalTrophy(true);
-    // Coin toast fires from `goalsPersistence.updateOne` ONLY after the
-    // server confirms the completion + reports the awarded delta. No more
-    // optimistic "+400 coins!" on a failed save.
+    // Coin toast + trophy both fire from `goalsPersistence.updateOne` ONLY after
+    // the server confirms the completion and reports coinsEarned > 0 — no more
+    // optimistic celebration on a failed save or a re-completed (dedupe) goal.
   };
   const handleArchive = (goal: Goal) => archiveGoal(goal.id);
   const handleDelete = (goal: Goal) => deleteGoal(goal.id);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Goal completion celebration */}
-      <LottieOverlay
-        show={showGoalTrophy}
-        path="/animations/goal-trophy.json"
-        duration={2000}
-        size={200}
-        onDone={() => setShowGoalTrophy(false)}
-      />
 
       {/* Header — editorial */}
       <div className="flex flex-wrap items-end justify-between gap-4 mb-4 md:mb-5 pb-4 md:pb-5 border-b border-border/60 flex-shrink-0">

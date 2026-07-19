@@ -3,6 +3,7 @@
  */
 import type { Goal, GoalTarget } from '@/types/goal';
 import { useCoinsStore } from '@/store/useCoinsStore';
+import { useCelebrationStore } from '@/store/useCelebrationStore';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { toast } from 'sonner';
 
@@ -90,6 +91,9 @@ export async function updateOne(id: string, patch: Partial<Goal>): Promise<boole
         }
         if (typeof data?.coinsEarned === 'number' && data.coinsEarned > 0) {
           showCoinToast(data.coinsEarned, 'Goal completed!');
+          // Trophy on a REAL award only — the old GoalsPage trigger fired
+          // optimistically, so a re-completed goal celebrated with no coins.
+          useCelebrationStore.getState().celebrateForAward(data.coinsEarned);
         }
       } catch {
         useCoinsStore.getState().invalidateBalance();

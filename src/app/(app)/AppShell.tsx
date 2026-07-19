@@ -25,6 +25,7 @@ import OfflineIndicator from "@/components/pwa/OfflineIndicator";
 import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
+import { CelebrationOverlay } from "@/components/coins/CelebrationOverlay";
 import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
@@ -442,6 +443,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="flex h-screen w-full bg-background overflow-hidden text-foreground antialiased"
         style={{ animation: 'appShellFadeIn 0.4s cubic-bezier(0.4,0,0.2,1) both' }}
       >
+        {/* Global goal/task completion trophy — triggered from the goals/tasks
+            persistence layers on a real award (coinsEarned > 0). */}
+        <CelebrationOverlay />
         <div className="hidden lg:flex lg:h-full">
           <Sidebar />
         </div>
