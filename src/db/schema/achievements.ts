@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 export const achievements = pgTable(
@@ -14,6 +14,9 @@ export const achievements = pgTable(
   },
   (table) => [
     index('achievements_user_id_idx').on(table.userId),
+    // M6: one row per (user, type) — blocks duplicate unlocks under concurrency.
+    // Modeled here (not only in migration 0019) so a future db:push keeps it.
+    uniqueIndex('achievements_user_type_uniq').on(table.userId, table.type),
   ]
 );
 

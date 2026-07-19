@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { spendStreakShield } from '@/lib/streaks/spendStreakShield';
 
 /** POST /api/streaks/recover — use streak shield consumable to recover streak */
 export async function POST(req: NextRequest) {
@@ -39,36 +40,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use streak shield: decrement count, restore streak to best-1 (at least 1)
+    // H4: atomic guarded shield spend (see spendStreakShield). Concurrent
+    // recoveries can't both spend the same shield.
     const restoredStreak = Math.max(1, user.dailyStreak > 0 ? user.dailyStreak : (user.bestDailyStreak > 0 ? user.bestDailyStreak - 1 : 1));
-    const updatedConsumables = {
-      focusBoost: 0,
-      streakShield: 0,
-      taskMultiplier: 0,
-      autoPlan: 0,
-      goalAccelerator: 0,
-      ...consumables,
-    };
-    updatedConsumables.streakShield = Math.max(0, shieldCount - 1);
-
-    // Set lastFocusDate to today so the streak continues
     const today = new Date().toISOString().slice(0, 10);
 
-    await db
-      .update(users)
-      .set({
-        consumables: updatedConsumables,
-        dailyStreak: restoredStreak,
-        lastFocusDate: today,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId));
+    const { spent, remaining } = await spendStreakShield(userId, restoredStreak, today);
+    if (!spent) {
+      // Lost the race (or shield already spent) — nothing was decremented.
+      return NextResponse.json({ ok: false, reason: 'payment_required' }, { status: 402 });
+    }
 
     return NextResponse.json({
       ok: true,
       shieldUsed: true,
       restoredStreak,
-      remainingShields: updatedConsumables.streakShield,
+      remainingShields: remaining,
     });
   } catch (err) {
     console.error('[POST /api/streaks/recover]', err);

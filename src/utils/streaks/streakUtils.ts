@@ -9,6 +9,14 @@ const SESSION_STREAK_GAP_MS = 4 * 60 * 60 * 1000; // 4 hours
 export const MAX_SESSION_MINUTES = 480;
 
 /**
+ * Per-user, per-UTC-day ceiling on rewarded focus minutes (12 h). Bounds
+ * focus-coin farming in aggregate — the daily backstop that holds even while
+ * session timestamps remain client-forgeable (until server-anchored start/
+ * complete lands, this is the ONLY thing bounding focus farming).
+ */
+export const MAX_DAILY_FOCUS_MINUTES = 720;
+
+/**
  * How far a client-reported duration may exceed server wall-clock time before
  * it is treated as tampering rather than clock skew / rounding.
  */

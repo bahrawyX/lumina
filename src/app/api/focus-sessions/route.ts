@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { focusSessions, users, achievements, tasks } from '@/db/schema';
-import { computeStreakUpdate, rewardedSessionMinutes, isDurationTampered } from '@/utils/streaks/streakUtils';
+import { computeStreakUpdate, rewardedSessionMinutes, isDurationTampered, MAX_DAILY_FOCUS_MINUTES } from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
-import { awardCoinsBatch } from '@/lib/coins/awardCoins';
+import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
+import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
 
 /** GET /api/focus-sessions — return session history for the authenticated user */
@@ -145,8 +146,6 @@ export async function POST(req: NextRequest) {
           timezone,
         );
 
-    const coinsEarned = streakUpdate ? streakUpdate.coins - previousCoins : 0;
-
     // Resolve task title before the transaction (read-only lookup)
     const rawTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
     // Prefer client-sent taskTitle, but validate/fallback to DB lookup
@@ -180,7 +179,7 @@ export async function POST(req: NextRequest) {
           startTime: startTs,
           endTime: endTs,
           durationMinutes,
-          coinsEarned,
+          coinsEarned: 0, // set after the cap-bounded award resolves (below)
         })
         .returning({ id: focusSessions.id });
 
@@ -194,7 +193,6 @@ export async function POST(req: NextRequest) {
       await tx
         .update(users)
         .set({
-          coins: streakUpdate.coins,
           dailyStreak: streakUpdate.dailyStreak,
           bestDailyStreak: streakUpdate.bestDailyStreak,
           sessionStreak: streakUpdate.sessionStreak,
@@ -224,58 +222,77 @@ export async function POST(req: NextRequest) {
 
       const newAchievements: { type: string; unlockedAt: string }[] = [];
       for (const type of newTypes) {
+        // M6: BARE onConflictDoNothing (no target) — deliberately order-independent
+        // vs migration 0019. Pre-0019 there is no (user_id, type) index, so this
+        // is a no-op guard (dups can still insert, exactly as prod does today) and
+        // it NEVER throws. Once 0019 lands, the unique index makes a concurrent
+        // duplicate unlock hit ON CONFLICT DO NOTHING → no second row, `ach`
+        // undefined, not re-reported. A targeted conflict clause would 42P10 here.
         const [ach] = await tx
           .insert(achievements)
           .values({ userId, type })
+          .onConflictDoNothing()
           .returning({ unlockedAt: achievements.unlockedAt });
-        newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
+        if (ach) newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
       }
 
       return { sessionId: row.id, newAchievements };
     });
 
-    // Fire-and-forget: additional coin awards from the new earn rules engine.
-    // These are ON TOP of the existing streak-based 1 coin/min from computeStreakUpdate.
-    // Skipped when under threshold — no bonus rewards for partial sessions.
+    // Coins are awarded here (awaited, not fire-and-forget — durable on serverless,
+    // H10) and bounded by the per-day focus-minute cap. Skipped under threshold.
+    let finalCoins = userRow.coins;
+    let coinsEarned = 0;
     if (streakUpdate) {
-      const streakSnapshot = streakUpdate;
-      void (async () => {
-        try {
-          // Lookup task priority for bonus
-          let taskPriority: string | undefined;
-          if (rawTaskId) {
-            const [t] = await db.select({ priority: tasks.priority }).from(tasks).where(eq(tasks.id, rawTaskId)).limit(1);
-            taskPriority = t?.priority;
-          }
-          // Check for focus boost consumable
-          const [u] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
-          const consumables = (u?.consumables as Record<string, number>) ?? {};
-          const hasFocusBoost = (consumables.focusBoost ?? 0) > 0;
+      // Task priority + focus-boost consumable feed the reward and the decrement.
+      let taskPriority: string | undefined;
+      if (rawTaskId) {
+        const [t] = await db.select({ priority: tasks.priority }).from(tasks)
+          .where(and(eq(tasks.id, rawTaskId), eq(tasks.userId, userId))).limit(1);
+        taskPriority = t?.priority;
+      }
+      const [uc] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
+      const hasFocusBoost = ((uc?.consumables as Record<string, number>)?.focusBoost ?? 0) > 0;
+      const utcDate = utcDateKey(new Date());
 
-          const awards = focusSessionAwards(durationMinutes, taskPriority, false, hasFocusBoost);
-          const streakAwards = streakMilestoneAwards(streakSnapshot.dailyStreak, streakSnapshot.sessionStreak);
-          const allAwards = [...awards, ...streakAwards];
+      // The full focus reward as a function of granted (post-cap) minutes: the
+      // 1-coin/min base plus the earn-rule bonuses, all scaled off granted so the
+      // daily cap bounds every focus-scaled reward (C1 aggregate fix).
+      const focusRes = await awardFocusCoins(userId, {
+        sessionId: result.sessionId,
+        utcDate,
+        requestedMinutes: durationMinutes,
+        maxDailyMinutes: MAX_DAILY_FOCUS_MINUTES,
+        coinsForMinutes: (granted) =>
+          granted + focusSessionAwards(granted, taskPriority, false, hasFocusBoost).reduce((s, a) => s + a.amount, 0),
+      });
+      finalCoins = focusRes.newBalance;
 
-          if (allAwards.length > 0) {
-            await awardCoinsBatch(userId, allAwards);
-            // Decrement focus boost if used
-            if (hasFocusBoost) {
-              const updated = { focusBoost: 0, streakShield: 0, taskMultiplier: 0, autoPlan: 0, goalAccelerator: 0, ...consumables };
-              updated.focusBoost = Math.max(0, (consumables.focusBoost ?? 0) - 1);
-              await db.update(users).set({ consumables: updated }).where(eq(users.id, userId));
-            }
-          }
-        } catch (e) {
-          console.error('[focus-sessions] additional coin awards failed', e);
-        }
-      })();
+      // Consume one focus boost only if the focus reward was actually granted —
+      // atomic decrement on the live JSON column (no stale-snapshot overwrite).
+      if (hasFocusBoost && focusRes.awarded) {
+        await db.update(users).set({
+          consumables: sql`jsonb_set(coalesce(${users.consumables}, '{}'::jsonb), '{focusBoost}', to_jsonb(greatest(0, coalesce((${users.consumables}->>'focusBoost')::int, 0) - 1)))`,
+        }).where(eq(users.id, userId));
+      }
+
+      // Streak milestones are event-based (once per user), not minute-capped.
+      const milestones = streakMilestoneAwards(streakUpdate.dailyStreak, streakUpdate.sessionStreak);
+      if (milestones.length > 0) {
+        finalCoins = (await awardCoins(userId, scopeAwards(milestones, { utcDate }))).newBalance;
+      }
+
+      coinsEarned = finalCoins - previousCoins;
+      if (coinsEarned !== 0) {
+        await db.update(focusSessions).set({ coinsEarned }).where(eq(focusSessions.id, result.sessionId));
+      }
     }
 
     return NextResponse.json(
       {
         id: result.sessionId,
         coinsEarned,
-        newCoins: streakUpdate ? streakUpdate.coins : userRow.coins,
+        newCoins: finalCoins,
         dailyStreak: streakUpdate ? streakUpdate.dailyStreak : userRow.dailyStreak,
         sessionStreak: streakUpdate ? streakUpdate.sessionStreak : userRow.sessionStreak,
         newAchievements: result.newAchievements,

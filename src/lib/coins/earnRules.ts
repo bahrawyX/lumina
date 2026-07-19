@@ -3,13 +3,13 @@
  * (amount + reason + label) to apply. Multiple awards can stack.
  */
 
-type Award = { amount: number; reason: string; label: string; metadata?: Record<string, unknown> };
+export type Award = { amount: number; reason: string; label: string; metadata?: Record<string, unknown> };
 
 // ── Focus & Pomodoro ────────────────────────────────────────────────────────
 
 export function focusSessionAwards(durationMinutes: number, taskPriority?: string, isPomoCycleComplete?: boolean, hasFocusBoost?: boolean): Award[] {
   const awards: Award[] = [];
-  let base = 5;
+  const base = 5;
   const perTenMin = Math.floor(durationMinutes / 10) * 2;
 
   awards.push({ amount: base, reason: 'focus_session', label: 'Focus session completed' });

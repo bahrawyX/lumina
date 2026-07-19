@@ -3,8 +3,9 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { goals } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { awardCoinsBatch } from '@/lib/coins/awardCoins';
+import { awardCoins } from '@/lib/coins/awardCoins';
 import { goalCompleteAwards } from '@/lib/coins/earnRules';
+import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -60,10 +61,17 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     let newBalance: number | undefined;
     let coinsEarned: number | undefined;
     if (patch.status === 'completed' && prev?.status !== 'completed') {
-      const awards = goalCompleteAwards(prev?.timeframe ?? 'custom');
-      coinsEarned = awards.reduce((s, a) => s + a.amount, 0);
+      // H1: awards keyed by goalId, so completed→active→completed cannot re-award —
+      // the app-level status guard plus the ledger dedupe key are belt-and-braces.
+      const entries = scopeAwards(goalCompleteAwards(prev?.timeframe ?? 'custom'), {
+        entityId: id,
+        sourceType: 'goal',
+        utcDate: utcDateKey(new Date()),
+      });
       try {
-        newBalance = await awardCoinsBatch(userId, awards);
+        const res = await awardCoins(userId, entries);
+        newBalance = res.newBalance;
+        coinsEarned = res.applied;
       } catch (e) {
         console.error('[goal complete coin award]', e);
       }

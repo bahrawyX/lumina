@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { getDatabase } from '@/lib/db';
-import { coinTransactions } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
+import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { dailyBriefDismissAward } from '@/lib/coins/earnRules';
 
-/** POST /api/coins/award-brief — award coins for reading daily brief (once per day) */
+/** POST /api/coins/award-brief — award coins for reading the daily brief (once per UTC day) */
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
@@ -14,29 +13,18 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
 
   try {
-    const db = getDatabase();
-
-    // Check if already awarded today
-    const today = new Date();
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const [existing] = await db
-      .select({ id: coinTransactions.id })
-      .from(coinTransactions)
-      .where(
-        and(
-          eq(coinTransactions.userId, userId),
-          eq(coinTransactions.reason, 'daily_brief'),
-          sql`${coinTransactions.createdAt} >= ${todayStart}`
-        )
-      )
-      .limit(1);
-
-    if (existing) {
-      return NextResponse.json({ ok: true, alreadyAwarded: true });
-    }
-
-    const newBalance = await awardCoins(userId, 10, 'daily_brief', 'Read your Daily Brief');
-    return NextResponse.json({ ok: true, coinsEarned: 10, newBalance });
+    // M1: idempotency is enforced by the ledger dedupe key `daily_brief:<utc-date>`
+    // (unique per user/day), not by a check-then-insert race. A second request the
+    // same day resolves to a no-op duplicate.
+    const entry = scopeAward(dailyBriefDismissAward(), { utcDate: utcDateKey(new Date()) });
+    const { newBalance, outcomes } = await awardCoins(userId, [entry]);
+    const awarded = outcomes[0]?.awarded ?? false;
+    return NextResponse.json({
+      ok: true,
+      alreadyAwarded: !awarded,
+      coinsEarned: awarded ? entry.amount : 0,
+      newBalance,
+    });
   } catch (err) {
     console.error('[POST /api/coins/award-brief]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
