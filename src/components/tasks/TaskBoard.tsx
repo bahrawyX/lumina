@@ -55,9 +55,6 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { Button } from '../ui/button';
 import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
 import { Skeleton } from 'boneyard-js/react';
-import { useCoinsStore, selectActiveCosmetics } from '../../store/useCoinsStore';
-import { triggerConfetti } from '../ui/ConfettiEffect';
-import { showCoinToast } from '../../lib/coins/showCoinToast';
 import { TaskFilterBar } from './TaskFilterBar';
 import { filterTasks, hasActiveFilters } from '../../utils/taskFilters';
 
@@ -407,41 +404,24 @@ export const TaskBoard: React.FC = () => {
     addSubtask(parentId, { title });
   }, [addSubtask]);
 
-  // ── Confetti + coin toast on task completion ─────────────────────────────
-  const activeCosmetics = useCoinsStore(selectActiveCosmetics);
-
-  const onTaskCompleted = useCallback((task: Task) => {
-    // Confetti if owned + active
-    if (activeCosmetics.confetti) void triggerConfetti();
-    // Show the estimated-base toast for instant feedback. The authoritative
-    // balance update is performed server-side in the task PATCH handler,
-    // which pushes the true value back via coins persistence — we no longer
-    // increment the local balance here (N3: avoid double-award / drift).
-    const base = task.difficulty === 'hard' ? 10 : 5;
-    showCoinToast(base, task.difficulty === 'hard' ? 'Hard task completed' : 'Task completed');
-  }, [activeCosmetics.confetti]);
+  // Coin toast + confetti on a real task-completion award are driven by the
+  // task PATCH response in tasksPersistence (gated on coinsEarned > 0), so they
+  // fire once, on a genuine award, from every completion path.
 
   const handleToggleSubtaskDone = useCallback((taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     const newStatus = task.status === 'done' ? 'todo' : 'done';
     updateTask(taskId, { status: newStatus });
-    if (newStatus === 'done') onTaskCompleted(task);
-  }, [tasks, updateTask, onTaskCompleted]);
+  }, [tasks, updateTask]);
 
   const handleMarkParentDone = useCallback((taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
     updateTask(taskId, { status: 'done' });
-    if (task) onTaskCompleted(task);
-  }, [tasks, updateTask, onTaskCompleted]);
+  }, [updateTask]);
 
   const handleStatusChange = useCallback((taskId: string, status: TaskStatus) => {
     updateTask(taskId, { status });
-    if (status === 'done') {
-      const task = tasks.find(t => t.id === taskId);
-      if (task) onTaskCompleted(task);
-    }
-  }, [tasks, updateTask, onTaskCompleted]);
+  }, [updateTask]);
 
   const handlePriorityChange = useCallback((task: Task, priority: TaskPriority) => {
     if (task.priority === priority) return;

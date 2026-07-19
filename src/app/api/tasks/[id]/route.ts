@@ -112,6 +112,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // client uses it to update the badge directly. Goal target updates
     // remain fire-and-forget since they don't gate the response.
     let newBalance: number | undefined;
+    let coinsEarned: number | undefined;
     if (patch.status !== undefined) {
       // ── Goal target auto-update (fire-and-forget) ─────────────────
       void (async () => {
@@ -187,6 +188,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             if (entries.length > 0) {
               const res = await awardCoins(userId, entries);
               newBalance = res.newBalance;
+              // Amount actually applied (0 when every award was a dedupe duplicate)
+              // — the client gates the coin toast on this so a re-completion is silent.
+              coinsEarned = res.applied;
               // Consume one task-multiplier ONLY if its bonus was actually granted
               // (not a dedupe duplicate) — atomic decrement on the live JSON column.
               const multiplierGranted = res.outcomes.some(
@@ -205,7 +209,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       }
     }
 
-    return NextResponse.json({ ok: true, newBalance });
+    return NextResponse.json({ ok: true, newBalance, coinsEarned });
   } catch (err) {
     console.error('[PATCH /api/tasks/[id]]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

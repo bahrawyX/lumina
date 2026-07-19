@@ -28,10 +28,12 @@ interface CoinsState {
   activateCosmetic: (patch: Partial<ActiveCosmetics>) => Promise<boolean>;
   /**
    * Re-pull the canonical coin balance + transactions from GET /api/coins.
-   * Called after a focus session finishes so the UI reflects the DB-side
-   * total (streakUpdate.coins + any async awardCoinsBatch bonuses) instead
-   * of a best-guess delta. useCoinsStore is the single source of truth —
-   * useStreakStore no longer tracks `coins`.
+   * Called after a focus session finishes so the UI reflects the DB-side coin
+   * total instead of a best-guess delta. (As of the single-path awardCoins
+   * refactor the award endpoints return the authoritative `newBalance`
+   * synchronously, so this is now a belt-and-braces reconcile rather than a
+   * catch-up for fire-and-forget bonuses.) useCoinsStore is the single source
+   * of truth — useStreakStore no longer tracks `coins`.
    */
   refetchBalance: () => Promise<void>;
   /**

@@ -104,10 +104,10 @@ const FocusPage: React.FC = () => {
         showCoinToast(result.coinsEarned, 'Focus session completed');
       }
 
-      // DB is the single source of truth for the coin balance — refetch from
-      // GET /api/coins so useCoinsStore reflects streakUpdate.coins plus any
-      // async awardCoinsBatch bonuses. Do NOT optimistically add here or the
-      // balance diverges from the server.
+      // The focus endpoint now awaits all coin awards and returns the
+      // authoritative balance (applied above via setBalance in applySessionResult).
+      // This refetch is a belt-and-braces reconcile against GET /api/coins — do
+      // NOT optimistically add here or the balance diverges from the server.
       void useCoinsStore.getState().refetchBalance();
 
       // Streak milestone celebration overlay

@@ -6,6 +6,8 @@
 
 import type { Task } from '@/types/task';
 import { useCoinsStore } from '@/store/useCoinsStore';
+import { showCoinToast } from '@/lib/coins/showCoinToast';
+import { triggerConfetti } from '@/components/ui/ConfettiEffect';
 
 type ApiTaskStatus = 'todo' | 'doing' | 'done';
 
@@ -92,11 +94,21 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
     // with an in-flight DB transaction.
     if (res.ok && patch.status === 'done') {
       try {
-        const data = (await res.json()) as { newBalance?: number };
+        const data = (await res.json()) as { newBalance?: number; coinsEarned?: number };
         if (typeof data?.newBalance === 'number') {
           useCoinsStore.getState().setBalance(data.newBalance);
         } else {
           useCoinsStore.getState().invalidateBalance();
+        }
+        // Fire the coin toast ONLY when the server actually awarded coins.
+        // A re-completion (done→todo→done) is a dedupe duplicate → coinsEarned 0
+        // → silent, matching goals/focus. The old client-side toast fired on
+        // every completion, including duplicates.
+        if (typeof data?.coinsEarned === 'number' && data.coinsEarned > 0) {
+          showCoinToast(data.coinsEarned, 'Task completed');
+          // Confetti (owned cosmetic) fires on the SAME real-award gate as the
+          // toast — it no longer bursts on a re-completion that awarded nothing.
+          if (useCoinsStore.getState().activeCosmetics.confetti) void triggerConfetti();
         }
       } catch {
         useCoinsStore.getState().invalidateBalance();
