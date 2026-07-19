@@ -5,6 +5,38 @@
 
 const SESSION_STREAK_GAP_MS = 4 * 60 * 60 * 1000; // 4 hours
 
+/** Hard ceiling on a single focus session's rewarded length (8 hours). */
+export const MAX_SESSION_MINUTES = 480;
+
+/**
+ * How far a client-reported duration may exceed server wall-clock time before
+ * it is treated as tampering rather than clock skew / rounding.
+ */
+export const DURATION_TAMPER_TOLERANCE_SECS = 120;
+
+/**
+ * Derive the server-trusted, bounded rewarded length (in minutes) for a focus
+ * session. The client-supplied `duration` is only a hint: the awarded length is
+ * never more than the real elapsed wall-clock time, never more than the client
+ * claims, and never above MAX_SESSION_MINUTES. Always at least 1.
+ *
+ * This is the C1 guard — every coin/streak reward scales off this value, so a
+ * fabricated `duration` can no longer mint unbounded coins.
+ */
+export function rewardedSessionMinutes(wallSeconds: number, clientDurationSecs: number): number {
+  const serverWallMinutes = Math.floor(Math.max(0, wallSeconds) / 60);
+  const clientMinutes = Math.round(Math.max(0, clientDurationSecs) / 60);
+  return Math.max(1, Math.min(serverWallMinutes, clientMinutes, MAX_SESSION_MINUTES));
+}
+
+/**
+ * True when the client-reported duration exceeds real elapsed wall-clock time
+ * by more than DURATION_TAMPER_TOLERANCE_SECS — a fabricated-session signal.
+ */
+export function isDurationTampered(wallSeconds: number, clientDurationSecs: number): boolean {
+  return clientDurationSecs > wallSeconds + DURATION_TAMPER_TOLERANCE_SECS;
+}
+
 interface UserStreakFields {
   dailyStreak: number;
   bestDailyStreak: number;
