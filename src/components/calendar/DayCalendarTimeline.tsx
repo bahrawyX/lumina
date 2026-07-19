@@ -527,11 +527,11 @@ export const DayCalendarTimeline: React.FC<DayCalendarTimelineProps> = ({
               className="absolute left-0 right-0 pointer-events-none flex items-center"
               style={{ top: `${nowTop}px`, zIndex: 40 }}
             >
-              <div className="pointer-events-none w-2.5 h-2.5 rounded-full bg-red-500 -ml-[5px]" />
+              <div className="pointer-events-none w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] -ml-[5px] animate-pulse" />
               <div className="h-[2px] flex-1 bg-gradient-to-r from-red-500/60 to-transparent relative">
                 <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-2.5 px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
                   <span className="w-1 h-1 bg-background rounded-full animate-ping" />
-                  {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  NOW • {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
             </div>
