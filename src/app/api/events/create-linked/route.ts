@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
+import { validateRRule } from '@/lib/recurrence/rruleEngine';
 
 /**
  * POST /api/events/create-linked
@@ -86,6 +87,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'endTime must be after startTime' }, { status: 400 });
   }
 
+  // H5: validate the RRULE before persisting — the same DoS guard used by
+  // POST /api/events. Pathological rules (sub-daily FREQ, enormous
+  // COUNT/INTERVAL) are rejected here rather than exploding CPU on every later
+  // expansion. Validate up front (fast-fail, clean 400) and reuse the trimmed
+  // value inside the transaction.
+  const trimmedRrule =
+    recurrence && typeof recurrence.rrule === 'string' ? recurrence.rrule.trim() : '';
+  if (trimmedRrule) {
+    const validation = validateRRule(trimmedRrule, startTs);
+    if (validation.ok === false) {
+      return NextResponse.json(
+        { error: `Invalid recurrence: ${validation.reason}` },
+        { status: 400 },
+      );
+    }
+  }
+
   try {
     const db = getDatabase();
 
@@ -161,17 +179,17 @@ export async function POST(req: NextRequest) {
 
       const eventId = eventRow.id;
 
-      // 2. Insert recurrence if provided
+      // 2. Insert recurrence if provided (already validated above)
       let recurrenceId: string | null = null;
-      if (recurrence?.rrule) {
+      if (trimmedRrule) {
         const [recRow] = await tx
           .insert(eventRecurrence)
           .values({
             eventId,
             userId,
-            rrule: recurrence.rrule.trim(),
-            exdates: recurrence.exdates ?? [],
-            recurrenceEnd: recurrence.until ? new Date(recurrence.until) : null,
+            rrule: trimmedRrule,
+            exdates: recurrence?.exdates ?? [],
+            recurrenceEnd: recurrence?.until ? new Date(recurrence.until) : null,
           })
           .returning({ id: eventRecurrence.id });
         recurrenceId = recRow.id;

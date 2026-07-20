@@ -82,6 +82,20 @@ export function mapMicrosoftCalendar(
   };
 }
 
+/**
+ * Graph (with `Prefer: outlook.timezone="UTC"`) returns offset-less UTC
+ * wall-clock, e.g. "2026-07-18T12:00:00.0000000". Parse it EXPLICITLY as UTC so
+ * the resulting instant is correct regardless of the server's local timezone —
+ * `new Date(offsetLessString)` would otherwise be interpreted as server-local
+ * (this was the ~2h Outlook offset, H7). Also truncates Graph's 7-digit
+ * fractional seconds, which not all engines parse.
+ */
+export function parseGraphUtc(dt: string): Date {
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(dt);
+  const normalized = hasZone ? dt : dt.replace(/(\.\d{3})\d+$/, '$1') + 'Z';
+  return new Date(normalized);
+}
+
 export function mapMicrosoftEvent(
   event: MicrosoftEvent,
 ): MappedMicrosoftEvent | null {
@@ -101,10 +115,10 @@ export function mapMicrosoftEvent(
       endTime = new Date(startTime.getTime() + 86_400_000);
     }
   } else {
-    startTime = new Date(event.start.dateTime);
+    startTime = parseGraphUtc(event.start.dateTime);
     if (isNaN(startTime.getTime())) return null;
 
-    endTime = new Date(event.end.dateTime);
+    endTime = parseGraphUtc(event.end.dateTime);
     if (isNaN(endTime.getTime())) {
       endTime = new Date(startTime.getTime() + 3_600_000);
     }

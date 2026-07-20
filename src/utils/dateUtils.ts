@@ -1,5 +1,5 @@
 
-import { CalendarEvent, OverlapGroup, EventInstance, RecurrenceRule } from '../types';
+import { CalendarEvent, OverlapGroup, EventInstance } from '../types';
 
 export const HOUR_HEIGHT = 80;
 
@@ -75,7 +75,7 @@ export const expandRecurrences = (events: CalendarEvent[], startRange: Date, end
 
     const { frequency, interval, daysOfWeek, endCondition } = event.recurrence;
     const safeInterval = Math.max(1, Math.floor(interval ?? 1)); // guard against 0 or NaN
-    let current = new Date(event.date + 'T00:00:00');
+    const current = new Date(event.date + 'T00:00:00');
     let count = 0;
 
     // Fast-forward to range if possible for optimization
@@ -116,7 +116,22 @@ export const expandRecurrences = (events: CalendarEvent[], startRange: Date, end
       // Increment
       if (frequency === 'DAILY') current.setDate(current.getDate() + safeInterval);
       else if (frequency === 'WEEKLY') current.setDate(current.getDate() + 1);
-      else if (frequency === 'MONTHLY') current.setMonth(current.getMonth() + safeInterval);
+      else if (frequency === 'MONTHLY') {
+        // Advance whole months WITHOUT drifting off the anchor day. A naive
+        // `setMonth(getMonth()+1)` on a day-31 event overflows short months
+        // (Jan 31 → early March) and getDate() never returns to 31 again, so
+        // the series silently dies after the first month (the M bug). Instead we
+        // re-anchor to the ORIGINAL day-of-month each step: set day=1 first to
+        // avoid the overflow, then clamp to the target month's length. Months
+        // too short to hold the anchor day land on a clamped date that fails the
+        // getDate() === anchor guard above and are correctly skipped (matching
+        // RFC 5545 MONTHLY / Google Calendar "monthly on the 31st" semantics).
+        const anchorDay = new Date(event.date + 'T00:00:00').getDate();
+        current.setDate(1);
+        current.setMonth(current.getMonth() + safeInterval);
+        const daysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+        current.setDate(Math.min(anchorDay, daysInMonth));
+      }
       
       if (count > 2000 || currentISO > '2099-12-31') break; // Hard safety
     }
@@ -134,7 +149,7 @@ export const calculateOverlaps = (dayEvents: EventInstance[]): Map<string, Overl
   const results = new Map<string, OverlapGroup>();
   if (sorted.length === 0) return results;
 
-  let clusters: EventInstance[][] = [];
+  const clusters: EventInstance[][] = [];
   let currentCluster: EventInstance[] = [];
   let clusterEnd = -1;
 

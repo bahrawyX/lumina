@@ -38,7 +38,10 @@ async function fetchCalendarViewRaw(
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
-        Prefer: 'outlook.timezone="Africa/Cairo"',
+        // H7: request UTC (matches the sync path) — never a hardcoded region.
+        // Graph then returns offset-less UTC wall-clock, which the mapper parses
+        // as UTC; the client renders each instant in the viewer's local tz.
+        Prefer: 'outlook.timezone="UTC"',
       },
       cache: 'no-store',
     });
@@ -65,7 +68,8 @@ async function fetchMicrosoftCalendars(token: string): Promise<MicrosoftCalendar
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
-      Prefer: 'outlook.timezone="Africa/Cairo"',
+      // H7: no hardcoded region (calendar list carries no datetimes anyway).
+      Prefer: 'outlook.timezone="UTC"',
     },
     cache: 'no-store',
   });

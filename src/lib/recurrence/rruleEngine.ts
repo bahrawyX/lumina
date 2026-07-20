@@ -112,7 +112,17 @@ export function expandRecurrence(
     }
   }
 
-  const occurrences = ruleSet.between(rangeStart, rangeEnd, true);
+  // H5: hard-cap generation via the iterator callback (returns false to stop),
+  // so a wide expansion window can never materialise more than MAX_INSTANCES
+  // occurrences in memory — not merely slice the output afterwards. `len` is the
+  // count AFTER the current date is collected, so `len < MAX_INSTANCES` yields
+  // at most MAX_INSTANCES dates. The slice below is a redundant safety net.
+  const occurrences = ruleSet.between(
+    rangeStart,
+    rangeEnd,
+    true,
+    (_date, len) => len < MAX_INSTANCES,
+  );
 
   return occurrences.slice(0, MAX_INSTANCES).map((date) => ({
     startIso: date.toISOString(),
@@ -142,9 +152,12 @@ export function getNextOccurrences(
     }
   }
 
-  // Use a far-future end date and limit by count
+  // Use a far-future end date and limit by count. H5: same generation-time hard
+  // cap — stop as soon as we have enough, bounded by MAX_INSTANCES even if the
+  // caller asks for more, so a far-future window can't blow up CPU.
   const farFuture = new Date(after.getTime() + 365 * 86_400_000 * 2);
-  const occurrences = ruleSet.between(after, farFuture, true);
+  const limit = Math.min(count, MAX_INSTANCES);
+  const occurrences = ruleSet.between(after, farFuture, true, (_date, len) => len < limit);
 
   return occurrences.slice(0, count).map((date) => ({
     startIso: date.toISOString(),

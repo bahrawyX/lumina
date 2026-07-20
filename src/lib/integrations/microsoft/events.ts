@@ -75,6 +75,21 @@ export interface SyncMicrosoftCalendarEventsResult {
   skipped: number;
 }
 
+/**
+ * INTENTIONAL NO-OP: fetches + counts events but writes NONE to the DB.
+ *
+ * Lumina uses a browser-cache-only architecture for external (Google/Outlook)
+ * events. Do NOT "fix" this by adding a DB write — nothing reads such rows and
+ * it re-consumes the exact Neon row quota the cleanup route exists to reclaim:
+ *  - GET /api/events returns only provider='local' rows and explicitly excludes
+ *    Google/Microsoft events — see src/app/api/events/route.ts.
+ *  - POST /api/maintenance/cleanup-external-events deletes any provider rows.
+ *  - The calendar reads external events LIVE via /api/external-events/* (see
+ *    fetchMicrosoftExternalEvents), cached in the browser — never from this table.
+ * Calendar *metadata* is still imported (runFullMicrosoftSync phase 1); only the
+ * event write is dropped. The fetch is kept only for skipped-count telemetry;
+ * its cost on OAuth connect is tracked separately in the audit doc.
+ */
 export async function syncMicrosoftCalendarEvents(
   userId: string,
   dbCalendarId: string,
