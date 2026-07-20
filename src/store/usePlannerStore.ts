@@ -12,6 +12,7 @@ interface PlannerState {
   /** Session-only demo events (context previews, onboarding) — never persisted. */
   demoLocalEvents: CalendarEvent[];
   outlookConnected: boolean;
+  googleConnected: boolean;
   isSyncing: boolean;
   lastSyncedAt: string | null;
   syncError: string | null;
@@ -21,6 +22,7 @@ interface PlannerState {
   setAppleEvents:   (events: CalendarEvent[]) => void;
   setDemoLocalEvents: (events: CalendarEvent[]) => void;
   setOutlookConnected: (connected: boolean) => void;
+  setGoogleConnected: (connected: boolean) => void;
   setIsSyncing: (syncing: boolean) => void;
   setLastSyncedAt: (iso: string | null) => void;
   setSyncError: (message: string | null) => void;
@@ -36,6 +38,7 @@ export const usePlannerStore = create<PlannerState>()(
       appleEvents:   [],
       demoLocalEvents: [],
       outlookConnected: false,
+      googleConnected: false,
       isSyncing: false,
       lastSyncedAt: null,
       syncError: null,
@@ -45,6 +48,7 @@ export const usePlannerStore = create<PlannerState>()(
       setAppleEvents:      (appleEvents)      => set({ appleEvents }),
       setDemoLocalEvents:  (demoLocalEvents)  => set({ demoLocalEvents }),
       setOutlookConnected: (outlookConnected) => set({ outlookConnected }),
+      setGoogleConnected:  (googleConnected)  => set({ googleConnected }),
       setIsSyncing:        (isSyncing)        => set({ isSyncing }),
       setLastSyncedAt:     (lastSyncedAt)     => set({ lastSyncedAt }),
       setSyncError:        (syncError)        => set({ syncError }),
@@ -54,8 +58,9 @@ export const usePlannerStore = create<PlannerState>()(
       name: 'lumina-planner',
       // Explicit return type guarantees event arrays can NEVER accidentally
       // be added to localStorage persistence in a future edit.
-      partialize: (state): { outlookConnected: boolean } => ({
+      partialize: (state): { outlookConnected: boolean; googleConnected: boolean } => ({
         outlookConnected: state.outlookConnected,
+        googleConnected: state.googleConnected,
       }),
     }
   )

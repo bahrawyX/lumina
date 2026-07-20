@@ -217,6 +217,7 @@ const AppSidebar: React.FC = () => {
   const deleteContext       = useCalendarStore((s) => s.deleteContext);
   const outlookConnected    = usePlannerStore((s) => s.outlookConnected);
   const setOutlookConnected = usePlannerStore((s) => s.setOutlookConnected);
+  const setGoogleConnected  = usePlannerStore((s) => s.setGoogleConnected);
   const setOutlookEvents    = usePlannerStore((s) => s.setOutlookEvents);
   const setGoogleEvents     = usePlannerStore((s) => s.setGoogleEvents);
   const clearExternalEvents = usePlannerStore((s) => s.clearExternalEvents);
@@ -425,6 +426,7 @@ const AppSidebar: React.FC = () => {
       const res = await fetch('/api/integrations/status', { cache: 'no-store' });
       if (!res.ok) {
         setGoogleCalConnected(false);
+        setGoogleConnected(false);
         setOutlookConnected(false);
         setOutlookEvents([]);
         return { google: false, microsoft: false };
@@ -439,6 +441,7 @@ const AppSidebar: React.FC = () => {
       const isMicrosoftConnected = Boolean(data.microsoft?.connected);
 
       setGoogleCalConnected(isGoogleConnected);
+      setGoogleConnected(isGoogleConnected);
       setOutlookConnected(isMicrosoftConnected);
 
       if (!isMicrosoftConnected) {
@@ -448,11 +451,12 @@ const AppSidebar: React.FC = () => {
       return { google: isGoogleConnected, microsoft: isMicrosoftConnected };
     } catch {
       setGoogleCalConnected(false);
+      setGoogleConnected(false);
       setOutlookConnected(false);
       setOutlookEvents([]);
       return { google: false, microsoft: false };
     }
-  }, [setOutlookConnected, setOutlookEvents]);
+  }, [setGoogleConnected, setOutlookConnected, setOutlookEvents]);
 
   const loadCalendarFilters = React.useCallback(async () => {
     setCalendarFiltersLoading(true);

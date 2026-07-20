@@ -310,6 +310,7 @@ export default function PersistenceBootstrap() {
           useOnboardingStore.getState().setGoogleConnected(Boolean(data.google?.connected));
           useOnboardingStore.getState().setMicrosoftConnected(Boolean(data.microsoft?.connected));
           const planner = (await import('@/store/usePlannerStore')).usePlannerStore.getState();
+          planner.setGoogleConnected(Boolean(data.google?.connected));
           planner.setOutlookConnected(Boolean(data.microsoft?.connected));
           if (!data.microsoft?.connected) planner.setOutlookEvents([]);
         })

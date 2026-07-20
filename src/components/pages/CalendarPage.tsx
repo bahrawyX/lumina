@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { DailyBriefStrip } from '@/components/dashboard/DailyBriefStrip';
+import { CalendarSyncIndicator } from '@/components/calendar/CalendarSyncIndicator';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   ChevronLeftIcon, ChevronRightIcon, UndoIcon, RedoIcon,
@@ -121,6 +122,8 @@ const CalendarPage: React.FC = () => {
               <> {MONTHS[currentDate.getMonth()]} <span className="text-muted-foreground/40 font-light">{currentDate.getFullYear()}</span> </>
             )}
           </motion.h2>
+
+          <CalendarSyncIndicator />
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 lg:gap-2 flex-wrap justify-end">

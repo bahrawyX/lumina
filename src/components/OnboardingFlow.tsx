@@ -1388,6 +1388,7 @@ const OnboardingFlow: React.FC = () => {
       if (!res.ok) {
         store.setGoogleConnected(false);
         store.setMicrosoftConnected(false);
+        plannerStore.setGoogleConnected(false);
         plannerStore.setOutlookConnected(false);
         plannerStore.setOutlookEvents([]);
         return { google: false, microsoft: false };
@@ -1403,6 +1404,7 @@ const OnboardingFlow: React.FC = () => {
 
       store.setGoogleConnected(google);
       store.setMicrosoftConnected(microsoft);
+      plannerStore.setGoogleConnected(google);
       plannerStore.setOutlookConnected(microsoft);
 
       if (!microsoft) {
@@ -1413,6 +1415,7 @@ const OnboardingFlow: React.FC = () => {
     } catch {
       store.setGoogleConnected(false);
       store.setMicrosoftConnected(false);
+      plannerStore.setGoogleConnected(false);
       plannerStore.setOutlookConnected(false);
       plannerStore.setOutlookEvents([]);
       return { google: false, microsoft: false };

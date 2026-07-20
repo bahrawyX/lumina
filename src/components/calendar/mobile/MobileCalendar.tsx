@@ -33,6 +33,7 @@ import { expandRecurrences, formatDateISO, getDaysInMonth } from '@/utils/dateUt
 import { EventInstance } from '@/types';
 import { MobileMonthGrid } from './MobileMonthGrid';
 import { MobileDayList } from './MobileDayList';
+import { CalendarSyncIndicator } from '@/components/calendar/CalendarSyncIndicator';
 import { PlusIcon } from '@/components/icons';
 
 export const MobileCalendar: React.FC = () => {
@@ -131,6 +132,7 @@ export const MobileCalendar: React.FC = () => {
           <h2 className="font-display text-lg tracking-[-0.02em] text-foreground">
             {monthLabel}
           </h2>
+          <CalendarSyncIndicator className="mt-0.5" />
         </div>
         <MobileMonthGrid
           monthDate={selectedDate}

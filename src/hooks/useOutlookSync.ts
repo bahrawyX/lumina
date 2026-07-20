@@ -19,7 +19,7 @@
  *  - Local calendar is NEVER affected by external fetch failures
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
@@ -27,6 +27,7 @@ import { authClient } from '../lib/auth-client';
 import { ViewType } from '../types';
 import type { CalendarEvent, EventCategory, EventProvider } from '../types';
 import { getCached, setCache } from '../lib/calendar/externalEventsCache';
+import { createSingleFlight } from '../lib/calendar/singleFlight';
 import type { ApiExternalEvent } from '../lib/calendar/externalEventTypes';
 
 // Background poll interval — longer than cache TTL so the cache is always
@@ -174,6 +175,11 @@ export function useOutlookSync() {
   const setIsSyncing    = usePlannerStore((s) => s.setIsSyncing);
   const setLastSyncedAt = usePlannerStore((s) => s.setLastSyncedAt);
   const setSyncError    = usePlannerStore((s) => s.setSyncError);
+  // Reactive connection flags — a false→true flip (a provider was just
+  // connected) deterministically drives a refresh below, instead of relying on
+  // the droppable `lumina:external-sync-now` window event.
+  const googleConnected  = usePlannerStore((s) => s.googleConnected);
+  const outlookConnected = usePlannerStore((s) => s.outlookConnected);
 
   // Seed context demo events on first mount — visible immediately, no DB/timing dependency.
   useEffect(() => {
@@ -188,7 +194,6 @@ export function useOutlookSync() {
   // so the interval always reads the current view/date without being a dep.
   const viewRef        = useRef(view);
   const dateRef        = useRef(currentDate);
-  const isFetchingRef  = useRef(false);
   const lastFocusSyncAtRef = useRef(0);
   viewRef.current  = view;
   dateRef.current  = currentDate;
@@ -196,7 +201,6 @@ export function useOutlookSync() {
   const syncRange = useCallback(
     async (range: { start: string; end: string }, options?: { showLoader?: boolean; force?: boolean }) => {
       if (!userId) return;
-      if (isFetchingRef.current) return;
       const showLoader = options?.showLoader === true;
       const force = options?.force === true;
       const loaderToastId = 'calendar-sync-loading';
@@ -212,8 +216,6 @@ export function useOutlookSync() {
         : getCached(userId, 'microsoft', startKey, endKey);
       const cachedMsWithEvents = cachedMs && cachedMs.length > 0 ? cachedMs : null;
 
-      isFetchingRef.current = true;
-      setIsSyncing(true);
       setSyncError(null);
       let syncFailed = false;
       const providerErrors: string[] = [];
@@ -328,52 +330,83 @@ export function useOutlookSync() {
         if (showLoader && !syncFailed) {
           toast.success('Calendar synced ✓', { id: loaderToastId, duration: 2_000 });
         }
-        isFetchingRef.current = false;
-        setIsSyncing(false);
       }
     },
     [
       userId,
       setGoogleEvents,
       setOutlookEvents,
-      setIsSyncing,
       setLastSyncedAt,
       setSyncError,
     ],
+  );
+
+  // Single-flight wrapper: coalesces overlapping triggers into at most one
+  // queued re-run (no silent drops, no loops) and drives the store `isSyncing`
+  // flag that powers the calendar's loading state.
+  const runSync = useMemo(
+    () =>
+      createSingleFlight(
+        (range: { start: string; end: string }, options?: { showLoader?: boolean; force?: boolean }) =>
+          syncRange(range, options),
+        { onBusyChange: setIsSyncing },
+      ),
+    [syncRange, setIsSyncing],
   );
 
   // ── Effect 1: Re-fetch when visible range changes ────────────────────────
   // `syncRange` checks the cache first — no network call if data is fresh.
   useEffect(() => {
     if (!userId) return;
-    syncRange(computeRange(view, currentDate), { showLoader: false });
-  }, [userId, view, currentDate, syncRange]);
+    runSync(computeRange(view, currentDate), { showLoader: false });
+  }, [userId, view, currentDate, runSync]);
+
+  // ── Effect: force a refresh when a provider is newly connected ───────────
+  // This is the real fix for "events don't appear until reload". It replaces
+  // reliance on the fire-and-forget `lumina:external-sync-now` event (which the
+  // in-flight guard could silently drop when it collided with the popup-close
+  // visibility sync). A false→true flip of either connection flag is React
+  // state and cannot be lost. We baseline the first observation (which may be a
+  // persisted / app-load value) and only act on a genuine later connect;
+  // ordinary app-load fetching is still handled by Effect 1.
+  const prevConnectedRef = useRef<{ google: boolean; outlook: boolean } | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    const prev = prevConnectedRef.current;
+    prevConnectedRef.current = { google: googleConnected, outlook: outlookConnected };
+    if (prev === null) return; // first observation → baseline only
+    const newlyConnected =
+      (googleConnected && !prev.google) || (outlookConnected && !prev.outlook);
+    if (newlyConnected) {
+      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: false, force: true });
+    }
+  }, [userId, googleConnected, outlookConnected, runSync]);
 
   useEffect(() => {
     if (!userId) return;
 
     const onSyncNow = () => {
-      void syncRange(computeRange(viewRef.current, dateRef.current), { showLoader: true, force: true });
+      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: true, force: true });
     };
 
     window.addEventListener('lumina:external-sync-now', onSyncNow);
     return () => {
       window.removeEventListener('lumina:external-sync-now', onSyncNow);
     };
-  }, [userId, syncRange]);
+  }, [userId, runSync]);
 
   // ── Effect 2: Stable background poll ─────────────────────────────────────
-  // Only depends on userId + syncRange — does NOT restart on every navigation.
+  // Only depends on userId + runSync — does NOT restart on every navigation.
   // Reads current view/date from refs at the time each tick fires.
   useEffect(() => {
     if (!userId) return;
 
     const id = setInterval(() => {
-      syncRange(computeRange(viewRef.current, dateRef.current), { showLoader: false });
+      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: false });
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
-  }, [userId, syncRange]);
+  }, [userId, runSync]);
 
   useEffect(() => {
     if (!userId) return;
@@ -385,12 +418,12 @@ export function useOutlookSync() {
       if (now - lastFocusSyncAtRef.current < FOCUS_SYNC_MIN_INTERVAL_MS) return;
       lastFocusSyncAtRef.current = now;
 
-      void syncRange(computeRange(viewRef.current, dateRef.current), { showLoader: false });
+      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: false });
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [userId, syncRange]);
+  }, [userId, runSync]);
 
   return null;
 }
