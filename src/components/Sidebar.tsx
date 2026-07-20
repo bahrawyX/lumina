@@ -981,21 +981,15 @@ const AppSidebar: React.FC = () => {
                   <SidebarMenuButton
                     isActive={isDocsPage}
                     onClick={() => router.push('/docs')}
-                    className="relative"
+                    className="group/workspace relative hover:bg-transparent dark:hover:bg-transparent"
                     data-tutorial="nav-docs"
                   >
                     <Link href="/docs" prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
-                    {isDocsPage && (
-                      <motion.div
-                        layoutId="sidebar-active-nav"
-                        className="absolute inset-0 rounded-xl bg-accent/70"
-                        transition={{ duration: 0.15, ease: 'easeOut' }}
-                      />
-                    )}
+                    <NavItemIndicator active={isDocsPage} />
                     <DocsIcon
                       size={16}
                       strokeWidth={1.5}
-                      className={`relative z-10 flex-shrink-0 transition-colors ${isDocsPage ? 'text-foreground' : 'text-muted-foreground'}`}
+                      className={`relative z-10 flex-shrink-0 transition-colors ${isDocsPage ? 'text-foreground' : 'text-muted-foreground group-hover/workspace:text-foreground'}`}
                     />
                     {!isSidebarCollapsed && (
                       <span className="relative z-10 font-sans text-sm truncate flex-1">Docs</span>
@@ -1441,6 +1435,37 @@ const AppSidebar: React.FC = () => {
   );
 };
 
+/* ─── Sidebar nav active/hover indicator ─────────────────────────────────────── */
+/**
+ * Per-item active / hover treatment shared by EVERY sidebar nav item.
+ *
+ * A neutral wash (shown on hover OR active) plus a brand-primary left rail
+ * (active only). Both are always mounted and cross-fade via OPACITY only — no
+ * shared-layout animation, so there is no handoff to race between items (the old
+ * cause of the "sometimes it shows, sometimes it doesn't" bug), and only opacity
+ * animates, never a paint property. The rail's presence is the active-vs-hover
+ * signal. Honours prefers-reduced-motion (no fade) and is a single cheap
+ * compositor layer.
+ */
+function NavItemIndicator({ active }: { active: boolean }) {
+  return (
+    <>
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 rounded-lg bg-muted transition-opacity duration-150 motion-reduce:transition-none ${
+          active ? 'opacity-100' : 'opacity-0 group-hover/workspace:opacity-100'
+        }`}
+      />
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary transition-opacity duration-150 motion-reduce:transition-none ${
+          active ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+    </>
+  );
+}
+
 /* ─── Workspace nav item ────────────────────────────────────────────────────── */
 interface WorkspaceItemProps {
   icon: React.FC<{ size?: number; strokeWidth?: number; className?: string }>;
@@ -1464,25 +1489,12 @@ const WorkspaceItem = React.memo<WorkspaceItemProps>(
             isActive={isActive}
             onClick={onClick}
             aria-label={label}
-            className={`group/workspace relative h-8 ${collapsed ? 'justify-center' : ''}`}
+            className={`group/workspace relative h-8 hover:bg-transparent dark:hover:bg-transparent ${collapsed ? 'justify-center' : ''}`}
             {...(dataTutorial ? { 'data-tutorial': dataTutorial } : {})}
           >
             {/* Invisible Link for prefetching — pointer-events-none so button click wins */}
             <Link href={href} prefetch className="absolute inset-0 pointer-events-none" aria-hidden tabIndex={-1} />
-            {isActive && (
-              <>
-                <motion.div
-                  layoutId="sidebar-active-nav-bg"
-                  className="absolute inset-0 rounded-lg bg-primary/[0.08] dark:bg-primary/[0.12]"
-                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                />
-                <motion.div
-                  layoutId="sidebar-active-nav-rail"
-                  className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.6)]"
-                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                />
-              </>
-            )}
+            <NavItemIndicator active={isActive} />
             <Icon
               size={15}
               strokeWidth={1.75}
