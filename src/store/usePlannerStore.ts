@@ -1,22 +1,33 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { CalendarEvent } from '../types';
+import { mergeEventWindow, flattenEventWindows, type EventWindow } from '../lib/calendar/eventWindows';
 
 interface PlannerState {
-  /** Microsoft/Outlook events — fetched from provider API, browser-cached only. NOT in DB. */
+  /** Microsoft/Outlook events — flattened union of retained windows. Rendered. */
   outlookEvents: CalendarEvent[];
-  /** Google Calendar events — fetched from provider API, browser-cached only. NOT in DB. */
+  /** Google Calendar events — flattened union of retained windows. Rendered. */
   googleEvents: CalendarEvent[];
   /** Apple Calendar events — fetched from provider API, browser-cached only. NOT in DB. */
   appleEvents: CalendarEvent[];
   /** Session-only demo events (context previews, onboarding) — never persisted. */
   demoLocalEvents: CalendarEvent[];
+  // Per-provider retained date-windows (LRU, capped in eventWindows). Internal
+  // working set backing outlookEvents/googleEvents so revisiting an already-viewed
+  // month renders from memory instead of flashing empty during a refetch. Never
+  // persisted; not meant to be read/rendered directly.
+  outlookWindows: EventWindow[];
+  googleWindows: EventWindow[];
   outlookConnected: boolean;
   googleConnected: boolean;
   isSyncing: boolean;
   lastSyncedAt: string | null;
   syncError: string | null;
 
+  /** Merge a fetched range's events into the retained windows (accumulates across views). */
+  mergeOutlookEvents: (events: CalendarEvent[], startKey: string, endKey: string) => void;
+  mergeGoogleEvents:  (events: CalendarEvent[], startKey: string, endKey: string) => void;
+  /** Replace the rendered slice AND drop retained windows — for clearing only. */
   setOutlookEvents: (events: CalendarEvent[]) => void;
   setGoogleEvents:  (events: CalendarEvent[]) => void;
   setAppleEvents:   (events: CalendarEvent[]) => void;
@@ -37,14 +48,30 @@ export const usePlannerStore = create<PlannerState>()(
       googleEvents:  [],
       appleEvents:   [],
       demoLocalEvents: [],
+      outlookWindows: [],
+      googleWindows:  [],
       outlookConnected: false,
       googleConnected: false,
       isSyncing: false,
       lastSyncedAt: null,
       syncError: null,
 
-      setOutlookEvents:    (outlookEvents)    => set({ outlookEvents }),
-      setGoogleEvents:     (googleEvents)     => set({ googleEvents }),
+      mergeOutlookEvents: (events, startKey, endKey) =>
+        set((s) => {
+          const outlookWindows = mergeEventWindow(s.outlookWindows, startKey, endKey, events);
+          return { outlookWindows, outlookEvents: flattenEventWindows(outlookWindows) };
+        }),
+      mergeGoogleEvents: (events, startKey, endKey) =>
+        set((s) => {
+          const googleWindows = mergeEventWindow(s.googleWindows, startKey, endKey, events);
+          return { googleWindows, googleEvents: flattenEventWindows(googleWindows) };
+        }),
+
+      // setOutlook/GoogleEvents replace the rendered slice AND discard retained
+      // windows. They are used only for clearing (disconnect / not-connected /
+      // auth error); the accumulating path is mergeOutlook/GoogleEvents.
+      setOutlookEvents:    (outlookEvents)    => set({ outlookEvents, outlookWindows: [] }),
+      setGoogleEvents:     (googleEvents)     => set({ googleEvents, googleWindows: [] }),
       setAppleEvents:      (appleEvents)      => set({ appleEvents }),
       setDemoLocalEvents:  (demoLocalEvents)  => set({ demoLocalEvents }),
       setOutlookConnected: (outlookConnected) => set({ outlookConnected }),
@@ -52,7 +79,11 @@ export const usePlannerStore = create<PlannerState>()(
       setIsSyncing:        (isSyncing)        => set({ isSyncing }),
       setLastSyncedAt:     (lastSyncedAt)     => set({ lastSyncedAt }),
       setSyncError:        (syncError)        => set({ syncError }),
-      clearExternalEvents: () => set({ outlookEvents: [], googleEvents: [], appleEvents: [], demoLocalEvents: [] }),
+      clearExternalEvents: () =>
+        set({
+          outlookEvents: [], googleEvents: [], appleEvents: [], demoLocalEvents: [],
+          outlookWindows: [], googleWindows: [],
+        }),
     }),
     {
       name: 'lumina-planner',

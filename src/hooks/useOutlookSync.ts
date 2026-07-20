@@ -8,7 +8,7 @@
  *
  * Fetch strategy:
  *  - Range change → fetch immediately (cache decides if network call needed)
- *  - Background poll every 10 min using REFS for view/date (stable interval,
+ *  - Background poll every 10 min using a REF for the date (stable interval,
  *    does not restart on navigation)
  *  - cache TTL = 5 min → a poll at 10 min always gets a fresh fetch
  *
@@ -24,7 +24,6 @@ import { toast } from 'sonner';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
 import { authClient } from '../lib/auth-client';
-import { ViewType } from '../types';
 import type { CalendarEvent, EventCategory, EventProvider } from '../types';
 import { getCached, setCache } from '../lib/calendar/externalEventsCache';
 import { createSingleFlight } from '../lib/calendar/singleFlight';
@@ -88,29 +87,20 @@ export function triggerExternalSync(): void {
 
 // ── Date range helpers ─────────────────────────────────────────────────────
 
-function computeRange(view: ViewType, currentDate: Date): { start: string; end: string } {
+function computeRange(currentDate: Date): { start: string; end: string } {
+  // Always fetch a whole-calendar-month window (± a 7-day pad for the grid's
+  // leading/trailing days), REGARDLESS of view. This keeps the window/cache key
+  // stable per calendar month, so switching Month/Week/Day — or navigating
+  // day-by-day within a month — reuses ONE window instead of fragmenting the
+  // 6-window budget (a day view would otherwise mint a fresh ~4-day window on
+  // every navigation, churning the whole cache in under a week). The client
+  // filters this flat event list down to the actual visible range when rendering.
   const d = new Date(currentDate);
-  let startMs: number, endMs: number;
-
-  if (view === ViewType.MONTH) {
-    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
-    const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    startMs = monthStart.getTime() - 7 * 86_400_000;
-    endMs   = monthEnd.getTime()   + 7 * 86_400_000;
-  } else if (view === ViewType.WEEK) {
-    const dow = d.getDay();
-    const weekStart = new Date(d); weekStart.setDate(d.getDate() - dow);
-    const weekEnd   = new Date(d); weekEnd.setDate(d.getDate() + (6 - dow));
-    startMs = weekStart.getTime() - 2 * 86_400_000;
-    endMs   = weekEnd.getTime()   + 2 * 86_400_000;
-  } else {
-    startMs = d.getTime() - 86_400_000;
-    endMs   = d.getTime() + 2 * 86_400_000;
-  }
-
+  const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+  const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0);
   return {
-    start: new Date(startMs).toISOString(),
-    end:   new Date(endMs).toISOString(),
+    start: new Date(monthStart.getTime() - 7 * 86_400_000).toISOString(),
+    end:   new Date(monthEnd.getTime()   + 7 * 86_400_000).toISOString(),
   };
 }
 
@@ -167,10 +157,11 @@ function apiToCalendarEvent(e: ApiExternalEvent): CalendarEvent {
 // ── Hook ───────────────────────────────────────────────────────────────────
 
 export function useOutlookSync() {
-  const view        = useCalendarStore((s) => s.view);
   const currentDate = useCalendarStore((s) => s.currentDate);
   const setGoogleEvents    = usePlannerStore((s) => s.setGoogleEvents);
   const setOutlookEvents   = usePlannerStore((s) => s.setOutlookEvents);
+  const mergeGoogleEvents  = usePlannerStore((s) => s.mergeGoogleEvents);
+  const mergeOutlookEvents = usePlannerStore((s) => s.mergeOutlookEvents);
   const setDemoLocalEvents = usePlannerStore((s) => s.setDemoLocalEvents);
   const setIsSyncing    = usePlannerStore((s) => s.setIsSyncing);
   const setLastSyncedAt = usePlannerStore((s) => s.setLastSyncedAt);
@@ -190,12 +181,10 @@ export function useOutlookSync() {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;
 
-  // Refs for the stable background poll — updated synchronously each render
-  // so the interval always reads the current view/date without being a dep.
-  const viewRef        = useRef(view);
+  // Ref for the stable background poll — updated synchronously each render so
+  // the interval always reads the current date without being a dep.
   const dateRef        = useRef(currentDate);
   const lastFocusSyncAtRef = useRef(0);
-  viewRef.current  = view;
   dateRef.current  = currentDate;
 
   const syncRange = useCallback(
@@ -249,7 +238,7 @@ export function useOutlookSync() {
 
         if (googleConnected) {
           if (cachedGoogle !== null) {
-            setGoogleEvents(cachedGoogle);
+            mergeGoogleEvents(cachedGoogle, startKey, endKey);
           } else {
             const googleUrl = new URL('/api/external-events/google', window.location.origin);
             googleUrl.searchParams.set('start', range.start);
@@ -272,14 +261,14 @@ export function useOutlookSync() {
               const googleRaw = googleData.events ?? [];
               const mappedGoogle = googleRaw.map(apiToCalendarEvent);
               setCache(userId, 'google', startKey, endKey, mappedGoogle);
-              setGoogleEvents(mappedGoogle);
+              mergeGoogleEvents(mappedGoogle, startKey, endKey);
             }
           }
         }
 
         if (outlookConnected) {
           if (cachedMsWithEvents !== null) {
-            setOutlookEvents(cachedMsWithEvents);
+            mergeOutlookEvents(cachedMsWithEvents, startKey, endKey);
           } else {
             const msUrl = new URL('/api/external-events/microsoft', window.location.origin);
             msUrl.searchParams.set('start', range.start);
@@ -302,7 +291,7 @@ export function useOutlookSync() {
               const msRaw = msData.events ?? [];
               const events = msRaw.map(apiToCalendarEvent);
               setCache(userId, 'microsoft', startKey, endKey, events);
-              setOutlookEvents(events);
+              mergeOutlookEvents(events, startKey, endKey);
             }
           }
         }
@@ -336,6 +325,8 @@ export function useOutlookSync() {
       userId,
       setGoogleEvents,
       setOutlookEvents,
+      mergeGoogleEvents,
+      mergeOutlookEvents,
       setLastSyncedAt,
       setSyncError,
     ],
@@ -358,8 +349,8 @@ export function useOutlookSync() {
   // `syncRange` checks the cache first — no network call if data is fresh.
   useEffect(() => {
     if (!userId) return;
-    runSync(computeRange(view, currentDate), { showLoader: false });
-  }, [userId, view, currentDate, runSync]);
+    runSync(computeRange(currentDate), { showLoader: false });
+  }, [userId, currentDate, runSync]);
 
   // ── Effect: force a refresh when a provider is newly connected ───────────
   // This is the real fix for "events don't appear until reload". It replaces
@@ -378,7 +369,7 @@ export function useOutlookSync() {
     const newlyConnected =
       (googleConnected && !prev.google) || (outlookConnected && !prev.outlook);
     if (newlyConnected) {
-      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: false, force: true });
+      runSync(computeRange(dateRef.current), { showLoader: false, force: true });
     }
   }, [userId, googleConnected, outlookConnected, runSync]);
 
@@ -386,7 +377,7 @@ export function useOutlookSync() {
     if (!userId) return;
 
     const onSyncNow = () => {
-      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: true, force: true });
+      runSync(computeRange(dateRef.current), { showLoader: true, force: true });
     };
 
     window.addEventListener('lumina:external-sync-now', onSyncNow);
@@ -397,12 +388,12 @@ export function useOutlookSync() {
 
   // ── Effect 2: Stable background poll ─────────────────────────────────────
   // Only depends on userId + runSync — does NOT restart on every navigation.
-  // Reads current view/date from refs at the time each tick fires.
+  // Reads the current date from the ref at the time each tick fires.
   useEffect(() => {
     if (!userId) return;
 
     const id = setInterval(() => {
-      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: false });
+      runSync(computeRange(dateRef.current), { showLoader: false });
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
@@ -418,7 +409,7 @@ export function useOutlookSync() {
       if (now - lastFocusSyncAtRef.current < FOCUS_SYNC_MIN_INTERVAL_MS) return;
       lastFocusSyncAtRef.current = now;
 
-      runSync(computeRange(viewRef.current, dateRef.current), { showLoader: false });
+      runSync(computeRange(dateRef.current), { showLoader: false });
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
