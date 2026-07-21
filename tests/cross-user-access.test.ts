@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { makeMultiUserTestDb, seedUser, type MultiUserTestDb } from './helpers/multiUserTestDb';
 
 const h = vi.hoisted(() => ({
@@ -20,13 +20,15 @@ vi.mock('@/lib/auth', () => ({
   auth: { api: { getSession: async () => (h.userId ? { user: { id: h.userId } } : null) } },
 }));
 
-import { plannerItems, tasks, goals, goalTargets } from '@/db/schema';
+import { plannerItems, tasks } from '@/db/schema';
 import { POST as plannerPost } from '@/app/api/planner-items/route';
 import { GET as goalsGet } from '@/app/api/goals/route';
+import { GET as intelligenceGet } from '@/app/api/intelligence/route';
 import { POST as tasksPost } from '@/app/api/tasks/route';
 import { POST as docsPost } from '@/app/api/docs/route';
 import { POST as focusPost } from '@/app/api/focus-sessions/route';
 import { POST as moodPost } from '@/app/api/mood-logs/route';
+import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 
 let client: MultiUserTestDb['client'];
 
@@ -124,6 +126,25 @@ describe('Finding 2 — planner→task join scoping', () => {
       .where(eq(plannerItems.userId, B));
     expect(scoped[0].title).toBeNull();
   });
+
+  it('intelligence GET (real handler) does not surface a foreign task title', async () => {
+    const A = await seedUser(client);
+    const B = await seedUser(client);
+    const aTask = await seedTask(A, { title: 'A SECRET TASK' });
+    // B's planner row → A's task, scheduled today (the handler queries today's plan).
+    await client.query(
+      `INSERT INTO planner_items (user_id, task_id, start_time, end_time)
+       VALUES ($1, $2, now(), now() + interval '1 hour')`, [B, aTask]);
+
+    act(B);
+    const res = await intelligenceGet(get('/api/intelligence?includeNarrative=1'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Scoped join → taskTitle null (mapped to 'Untitled task'); the foreign title
+    // never reaches the engine output or the local narrative. Unscope the
+    // handler's join and "A SECRET TASK" reappears in this response.
+    expect(JSON.stringify(body)).not.toContain('A SECRET TASK');
+  });
 });
 
 // ── Finding 3 + aggregation pollution (M14): goals progress must be user-scoped ─
@@ -151,25 +172,25 @@ describe('Finding 3 — goals aggregation scoping', () => {
 
 // ── Finding 4 (M14): task-completion fan-out must only touch the caller’s targets ─
 describe('Finding 4 — target fan-out scoping', () => {
-  it('the scoped select excludes another user’s target that references the caller’s task', async () => {
+  it('syncTaskCompletionTargets recomputes only the caller’s target, never another user’s', async () => {
     const A = await seedUser(client);
     const B = await seedUser(client);
     const aGoal = await seedGoal(A);
     const bGoal = await seedGoal(B);
-    const aTask = await seedTask(A);
+    const aTask = await seedTask(A, { status: 'done' });
     const aTarget = await seedTarget(aGoal, [aTask]);
-    // B crafts a target linking A's task id.
+    // B crafts a target linking A's task id (a row from before the FK fix).
     const bTarget = await seedTarget(bGoal, [aTask]);
 
-    // The fan-out fix scopes the target select to the acting user's own goals.
-    const aGoalIds = (await h.db.select({ id: goals.id }).from(goals).where(eq(goals.userId, A))).map((g) => g.id);
-    const inScope = await h.db.select({ id: goalTargets.id, goalId: goalTargets.goalId })
-      .from(goalTargets)
-      .where(and(eq(goalTargets.type, 'task_completion'), inArray(goalTargets.goalId, aGoalIds)));
+    // The exact fan-out the PATCH handler runs — now an awaitable, userId-scoped
+    // helper. Running it as A must touch only A's target.
+    await syncTaskCompletionTargets(h.db as unknown as Parameters<typeof syncTaskCompletionTargets>[0], A, aTask);
 
-    const ids = inScope.map((t) => t.id);
-    expect(ids).toContain(aTarget);
-    expect(ids).not.toContain(bTarget); // B's target is never read or updated
+    const rows = await client.query<{ id: string; current_value: string }>(
+      `SELECT id, current_value FROM goal_targets WHERE id IN ($1, $2)`, [aTarget, bTarget]);
+    const byId = new Map(rows.rows.map((r) => [r.id, r.current_value]));
+    expect(Number(byId.get(aTarget))).toBe(1); // recomputed: 1 linked task done
+    expect(Number(byId.get(bTarget))).toBe(0); // untouched — never read or updated
   });
 });
 

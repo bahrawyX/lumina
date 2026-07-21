@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { tasks, goalTargets, goals, users } from '@/db/schema';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { tasks, users } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
+import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -115,39 +116,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     let coinsEarned: number | undefined;
     if (patch.status !== undefined) {
       // ── Goal target auto-update (fire-and-forget) ─────────────────
-      void (async () => {
-        try {
-          // Batch 5 (M14): scope the fan-out to the caller's OWN goals. This read
-          // was over every tenant's targets and the loop below UPDATEs matched
-          // rows — so it could read and write another user's goal targets.
-          const userGoalIds = (
-            await db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId))
-          ).map((g) => g.id);
-          const allTargets = userGoalIds.length === 0 ? [] : await db.select().from(goalTargets)
-            .where(and(eq(goalTargets.type, 'task_completion'), inArray(goalTargets.goalId, userGoalIds)));
-
-          for (const target of allTargets) {
-            if (!target.linkedTaskIds) continue;
-            let taskIds: string[];
-            try { taskIds = JSON.parse(target.linkedTaskIds); } catch { continue; }
-            if (!Array.isArray(taskIds) || !taskIds.includes(id)) continue;
-            if (taskIds.length === 0) continue;
-            const linkedTasks = await db.select({ id: tasks.id, status: tasks.status })
-              .from(tasks)
-              // Batch 5 (M14): scope by userId so only the caller's tasks count.
-              .where(and(
-                sql`${tasks.id} = ANY(ARRAY[${sql.join(taskIds.map(tid => sql`${tid}::uuid`), sql`, `)}])`,
-                eq(tasks.userId, userId),
-              ));
-            const doneCount = linkedTasks.filter(t => t.status === 'done').length;
-            await db.update(goalTargets)
-              .set({ currentValue: String(doneCount), updatedAt: new Date() })
-              .where(eq(goalTargets.id, target.id));
-          }
-        } catch (e) {
-          console.error('[task PATCH goal-target fan-out]', e);
-        }
-      })();
+      // Extracted to an awaitable, userId-scoped helper (Batch 5, M14) so the
+      // fan-out is testable on its own; still fire-and-forget here since it
+      // doesn't gate the response.
+      void syncTaskCompletionTargets(db, userId, id).catch((e) =>
+        console.error('[task PATCH goal-target fan-out]', e),
+      );
 
       // ── Coin awards on task completion (awaited) ──────────────────
       // C2: only on a real not-done → done transition. Idempotency is also

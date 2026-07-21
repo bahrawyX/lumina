@@ -86,12 +86,49 @@ CREATE TABLE IF NOT EXISTS goal_targets (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Full column set: the intelligence handler does select().from(events), so
+-- every schema column must exist even when no rows are seeded.
 CREATE TABLE IF NOT EXISTS events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
+  calendar_id uuid,
   title varchar(512) NOT NULL DEFAULT 'event',
+  description text,
   start_time timestamptz NOT NULL DEFAULT now(),
   end_time timestamptz NOT NULL DEFAULT now(),
+  is_all_day boolean NOT NULL DEFAULT false,
+  timezone text NOT NULL DEFAULT 'UTC',
+  category varchar(64),
+  color varchar(32),
+  completed boolean NOT NULL DEFAULT false,
+  linked_task_id uuid,
+  location varchar(512),
+  provider text NOT NULL DEFAULT 'local',
+  external_event_id text,
+  external_etag text,
+  source_updated_at timestamptz,
+  sync_status text NOT NULL DEFAULT 'local_only',
+  meeting_url text,
+  organizer_email text,
+  is_task_generated boolean NOT NULL DEFAULT false,
+  source text NOT NULL DEFAULT 'manual',
+  external_id varchar(255),
+  last_synced_at timestamptz,
+  recurring_event_id uuid,
+  original_start_time timestamptz,
+  is_recurrence_exception boolean NOT NULL DEFAULT false,
+  created_via_nl boolean NOT NULL DEFAULT false,
+  reminder_sent_at timestamptz,
+  linked_doc_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS integrations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  provider text NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  expires_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS docs (
