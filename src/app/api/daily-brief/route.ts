@@ -147,7 +147,9 @@ export async function GET(req: NextRequest) {
           taskTitle: tasks.title,
         })
         .from(plannerItems)
-        .leftJoin(tasks, eq(plannerItems.taskId, tasks.id))
+        // Batch 5 (M2): scope the join by tasks.userId so a planner row pointing
+        // at another user's task can never pull that task's title into the brief.
+        .leftJoin(tasks, and(eq(plannerItems.taskId, tasks.id), eq(tasks.userId, userId)))
         .where(
           and(
             eq(plannerItems.userId, userId),

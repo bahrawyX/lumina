@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { plannerItems } from '@/db/schema';
+import { plannerItems, tasks } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
@@ -107,6 +107,19 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = getDatabase();
+
+    // Batch 5 (M2): the planner item must reference a task the caller OWNS.
+    // Without this, a user can attach another user's task to their planner and
+    // leak its title through the daily-brief / intelligence joins.
+    const [ownedTask] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)))
+      .limit(1);
+    if (!ownedTask) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+
     const [row] = await db
       .insert(plannerItems)
       .values({

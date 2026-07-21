@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { tasks, goalTargets, users } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { tasks, goalTargets, goals, users } from '@/db/schema';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
@@ -117,8 +117,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       // ── Goal target auto-update (fire-and-forget) ─────────────────
       void (async () => {
         try {
-          const allTargets = await db.select().from(goalTargets)
-            .where(eq(goalTargets.type, 'task_completion'));
+          // Batch 5 (M14): scope the fan-out to the caller's OWN goals. This read
+          // was over every tenant's targets and the loop below UPDATEs matched
+          // rows — so it could read and write another user's goal targets.
+          const userGoalIds = (
+            await db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId))
+          ).map((g) => g.id);
+          const allTargets = userGoalIds.length === 0 ? [] : await db.select().from(goalTargets)
+            .where(and(eq(goalTargets.type, 'task_completion'), inArray(goalTargets.goalId, userGoalIds)));
 
           for (const target of allTargets) {
             if (!target.linkedTaskIds) continue;
@@ -128,7 +134,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             if (taskIds.length === 0) continue;
             const linkedTasks = await db.select({ id: tasks.id, status: tasks.status })
               .from(tasks)
-              .where(sql`${tasks.id} = ANY(ARRAY[${sql.join(taskIds.map(tid => sql`${tid}::uuid`), sql`, `)}])`);
+              // Batch 5 (M14): scope by userId so only the caller's tasks count.
+              .where(and(
+                sql`${tasks.id} = ANY(ARRAY[${sql.join(taskIds.map(tid => sql`${tid}::uuid`), sql`, `)}])`,
+                eq(tasks.userId, userId),
+              ));
             const doneCount = linkedTasks.filter(t => t.status === 'done').length;
             await db.update(goalTargets)
               .set({ currentValue: String(doneCount), updatedAt: new Date() })

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { docs } from '@/db/schema';
+import { docs, tasks, events } from '@/db/schema';
 import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
@@ -113,6 +113,18 @@ export async function POST(req: NextRequest) {
       if (depth > 5) {
         return NextResponse.json({ error: 'Max nesting depth (5) exceeded' }, { status: 400 });
       }
+    }
+
+    // Batch 5 (FK ownership on create): linked FKs must belong to the caller.
+    if (typeof linkedTaskId === 'string' && linkedTaskId.trim()) {
+      const [t] = await db.select({ id: tasks.id }).from(tasks)
+        .where(and(eq(tasks.id, linkedTaskId), eq(tasks.userId, userId))).limit(1);
+      if (!t) return NextResponse.json({ error: 'linkedTaskId not found' }, { status: 404 });
+    }
+    if (typeof linkedEventId === 'string' && linkedEventId.trim()) {
+      const [e] = await db.select({ id: events.id }).from(events)
+        .where(and(eq(events.id, linkedEventId), eq(events.userId, userId))).limit(1);
+      if (!e) return NextResponse.json({ error: 'linkedEventId not found' }, { status: 404 });
     }
 
     // Determine position: max sibling position + 1

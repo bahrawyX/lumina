@@ -11,7 +11,13 @@ const atAlias = { '@': path.resolve(__dirname, './src') };
 // guard live everywhere else: any OTHER test that imports server-only code still
 // fails loudly, so the guard's intent isn't quietly disabled repo-wide.
 const serverOnlyStub = path.resolve(__dirname, './tests/helpers/serverOnlyStub.ts');
-const SERVER_ONLY_TESTS = ['tests/microsoft-timezone.test.ts'];
+const SERVER_ONLY_TESTS = [
+  'tests/microsoft-timezone.test.ts',
+  // Batch 5: imports real API-route handlers whose dependency trees pull in
+  // `server-only` (e.g. via @/lib/db, coin helpers). @/lib/db + @/lib/auth are
+  // vi.mock'd; this stub neutralises the remaining transitive server-only guards.
+  'tests/cross-user-access.test.ts',
+];
 
 const baseTest = {
   globals: true,

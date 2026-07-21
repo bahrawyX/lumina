@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { focusSessions, users, achievements, tasks } from '@/db/schema';
+import { focusSessions, users, achievements, tasks, goals } from '@/db/schema';
 import { computeStreakUpdate, rewardedSessionMinutes, isDurationTampered, MAX_DAILY_FOCUS_MINUTES } from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
@@ -111,6 +111,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = getDatabase();
+
+    // Batch 5 (FK ownership on create): a session may only link the caller's own
+    // task / goal. A foreign goalId would otherwise pollute that user's
+    // goal-progress aggregation. Checked early — before any streak/coin work.
+    const bodyTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
+    const bodyGoalId = typeof body.goalId === 'string' && body.goalId ? body.goalId : null;
+    if (bodyTaskId) {
+      const [t] = await db.select({ id: tasks.id }).from(tasks)
+        .where(and(eq(tasks.id, bodyTaskId), eq(tasks.userId, userId))).limit(1);
+      if (!t) return NextResponse.json({ error: 'taskId not found' }, { status: 404 });
+    }
+    if (bodyGoalId) {
+      const [g] = await db.select({ id: goals.id }).from(goals)
+        .where(and(eq(goals.id, bodyGoalId), eq(goals.userId, userId))).limit(1);
+      if (!g) return NextResponse.json({ error: 'goalId not found' }, { status: 404 });
+    }
 
     // Fetch current user streak data (outside transaction — read-only)
     const [userRow] = await db

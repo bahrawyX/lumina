@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { moodLogs } from '@/db/schema';
+import { moodLogs, focusSessions } from '@/db/schema';
 import { moodSchema } from '@/lib/validation';
 
 export async function GET(req: NextRequest) {
@@ -67,6 +67,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = getDatabase();
+
+    // Batch 5 (FK ownership on create): only the caller's own focus session may
+    // be referenced.
+    if (focusSessionId) {
+      const [fs] = await db.select({ id: focusSessions.id }).from(focusSessions)
+        .where(and(eq(focusSessions.id, focusSessionId), eq(focusSessions.userId, session.user.id))).limit(1);
+      if (!fs) return NextResponse.json({ error: 'focusSessionId not found' }, { status: 404 });
+    }
+
     const [row] = await db
       .insert(moodLogs)
       .values({

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { goals, goalTargets, tasks, focusSessions } from '@/db/schema';
-import { eq, inArray, sum, sql } from 'drizzle-orm';
+import { and, eq, inArray, sum, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
@@ -55,9 +55,14 @@ export async function GET(req: NextRequest) {
     const goalIds = goalRows.map(g => g.id);
     let targetRows: (typeof goalTargets.$inferSelect)[] = [];
     if (goalIds.length > 0) {
-      // Fetch targets for all goals (IN query)
-      const allTargets = await db.select().from(goalTargets).orderBy(goalTargets.order);
-      targetRows = allTargets.filter(t => goalIds.includes(t.goalId));
+      // Batch 5 (M14): scope to this user's goals in SQL. Was a full-table read
+      // of every tenant's targets filtered in JS — the response was already
+      // scoped (no leak) but it read all rows; the IN query removes that.
+      targetRows = await db
+        .select()
+        .from(goalTargets)
+        .where(inArray(goalTargets.goalId, goalIds))
+        .orderBy(goalTargets.order);
     }
 
     // Group targets by goalId
@@ -82,7 +87,11 @@ export async function GET(req: NextRequest) {
           focusedTotal: sql<number>`coalesce(sum(${tasks.estimatedMinutes} - coalesce(${tasks.remainingFocusTime}, ${tasks.estimatedMinutes})), 0)::int`,
         })
         .from(tasks)
-        .where(inArray(tasks.goalId, goalIds))
+        // Batch 5 (M14 + FK-ownership defence): scope by userId, not just goalId.
+        // This is the layer that neutralises a foreign task written against this
+        // user's goalId — it can't inflate their progress even if such a row
+        // already exists in the DB.
+        .where(and(inArray(tasks.goalId, goalIds), eq(tasks.userId, userId)))
         .groupBy(tasks.goalId, tasks.status);
       for (const row of taskAgg) {
         if (!row.goalId) continue;
@@ -98,7 +107,8 @@ export async function GET(req: NextRequest) {
       const sessAgg = await db
         .select({ goalId: focusSessions.goalId, total: sum(focusSessions.durationMinutes).mapWith(Number) })
         .from(focusSessions)
-        .where(inArray(focusSessions.goalId, goalIds))
+        // Batch 5 (M14 + FK-ownership defence): scope by userId as well as goalId.
+        .where(and(inArray(focusSessions.goalId, goalIds), eq(focusSessions.userId, userId)))
         .groupBy(focusSessions.goalId);
       for (const row of sessAgg) {
         if (!row.goalId) continue;

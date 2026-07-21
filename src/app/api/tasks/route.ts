@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { tasks } from '@/db/schema';
+import { tasks, events, docs, goals } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 
 function normalizeTimeString(value: unknown): string | null {
@@ -128,6 +128,25 @@ export async function POST(req: NextRequest) {
       }
       resolvedParentTaskId = parentTaskId;
       resolvedDepth = parent.depth + 1;
+    }
+
+    // Batch 5 (FK ownership on create): linked FKs must belong to the caller.
+    // A foreign goalId in particular would otherwise be counted into that other
+    // user's goal-progress aggregation.
+    if (typeof linkedEventId === 'string' && linkedEventId.trim()) {
+      const [e] = await db.select({ id: events.id }).from(events)
+        .where(and(eq(events.id, linkedEventId), eq(events.userId, userId))).limit(1);
+      if (!e) return NextResponse.json({ error: 'linkedEventId not found' }, { status: 404 });
+    }
+    if (typeof linkedDocId === 'string' && linkedDocId.trim()) {
+      const [d] = await db.select({ id: docs.id }).from(docs)
+        .where(and(eq(docs.id, linkedDocId), eq(docs.userId, userId))).limit(1);
+      if (!d) return NextResponse.json({ error: 'linkedDocId not found' }, { status: 404 });
+    }
+    if (typeof goalId === 'string' && goalId.trim()) {
+      const [g] = await db.select({ id: goals.id }).from(goals)
+        .where(and(eq(goals.id, goalId), eq(goals.userId, userId))).limit(1);
+      if (!g) return NextResponse.json({ error: 'goalId not found' }, { status: 404 });
     }
 
     const [row] = await db
