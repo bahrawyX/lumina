@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { LottieAnimation, ACHIEVEMENT_LAYER_MAP } from '@/components/ui/LottieAnimation'
 import { getAchievementInfo } from '@/utils/streaks/achievementUtils'
 import { MedalIcon, TrophyIcon, FireIcon, StarIcon, CoinIcon } from '@/components/ui/AnimatedIcons'
@@ -46,10 +46,13 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
             return IconComp ? <IconComp size={48} /> : null
           })()}
           <div className="space-y-1">
-            <h3 className="font-display text-lg font-semibold text-foreground">
+            {/* DialogTitle/Description give the dialog its required accessible
+                name + description (Radix). Rendered as the existing heading/body
+                — no visual change. */}
+            <DialogTitle className="font-display text-lg font-semibold text-foreground">
               {info.label}
-            </h3>
-            <p className="text-sm text-muted-foreground">{info.message}</p>
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">{info.message}</DialogDescription>
           </div>
           <button
             type="button"

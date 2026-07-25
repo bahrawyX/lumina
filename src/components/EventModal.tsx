@@ -14,7 +14,7 @@ import { AppleProviderIcon } from "./icons/ProviderIcons";
 import RecurrenceSelector from "./RecurrenceSelector";
 import EditRecurrenceDialog from "./EditRecurrenceDialog";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -168,6 +168,9 @@ const EventModal: React.FC = () => {
   return (
     <Dialog open={isModalOpen} onOpenChange={(open) => { if (!open) closeModal(); }}>
       <DialogContent className="sm:max-w-[480px] gap-0 p-0 overflow-hidden">
+        {/* a11y: required Dialog description (Radix). Visually hidden — the
+            title is dynamic and the body is the form itself. */}
+        <DialogDescription className="sr-only">Calendar event details and actions.</DialogDescription>
 
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b">

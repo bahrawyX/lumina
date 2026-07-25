@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,8 @@ export const EditRecurrenceDialog: React.FC<EditRecurrenceDialogProps> = ({
           <DialogTitle className="text-base">
             {action === 'delete' ? 'Delete recurring event' : 'Edit recurring event'}
           </DialogTitle>
+          {/* a11y: required Dialog description (Radix), visually hidden. */}
+          <DialogDescription className="sr-only">Choose which occurrences this change applies to.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2 py-2">

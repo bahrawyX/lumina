@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { getFieldError, contextNameSchema } from '../lib/validation';
 
@@ -79,6 +79,8 @@ const CustomContextDialog: React.FC<CustomContextDialogProps> = ({
           <DialogTitle className="font-display text-[15px] font-semibold tracking-tight text-foreground">
             {mode === 'edit' ? 'Edit Context' : 'New Context'}
           </DialogTitle>
+          {/* a11y: required Dialog description (Radix), visually hidden. */}
+          <DialogDescription className="sr-only">Name your context and choose a color.</DialogDescription>
         </DialogHeader>
 
         <div className="px-5 pt-4 pb-5 space-y-4">
