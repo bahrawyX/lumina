@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
@@ -127,28 +127,55 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Find or create user's default local calendar
+    // Find or create user's default local calendar.
+    //
+    // M5 (TOCTOU): the previous find-then-insert raced. Two concurrent first-use
+    // requests both saw no primary-local calendar and both INSERTed, so the second
+    // hit the `calendars_one_primary_local_per_user` partial unique index and the
+    // whole request 500'd. Fix: make the create idempotent with ON CONFLICT DO
+    // NOTHING (targeting that partial index), then ALWAYS re-select — so whether
+    // we won the insert or a concurrent request did, we resolve the same id and
+    // no request crashes.
+    const primaryLocal = and(
+      eq(calendars.userId, userId),
+      eq(calendars.provider, 'local'),
+      eq(calendars.isPrimary, true),
+    );
+
     let calendarId: string;
     const existing = await db
       .select({ id: calendars.id })
       .from(calendars)
-      .where(
-        and(
-          eq(calendars.userId, userId),
-          eq(calendars.provider, 'local'),
-          eq(calendars.isPrimary, true),
-        ),
-      )
+      .where(primaryLocal)
       .limit(1);
 
     if (existing.length > 0) {
       calendarId = existing[0].id;
     } else {
-      const [newCal] = await db
+      await db
         .insert(calendars)
         .values({ userId, provider: 'local', name: 'My Calendar', isPrimary: true })
-        .returning({ id: calendars.id });
-      calendarId = newCal.id;
+        // NB: onConflictDoNothing takes the partial-index predicate as `where`
+        // (drizzle only wires `targetWhere` for onConflictDoUpdate); passing
+        // `targetWhere` here is silently dropped and Postgres 42P10s.
+        .onConflictDoNothing({
+          target: calendars.userId,
+          where: sql`${calendars.provider} = 'local' and ${calendars.isPrimary} = true`,
+        });
+
+      const [primary] = await db
+        .select({ id: calendars.id })
+        .from(calendars)
+        .where(primaryLocal)
+        .limit(1);
+
+      if (!primary) {
+        return NextResponse.json(
+          { error: 'Failed to resolve default calendar' },
+          { status: 500 },
+        );
+      }
+      calendarId = primary.id;
     }
 
     // ── Single atomic transaction ───────────────────────────────────────────
