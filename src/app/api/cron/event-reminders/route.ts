@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, gte, lte, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, isNull, sql } from 'drizzle-orm';
 import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { events, users } from '@/db/schema';
@@ -39,15 +39,15 @@ export async function GET(req: Request) {
   const in1Hour = new Date(now.getTime() + 1 * 60 * 60 * 1000);
   const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const upcomingEvents = await db
-    .select({
-      id: events.id,
-      title: events.title,
-      location: events.location,
-      userId: events.userId,
-      startTime: events.startTime,
-    })
-    .from(events)
+  // ATOMIC CLAIM (M4): mark every due, unsent reminder in a single UPDATE and take
+  // only the rows THIS run actually claimed (reminder_sent_at was NULL). Because
+  // the claim and the "is it unsent?" test happen in one atomic statement, two
+  // overlapping or retried cron runs can never claim the same row — so a reminder
+  // is never double-sent. (Replaces the previous select→send→mark, which raced:
+  // both runs could select the same unsent row before either marked it.)
+  const claimed = await db
+    .update(events)
+    .set({ reminderSentAt: now })
     .where(
       and(
         gte(events.startTime, in1Hour),
@@ -55,15 +55,22 @@ export async function GET(req: Request) {
         isNull(events.reminderSentAt),
         sql`${events.isAllDay} = false`,
       ),
-    );
+    )
+    .returning({
+      id: events.id,
+      title: events.title,
+      location: events.location,
+      userId: events.userId,
+      startTime: events.startTime,
+    });
 
-  if (upcomingEvents.length === 0) {
+  if (claimed.length === 0) {
     return NextResponse.json({ sent: 0, reason: 'no upcoming events' });
   }
 
   let sentCount = 0;
 
-  for (const event of upcomingEvents) {
+  for (const event of claimed) {
     try {
       // Check user's notification preferences and get timezone
       const [user] = await db
@@ -72,11 +79,19 @@ export async function GET(req: Request) {
           timezone: users.timezone,
         })
         .from(users)
-        .where(sql`${users.id} = ${event.userId}`)
+        .where(eq(users.id, event.userId))
         .limit(1);
 
       const prefs = user?.notificationPreferences as { eventReminders?: boolean } | null;
-      if (!prefs?.eventReminders) continue;
+      if (!prefs?.eventReminders) {
+        // Opted out — release the claim so the row isn't left marked-sent without
+        // an actual send (and can be re-evaluated if prefs change while in-window).
+        await db
+          .update(events)
+          .set({ reminderSentAt: null })
+          .where(eq(events.id, event.id));
+        continue;
+      }
 
       const userTz = user?.timezone || 'UTC';
       const timeStr = formatEventTime(event.startTime, userTz);
@@ -91,15 +106,15 @@ export async function GET(req: Request) {
         renotify: false,
       });
 
-      // Mark as reminded
-      await db
-        .update(events)
-        .set({ reminderSentAt: new Date() })
-        .where(sql`${events.id} = ${event.id}`);
-
       sentCount++;
     } catch (err) {
       console.error(`[Cron:event-reminders] Error for event ${event.id}:`, err);
+      // Release the claim so a genuine send failure is retried next run (mirrors
+      // the pre-fix behavior, where a failed send was never marked as sent).
+      await db
+        .update(events)
+        .set({ reminderSentAt: null })
+        .where(eq(events.id, event.id));
     }
   }
 
