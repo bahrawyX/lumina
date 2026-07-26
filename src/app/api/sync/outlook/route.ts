@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { runFullMicrosoftSync } from '@/lib/integrations/microsoft/sync';
 
+// TD-5: full sync is a multi-calendar, paginated calendarView fetch; give it the
+// Vercel Hobby maximum instead of the lower platform default so it can't time out.
+export const maxDuration = 60;
+
 /**
  * POST /api/sync/outlook
  *

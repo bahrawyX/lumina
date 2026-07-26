@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { runFullGoogleSync, runEventsSyncOnly } from '@/lib/integrations/google/sync';
 
+// TD-5: full sync is a multi-calendar, paginated fetch; give it the Vercel Hobby
+// maximum instead of the lower platform default so it can't time out mid-sync.
+export const maxDuration = 60;
+
 /**
  * POST /api/integrations/google/events/sync
  *

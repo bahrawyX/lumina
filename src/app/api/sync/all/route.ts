@@ -8,6 +8,10 @@ import { runFullMicrosoftSync } from '@/lib/integrations/microsoft/sync';
 import type { FullSyncResult } from '@/lib/integrations/google/sync';
 import type { MicrosoftSyncResult } from '@/lib/integrations/microsoft/sync';
 
+// TD-5: runs both providers' full syncs in parallel — the heaviest sync path.
+// Give it the Vercel Hobby maximum so a large account can't time out mid-sync.
+export const maxDuration = 60;
+
 type ProviderResult<T> =
   | { ok: true; result: T }
   | { ok: false; error: string };
