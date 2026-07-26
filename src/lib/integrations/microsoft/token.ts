@@ -26,17 +26,28 @@ async function refreshMicrosoftToken(
     );
   }
 
-  const res = await fetch(MS_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-      scope: CALENDAR_SCOPE,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(MS_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: CALENDAR_SCOPE,
+      }),
+      // Bounded so a hung IdP can't pin the FOR UPDATE lock the caller holds
+      // across this refresh. On timeout the caller's transaction rolls back.
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error('[microsoft/token] Token refresh timed out after 10s');
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -59,44 +70,80 @@ export async function getMicrosoftAccessToken(userId: string): Promise<string> {
   const db = getDatabase();
   const now = new Date();
 
-  const [integration] = await db
+  // ── Fast path: unlocked read ───────────────────────────────────────────────
+  // The common case (token still valid) returns without taking a row lock, so
+  // routine token reads don't serialize behind FOR UPDATE.
+  const [current] = await db
     .select()
     .from(integrations)
     .where(and(eq(integrations.userId, userId), providerClause!))
     .limit(1);
 
-  if (!integration) {
+  if (!current) {
     throw new Error(
       'No Microsoft integration found. Connect Outlook Calendar first.',
     );
   }
-
-  if (integration.status !== 'active') {
+  if (current.status !== 'active') {
     throw new Error('Microsoft integration is not active.');
   }
-
   // Token is still valid (60 s buffer)
-  if (integration.expiresAt > new Date(now.getTime() + 60_000)) {
-    return integration.accessToken;
+  if (current.expiresAt > new Date(now.getTime() + 60_000)) {
+    return current.accessToken;
   }
 
-  // Refresh the expired token
-  if (!integration.refreshToken) {
-    throw new Error(
-      'Microsoft refresh token missing. Please reconnect Outlook Calendar.',
+  // ── Slow path: token expired → single-flight the refresh ────────────────────
+  // Serialize concurrent refreshers on the integration row so the IdP refresh
+  // happens EXACTLY ONCE. Microsoft ROTATES refresh tokens, so a second refresh
+  // with the same token would leave the row holding a superseded token → 401s.
+  // Same lock+re-check discipline the coin ledger uses.
+  return db.transaction(async (tx) => {
+    const [integration] = await tx
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.userId, userId), providerClause!))
+      .limit(1)
+      .for('update');
+
+    if (!integration) {
+      throw new Error(
+        'No Microsoft integration found. Connect Outlook Calendar first.',
+      );
+    }
+    if (integration.status !== 'active') {
+      throw new Error('Microsoft integration is not active.');
+    }
+
+    // Re-check AFTER acquiring the lock: another worker may have refreshed while
+    // we waited, in which case the token is already fresh — do NOT refresh again
+    // (that would burn the rotated refresh token).
+    if (integration.expiresAt > new Date(Date.now() + 60_000)) {
+      return integration.accessToken;
+    }
+
+    if (!integration.refreshToken) {
+      throw new Error(
+        'Microsoft refresh token missing. Please reconnect Outlook Calendar.',
+      );
+    }
+
+    // Refresh runs while the row lock is held; it is bounded (AbortSignal.timeout
+    // in refreshMicrosoftToken). If it throws (timeout or non-2xx), this callback
+    // throws → the transaction rolls back → the lock releases and the row keeps
+    // its previous (expired-but-intact) token, so a retry starts clean. The
+    // UPDATE below runs only after a full, valid token is returned, so an aborted
+    // refresh can never write a partial or empty token.
+    const { accessToken, expiresAt } = await refreshMicrosoftToken(
+      integration.refreshToken,
     );
-  }
 
-  const { accessToken, expiresAt } = await refreshMicrosoftToken(
-    integration.refreshToken,
-  );
+    await tx
+      .update(integrations)
+      .set({ accessToken, expiresAt, status: 'active', updatedAt: new Date() })
+      .where(and(eq(integrations.userId, userId), providerClause!));
 
-  await db
-    .update(integrations)
-    .set({ accessToken, expiresAt, status: 'active', updatedAt: now })
-    .where(and(eq(integrations.userId, userId), providerClause!));
-
-  return accessToken;
+    return accessToken;
+  });
 }
 
 export async function markMicrosoftIntegrationSynced(

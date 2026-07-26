@@ -17,6 +17,9 @@ const SERVER_ONLY_TESTS = [
   // `server-only` (e.g. via @/lib/db, coin helpers). @/lib/db + @/lib/auth are
   // vi.mock'd; this stub neutralises the remaining transitive server-only guards.
   'tests/cross-user-access.test.ts',
+  // Batch 8 #4: imports the real google/microsoft token modules, which carry the
+  // `server-only` guard directly. @/lib/db is vi.mock'd to an ephemeral PGlite.
+  'tests/token-refresh-race.test.ts',
 ];
 
 const baseTest = {

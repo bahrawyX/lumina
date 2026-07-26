@@ -17,16 +17,27 @@ async function refreshGoogleToken(
     );
   }
 
-  const res = await fetch(GOOGLE_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(GOOGLE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+      // Bounded so a hung IdP can't pin the FOR UPDATE lock the caller holds
+      // across this refresh. On timeout the caller's transaction rolls back.
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error('[google/token] Token refresh timed out after 10s');
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -50,39 +61,72 @@ export async function getGoogleAccessToken(userId: string): Promise<string> {
   const db = getDatabase();
   const now = new Date();
 
-  // ── Check integrations table ───────────────────────────────────────────────
-  const [integration] = await db
+  // ── Fast path: unlocked read ───────────────────────────────────────────────
+  // The common case (token still valid) returns without taking a row lock, so
+  // routine token reads don't serialize behind FOR UPDATE.
+  const [current] = await db
     .select()
     .from(integrations)
     .where(and(eq(integrations.userId, userId), eq(integrations.provider, 'google')))
     .limit(1);
 
-  if (!integration) {
+  if (!current) {
     throw new Error('No Google integration found. Connect Google Calendar first.');
   }
-
-  if (integration.status !== 'active') {
+  if (current.status !== 'active') {
     throw new Error('Google integration is not active.');
   }
-
   // Token is still valid (60 s buffer)
-  if (integration.expiresAt > new Date(now.getTime() + 60_000)) {
-    return integration.accessToken;
+  if (current.expiresAt > new Date(now.getTime() + 60_000)) {
+    return current.accessToken;
   }
 
-  // Refresh the expired token
-  if (!integration.refreshToken) {
-    throw new Error('Google refresh token missing. Please reconnect Google Calendar.');
-  }
+  // ── Slow path: token expired → single-flight the refresh ────────────────────
+  // Serialize concurrent refreshers on the integration row so the IdP refresh
+  // happens EXACTLY ONCE. This is essential for providers with rotating refresh
+  // tokens (Microsoft), where a second refresh with the same token would leave
+  // the row holding a superseded token. Same lock+re-check discipline the coin
+  // ledger uses (SELECT … FOR UPDATE, re-check after acquire).
+  return db.transaction(async (tx) => {
+    const [integration] = await tx
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.userId, userId), eq(integrations.provider, 'google')))
+      .limit(1)
+      .for('update');
 
-  const { accessToken, expiresAt } = await refreshGoogleToken(integration.refreshToken);
+    if (!integration) {
+      throw new Error('No Google integration found. Connect Google Calendar first.');
+    }
+    if (integration.status !== 'active') {
+      throw new Error('Google integration is not active.');
+    }
 
-  await db
-    .update(integrations)
-    .set({ accessToken, expiresAt, status: 'active', updatedAt: now })
-    .where(and(eq(integrations.userId, userId), eq(integrations.provider, 'google')));
+    // Re-check AFTER acquiring the lock: another worker may have refreshed while
+    // we waited, in which case the token is already fresh — do NOT refresh again.
+    if (integration.expiresAt > new Date(Date.now() + 60_000)) {
+      return integration.accessToken;
+    }
 
-  return accessToken;
+    if (!integration.refreshToken) {
+      throw new Error('Google refresh token missing. Please reconnect Google Calendar.');
+    }
+
+    // Refresh runs while the row lock is held; it is bounded (AbortSignal.timeout
+    // in refreshGoogleToken). If it throws (timeout or non-2xx), this callback
+    // throws → the transaction rolls back → the lock releases and the row keeps
+    // its previous (expired-but-intact) token, so a retry starts clean. The
+    // UPDATE below runs only after a full, valid token is returned, so an aborted
+    // refresh can never write a partial or empty token.
+    const { accessToken, expiresAt } = await refreshGoogleToken(integration.refreshToken);
+
+    await tx
+      .update(integrations)
+      .set({ accessToken, expiresAt, status: 'active', updatedAt: new Date() })
+      .where(and(eq(integrations.userId, userId), eq(integrations.provider, 'google')));
+
+    return accessToken;
+  });
 }
 
 /** Mark the integration as errored (e.g. after a failed sync). */
