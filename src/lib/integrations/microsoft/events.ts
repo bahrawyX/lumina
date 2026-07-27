@@ -1,7 +1,12 @@
 import 'server-only';
 import { getMicrosoftAccessToken } from './token';
 import { mapMicrosoftEvent, type MicrosoftEvent } from './mapper';
+import { mapWithConcurrency } from '../mapWithConcurrency';
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
+
+// Bound the per-calendar fan-out (TD-5 / #7): a user with many calendars would
+// otherwise fire N simultaneous multi-page fetches. 4 keeps it parallel but modest.
+const CALENDAR_FETCH_CONCURRENCY = 4;
 
 function getSyncWindow(): { startDateTime: string; endDateTime: string } {
   const now = Date.now();
@@ -113,9 +118,9 @@ export async function syncAllMicrosoftCalendarEvents(
   userId: string,
   msCalendars: Array<{ id: string; externalId: string }>,
 ): Promise<SyncMicrosoftCalendarEventsResult[]> {
-  return Promise.all(
-    msCalendars.map(({ id, externalId }) =>
-      syncMicrosoftCalendarEvents(userId, id, externalId),
-    ),
+  return mapWithConcurrency(
+    msCalendars,
+    CALENDAR_FETCH_CONCURRENCY,
+    ({ id, externalId }) => syncMicrosoftCalendarEvents(userId, id, externalId),
   );
 }

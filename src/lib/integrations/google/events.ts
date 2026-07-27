@@ -1,6 +1,11 @@
 import 'server-only';
 import { googleFetch } from './client';
 import { mapGoogleEvent, type GoogleEventsListResponse } from './mapper';
+import { mapWithConcurrency } from '../mapWithConcurrency';
+
+// Bound the per-calendar fan-out (TD-5 / #7): a user with many calendars would
+// otherwise fire N simultaneous multi-page fetches. 4 keeps it parallel but modest.
+const CALENDAR_FETCH_CONCURRENCY = 4;
 
 // Initial sync window: 90 days ago → 365 days ahead
 function getSyncWindow(): { timeMin: string; timeMax: string } {
@@ -95,10 +100,9 @@ export async function syncAllGoogleCalendarEvents(
   userId: string,
   googleCalendars: Array<{ id: string; externalId: string }>,
 ): Promise<SyncCalendarEventsResult[]> {
-  const results = await Promise.all(
-    googleCalendars.map(({ id, externalId }) =>
-      syncGoogleCalendarEvents(userId, id, externalId),
-    ),
+  return mapWithConcurrency(
+    googleCalendars,
+    CALENDAR_FETCH_CONCURRENCY,
+    ({ id, externalId }) => syncGoogleCalendarEvents(userId, id, externalId),
   );
-  return results;
 }
