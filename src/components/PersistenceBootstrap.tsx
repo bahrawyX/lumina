@@ -97,14 +97,25 @@ export default function PersistenceBootstrap() {
   const preferencesHydrated = useSettingsStore((s) => s.preferencesHydrated);
   const hydratePreferencesFromDb = useSettingsStore((s) => s.hydratePreferencesFromDb);
 
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
 
-  // Clear stale guest flag when a real session is present.
+  // Keep guest mode in step with the real session.
+  //
+  // Signing in clears a stale guest flag. Being signed out *sets* it: without
+  // that, a user who never explicitly chose "continue as guest" sits in a
+  // third state where docsPersistence skips localStorage, calls /api/docs and
+  // gets a 401 — the "Couldn't create document" error — while tasks and
+  // events carry on working locally. Wait for the session to resolve first,
+  // otherwise the initial undefined would flag every user as a guest.
   useEffect(() => {
-    if (session?.user?.id && useGuestStore.getState().isGuest) {
-      useGuestStore.getState().clearGuestSession();
+    if (sessionPending) return;
+    const { isGuest, setGuest, clearGuestSession } = useGuestStore.getState();
+    if (session?.user?.id) {
+      if (isGuest) clearGuestSession();
+    } else if (!isGuest) {
+      setGuest(true);
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, sessionPending]);
 
   // Sync the auth user's real name + email into the calendar profile so the
   // sidebar footer and Profile page show the DB name, not the hardcoded default.
