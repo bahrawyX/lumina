@@ -15,7 +15,8 @@ type UiProvider = 'local' | 'google' | 'microsoft' | 'outlook';
 export interface ApiEvent {
   id: string;
   title: string;
-  date: string;        // YYYY-MM-DD
+  date: string;        // YYYY-MM-DD (start day)
+  endDate?: string;    // YYYY-MM-DD (end day — differs for multi-day events)
   startTime?: string;  // HH:mm
   endTime?: string;    // HH:mm
   timezone?: string;
@@ -99,6 +100,7 @@ export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
       title: event.title,
       description: event.description ?? '',
       date: event.date,
+      endDate: event.endDate ?? event.date,
       startTime: event.startTime ?? '00:00',
       endTime: event.endTime ?? '00:00',
       timezone: event.timezone ?? 'UTC',

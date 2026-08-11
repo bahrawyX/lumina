@@ -54,6 +54,9 @@ function mapRowToApiEvent(
     id: row.id,
     title: row.title,
     date: row.startTime.toISOString().slice(0, 10),
+    // The end timestamp carries its own date — an event may span days.
+    // Dropping it here is what made End Date always mirror Start Date.
+    endDate: row.endTime.toISOString().slice(0, 10),
     startTime: row.startTime.toISOString().slice(11, 16),
     endTime: row.endTime.toISOString().slice(11, 16),
     description: row.description ?? undefined,
@@ -130,6 +133,7 @@ export async function POST(req: NextRequest) {
   const {
     title: rawTitle,
     date,
+    endDate,
     startTime,
     endTime,
     startAt,
@@ -164,8 +168,11 @@ export async function POST(req: NextRequest) {
   const directEndAt = parseIso(endAt);
 
   const fallbackDate = typeof date === 'string' ? date : undefined;
+  // An event may end on a later day than it starts. Fall back to the start
+  // date only when no endDate was supplied (single-day event).
+  const fallbackEndDate = typeof endDate === 'string' ? endDate : fallbackDate;
   const startTs = directStartAt ?? parseDateAndTime(fallbackDate, startTime, '00:00');
-  const endTs = directEndAt ?? parseDateAndTime(fallbackDate, endTime, '23:59');
+  const endTs = directEndAt ?? parseDateAndTime(fallbackEndDate, endTime, '23:59');
 
   if (!startTs || !endTs) {
     return NextResponse.json({ error: 'Valid start and end timestamps are required' }, { status: 400 });

@@ -64,6 +64,19 @@ function isValidEventTimes(startTime: string, endTime: string): boolean {
   return e > s && e - s >= 1;
 }
 
+/**
+ * Keep a multi-day event's span intact when it is dragged to another day.
+ * Without this the event would keep its old endDate and silently collapse.
+ */
+function shiftedEndDate(event: CalendarEvent, newDate: string): string {
+  if (!event.endDate || event.endDate <= event.date) return newDate;
+  const from = Date.parse(`${event.date}T00:00:00Z`);
+  const to = Date.parse(`${event.endDate}T00:00:00Z`);
+  const next = Date.parse(`${newDate}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to) || Number.isNaN(next)) return newDate;
+  return new Date(next + (to - from)).toISOString().slice(0, 10);
+}
+
 export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => ({
   // DB is the source of truth — start empty, never read localStorage on init.
   events: [],
@@ -282,9 +295,11 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     if (startTime && endTime && !isValidEventTimes(startTime, endTime)) return;
     const { events, history, historyIndex, userId } = get();
     const moved = events.find((e) => e.id === id);
+    const newEndDate = moved ? shiftedEndDate(moved, newDate) : newDate;
     const newEvents = events.map((e) => e.id === id ? {
       ...e,
       date: newDate,
+      endDate: shiftedEndDate(e, newDate),
       startTime: startTime || e.startTime,
       endTime: endTime || e.endTime
     } : e);
@@ -293,7 +308,7 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
     // Fire-and-forget DB persistence — only on commit (moveEvent = drag end)
-    if (moved) eventsPersistence.updateOne(id, { date: newDate, startTime, endTime });
+    if (moved) eventsPersistence.updateOne(id, { date: newDate, endDate: newEndDate, startTime, endTime });
     if (moved) notify(`Event moved: ${moved.title}`, () => get().undo());
   },
 

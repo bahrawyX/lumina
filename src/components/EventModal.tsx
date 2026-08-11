@@ -30,17 +30,28 @@ const GOOGLE_BRAND_COLOR = '#34A853';
 const OUTLOOK_BRAND_COLOR = '#0078D4';
 
 /* ── Zod schema ──────────────────────────────────────────────────────────── */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 const eventSchema = z.object({
   title: z.string().min(1, "Event name is required").max(100),
   description: z.string().optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
+  date: z.string().regex(ISO_DATE, "Pick a date"),
+  endDate: z.string().regex(ISO_DATE, "Pick an end date").optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time"),
   category: z.string(),
-}).refine((d) => timeToMinutes(d.endTime) > timeToMinutes(d.startTime), {
-  message: "End time must be after start time",
-  path: ["endTime"],
-});
+})
+  // ISO dates compare correctly as plain strings.
+  .refine((d) => !d.endDate || d.endDate >= d.date, {
+    message: "End date can't be before start date",
+    path: ["endDate"],
+  })
+  // Times only have to be ordered when the event begins and ends on the same
+  // day — Mon 09:00 → Tue 08:00 is perfectly valid.
+  .refine(
+    (d) => (d.endDate ?? d.date) !== d.date || timeToMinutes(d.endTime) > timeToMinutes(d.startTime),
+    { message: "End time must be after start time", path: ["endTime"] },
+  );
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 const EventModal: React.FC = () => {
@@ -96,15 +107,17 @@ const EventModal: React.FC = () => {
   useEffect(() => {
     if (!isModalOpen) return;
     if (activeEvent) {
+      // Legacy events have no endDate — treat them as single-day.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormData(activeEvent);
+      setFormData({ ...activeEvent, endDate: activeEvent.endDate || activeEvent.date });
       setRecurrence(activeEvent.recurrence ?? null);
     } else {
       const startTime = initialTimeForNewEvent || "09:00";
       const endTime = minutesToTime(Math.min(1435, timeToMinutes(startTime) + 60));
+      const date = initialDateForNewEvent || new Date().toISOString().split("T")[0];
       setFormData({
         title: "", description: "",
-        date: initialDateForNewEvent || new Date().toISOString().split("T")[0],
+        date, endDate: date,
         startTime, endTime, category: "Work", location: "",
       });
       setRecurrence(null);
@@ -112,13 +125,16 @@ const EventModal: React.FC = () => {
     setErrors({});
   }, [activeEvent, initialDateForNewEvent, initialTimeForNewEvent, isModalOpen]);
 
-  /* Auto-adjust end time */
+  /* Auto-adjust end time — only for single-day events. On a multi-day event an
+     end time earlier than the start time is legitimate, so leave it alone. */
   useEffect(() => {
+    const isSingleDay = (formData.endDate || formData.date) === formData.date;
+    if (!isSingleDay) return;
     const s = timeToMinutes(formData.startTime || "09:00");
     const e = timeToMinutes(formData.endTime || "10:00");
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (e <= s) setFormData((prev) => ({ ...prev, endTime: minutesToTime(Math.min(1435, s + 30)) }));
-  }, [formData.startTime, formData.endTime]);
+  }, [formData.startTime, formData.endTime, formData.date, formData.endDate]);
 
 
   const handleSave = (editScope?: EditScope) => {
@@ -143,6 +159,7 @@ const EventModal: React.FC = () => {
       title: result.data.title,
       description: result.data.description || "",
       date: result.data.date,
+      endDate: result.data.endDate || result.data.date,
       startTime: result.data.startTime,
       endTime: result.data.endTime,
       category: result.data.category as EventCategory,
@@ -278,7 +295,12 @@ const EventModal: React.FC = () => {
               <Label>Start Date</Label>
               <DatePicker
                 value={formData.date || ""}
-                onChange={(date) => { setFormData({ ...formData, date }); setErrors((p) => ({ ...p, date: "" })); }}
+                onChange={(date) => {
+                  // Never let the start date overtake the end date.
+                  const endDate = formData.endDate && formData.endDate < date ? date : formData.endDate;
+                  setFormData({ ...formData, date, endDate });
+                  setErrors((p) => ({ ...p, date: "", endDate: "" }));
+                }}
                 disabled={isExternalEvent}
               />
               {errors.date && <p className="text-xs text-destructive">{errors.date}</p>}
@@ -286,10 +308,11 @@ const EventModal: React.FC = () => {
             <div className="space-y-1.5">
               <Label>End Date</Label>
               <DatePicker
-                value={formData.date || ""}
-                onChange={(date) => setFormData({ ...formData, date })}
+                value={formData.endDate || formData.date || ""}
+                onChange={(endDate) => { setFormData({ ...formData, endDate }); setErrors((p) => ({ ...p, endDate: "" })); }}
                 disabled={isExternalEvent}
               />
+              {errors.endDate && <p className="text-xs text-destructive">{errors.endDate}</p>}
             </div>
           </div>
 

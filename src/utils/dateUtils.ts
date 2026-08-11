@@ -54,6 +54,70 @@ export const getEventPosition = (startTime: string, endTime: string) => {
   return { top, height };
 };
 
+/** Shift a YYYY-MM-DD string by N days. UTC math — immune to DST shifts. */
+const addDaysISO = (iso: string, days: number): string => {
+  const ms = Date.parse(`${iso}T00:00:00Z`);
+  if (Number.isNaN(ms)) return iso;
+  return new Date(ms + days * 86_400_000).toISOString().slice(0, 10);
+};
+
+/** Safety cap so a corrupt endDate can't spin out millions of instances. */
+const MAX_SPAN_DAYS = 366;
+
+/** Whole days an event covers beyond its start day (0 = single-day). */
+const spanDays = (event: CalendarEvent): number => {
+  if (!event.endDate || event.endDate <= event.date) return 0;
+  const start = Date.parse(`${event.date}T00:00:00Z`);
+  const end = Date.parse(`${event.endDate}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
+  return Math.min(Math.round((end - start) / 86_400_000), MAX_SPAN_DAYS);
+};
+
+/**
+ * Emit one instance per day an occurrence covers, clipping the times to each
+ * day (first day: start→23:59, middle days: 00:00→23:59, last: 00:00→end).
+ *
+ * Views filter on `instanceDate`, so producing per-day instances here is what
+ * makes multi-day events render everywhere without touching the view layer.
+ */
+const pushOccurrence = (
+  out: EventInstance[],
+  event: CalendarEvent,
+  occurrenceDate: string,
+  startISO: string,
+  endISO: string,
+  isExcluded: (date: string) => boolean | undefined,
+): void => {
+  // Exceptions are keyed to the occurrence's start day, so an excluded
+  // occurrence drops entirely — not just its first day.
+  if (isExcluded(occurrenceDate)) return;
+
+  const span = spanDays(event);
+  const occurrenceEnd = span === 0 ? occurrenceDate : addDaysISO(occurrenceDate, span);
+  // Intersect the occurrence's full extent with the visible window, so an
+  // event that began before the window but runs into it still shows up.
+  if (occurrenceEnd < startISO || occurrenceDate > endISO) return;
+
+  for (let i = 0; i <= span; i++) {
+    const dayISO = i === 0 ? occurrenceDate : addDaysISO(occurrenceDate, i);
+    if (dayISO > endISO) break;
+    if (dayISO < startISO) continue;
+
+    const isFirst = i === 0;
+    const isLast = i === span;
+    out.push({
+      ...event,
+      instanceDate: dayISO,
+      startTime: isFirst ? event.startTime : '00:00',
+      endTime: isLast ? event.endTime : '23:59',
+      spanIndex: i,
+      spanTotal: span + 1,
+      isSpanStart: isFirst,
+      isSpanEnd: isLast,
+    });
+  }
+};
+
 /**
  * Optimized Recurrence Engine: Handles EXDATE (exceptions) and lazy expansion.
  */
@@ -67,9 +131,7 @@ export const expandRecurrences = (events: CalendarEvent[], startRange: Date, end
     const isExcluded = (date: string) => event.exceptions?.includes(date);
 
     if (!event.recurrence) {
-      if (event.date >= startISO && event.date <= endISO && !isExcluded(event.date)) {
-        instances.push({ ...event, instanceDate: event.date });
-      }
+      pushOccurrence(instances, event, event.date, startISO, endISO, isExcluded);
       continue;
     }
 
@@ -107,9 +169,7 @@ export const expandRecurrences = (events: CalendarEvent[], startRange: Date, end
       }
 
       if (matches) {
-        if (currentISO >= startISO && currentISO <= endISO && !isExcluded(currentISO)) {
-          instances.push({ ...event, instanceDate: currentISO });
-        }
+        pushOccurrence(instances, event, currentISO, startISO, endISO, isExcluded);
         count++;
       }
 

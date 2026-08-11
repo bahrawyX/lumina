@@ -45,6 +45,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     startAt,
     endAt,
     date,
+    endDate,
     startTime,
     endTime,
     editScope: rawEditScope,
@@ -299,6 +300,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const parsedStartAt = typeof startAt === 'string' ? new Date(startAt) : null;
     const parsedEndAt = typeof endAt === 'string' ? new Date(endAt) : null;
     const dateStr = typeof date === 'string' ? date : existing.startTime.toISOString().slice(0, 10);
+    // The end timestamp keeps its own date so events can span days. Only when
+    // no endDate is supplied does it inherit the (possibly new) start date.
+    const endDateStr = typeof endDate === 'string'
+      ? endDate
+      : typeof date === 'string'
+        ? date
+        : existing.endTime.toISOString().slice(0, 10);
     const startStr = typeof startTime === 'string' ? startTime : existing.startTime.toISOString().slice(11, 16);
     const endStr = typeof endTime === 'string' ? endTime : existing.endTime.toISOString().slice(11, 16);
 
@@ -309,8 +317,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       const ts = new Date(`${dateStr}T${startStr}:00.000Z`);
       if (!isNaN(ts.getTime())) patch.startTime = ts;
     }
-    if (!patch.endTime && (typeof date === 'string' || typeof endTime === 'string')) {
-      const ts = new Date(`${dateStr}T${endStr}:00.000Z`);
+    if (!patch.endTime && (typeof date === 'string' || typeof endDate === 'string' || typeof endTime === 'string')) {
+      const ts = new Date(`${endDateStr}T${endStr}:00.000Z`);
       if (!isNaN(ts.getTime())) patch.endTime = ts;
     }
 

@@ -42,7 +42,14 @@ export interface CalendarEvent {
   id: string;
   title: string;
   description: string;
+  /** YYYY-MM-DD — the day the event starts. */
   date: string;
+  /**
+   * YYYY-MM-DD — the day the event ends. Omitted/equal to `date` for
+   * single-day events. Kept as an ISO date string (not a Date) so the model
+   * survives JSON.stringify → parse across localStorage and the API.
+   */
+  endDate?: string;
   startTime: string;
   endTime: string;
   timezone: string;
@@ -72,6 +79,14 @@ export interface EventInstance extends CalendarEvent {
   instanceDate: string;
   /** Composite ID for virtual instances: `{masterEventId}:{isoDate}` */
   instanceId?: string;
+  /** 0-based day offset within a multi-day event (0 for single-day). */
+  spanIndex?: number;
+  /** Total days this event covers (1 for single-day). */
+  spanTotal?: number;
+  /** False on continuation days — the event started on an earlier day. */
+  isSpanStart?: boolean;
+  /** False when the event continues onto a later day. */
+  isSpanEnd?: boolean;
 }
 
 export interface OverlapGroup {
