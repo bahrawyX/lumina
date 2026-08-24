@@ -5,6 +5,7 @@ import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { logger } from '@/lib/logger';
+import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import {
   isValidTimeZone,
   utcToZonedWallClock,
@@ -234,6 +235,14 @@ export async function POST(req: NextRequest) {
   if (!title) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });
   }
+
+  // P3-2: `events.title` is varchar(512); nothing bounded it.
+  const tooLong = checkFieldLengths({
+    title: { value: title, max: FIELD_LIMITS.title },
+    description: { value: description, max: FIELD_LIMITS.description },
+    location: { value: location, max: FIELD_LIMITS.location },
+  });
+  if (tooLong) return tooLong;
 
   const provider: EventProvider = 'local';
   const syncStatus: EventSyncStatus = 'local_only';

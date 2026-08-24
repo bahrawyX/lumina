@@ -10,6 +10,7 @@ import { utcToZonedWallClock } from '@/lib/time/zonedTime';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 import { logger } from '@/lib/logger';
+import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { checkLinkedOwnership } from '@/lib/ownership';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
@@ -60,6 +61,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const patch: Record<string, unknown> = { updatedAt: new Date() };
 
     const validPriorities = ['low', 'medium', 'high'];
+
+    // P3-2: `varchar(512)`; an over-long value was a driver 500, not a 400.
+    const tooLong = checkFieldLengths({
+      title: { value: body.title, max: FIELD_LIMITS.title },
+      description: { value: body.description, max: FIELD_LIMITS.description },
+    });
+    if (tooLong) return tooLong;
 
     if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
     if (typeof body.description === 'string') patch.description = body.description;

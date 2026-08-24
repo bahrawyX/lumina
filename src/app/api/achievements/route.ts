@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { achievements } from '@/db/schema';
 import { getDatabase } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+
+/** A UI "mark these as seen" batch — bounded, and every entry a real uuid. */
+const markSeenSchema = z
+  .array(z.string().uuid('ids must be UUIDs'))
+  .min(1, 'ids must be a non-empty array')
+  .max(200, 'ids may contain at most 200 entries');
 
 /** GET /api/achievements — all achievements for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -53,20 +60,27 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  if (!Array.isArray(body.ids) || body.ids.length === 0) {
-    return NextResponse.json({ error: 'ids must be a non-empty array' }, { status: 400 });
+  // P3-5: `ids` was checked only for `Array.isArray` and non-empty, then passed
+  // straight to `inArray`. A non-UUID entry raised Postgres 22P02 → 500, and a
+  // 100k-element array became a 100k-term IN clause. `userId` scoping was
+  // already correct, so this was availability, not access.
+  const idsResult = markSeenSchema.safeParse(body.ids);
+  if (!idsResult.success) {
+    return NextResponse.json(
+      { error: idsResult.error.issues[0]?.message ?? 'ids must be an array of UUIDs' },
+      { status: 400 },
+    );
   }
 
   try {
     const db = getDatabase();
-    const { inArray, and } = await import('drizzle-orm');
     await db
       .update(achievements)
       .set({ seen: true })
       .where(
         and(
           eq(achievements.userId, session.user.id),
-          inArray(achievements.id, body.ids),
+          inArray(achievements.id, idsResult.data),
         )
       );
 

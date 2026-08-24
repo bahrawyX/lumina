@@ -7,6 +7,7 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
 import { logger } from '@/lib/logger';
+import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { checkLinkedOwnership, wouldCreateDocCycle } from '@/lib/ownership';
 import { docStaleGuard, nextDocUpdatedAt } from '@/lib/docs/staleWrite';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
@@ -106,6 +107,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // See `nextDocUpdatedAt` for why an app-server timestamp made the guard
     // depend on clock skew between serverless instances.
     const patch: Record<string, unknown> = { updatedAt: nextDocUpdatedAt() };
+
+    // P3-2: `docs.title` is varchar(512). The doc BODY is bounded at the edge
+    // (the proxy allows /api/docs a larger Content-Length than other routes);
+    // the title is bounded here because the column is.
+    const tooLong = checkFieldLengths({
+      title: { value: body.title, max: FIELD_LIMITS.title },
+    });
+    if (tooLong) return tooLong;
 
     if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
     if (body.content !== undefined) patch.content = body.content;

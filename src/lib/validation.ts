@@ -19,7 +19,27 @@ export const emailSchema = z
   .string()
   .trim()
   .min(1, 'Email is required')
+  // RFC 5321 caps a full address at 254 octets. Without this the field is
+  // unbounded, and `.email()` alone happily accepts a megabyte of local-part.
+  .max(254, 'Email must be under 254 characters')
   .email('Enter a valid email address');
+
+/**
+ * The optional reply-to on a contact submission.
+ *
+ * P3-2: `/api/contact` stored `body.email` with only a `typeof string` check —
+ * no format validation and no length cap — while `subject` and `message` were
+ * properly bounded by this same module. `emailSchema` already existed here and
+ * simply was not used.
+ *
+ * The CR/LF strip is the part that matters beyond tidiness: this value becomes
+ * the reply-to for whatever processes these submissions, and a newline in an
+ * address is the first step of header injection.
+ */
+export const contactEmailSchema = z
+  .string()
+  .transform((value) => value.replace(/[\r\n]/g, '').trim())
+  .pipe(emailSchema);
 
 /**
  * Sign-up password rules. MUST stay in step with

@@ -7,6 +7,7 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { goalCompleteAwards } from '@/lib/coins/earnRules';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { logger } from '@/lib/logger';
+import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
@@ -36,6 +37,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const db = getDatabase();
     const patch: Record<string, unknown> = { updatedAt: new Date() };
+
+    const tooLong = checkFieldLengths({
+      title: { value: body.title, max: FIELD_LIMITS.shortTitle },
+      description: { value: body.description, max: FIELD_LIMITS.description },
+    });
+    if (tooLong) return tooLong;
 
     if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
     if (typeof body.description === 'string') patch.description = body.description || null;

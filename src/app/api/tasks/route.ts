@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { tasks, events, docs, goals } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { listHeaders, parseLimit } from '@/lib/listLimits';
 
 function normalizeTimeString(value: unknown): string | null {
@@ -138,6 +139,15 @@ export async function POST(req: NextRequest) {
   if (!title || typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });
   }
+
+  // P3-2: unbounded. A 100,000-character title went straight into
+  // `varchar(512)` and Postgres raised 22001, so the client got a 500 for a
+  // request it simply got wrong.
+  const tooLong = checkFieldLengths({
+    title: { value: title, max: FIELD_LIMITS.title },
+    description: { value: description, max: FIELD_LIMITS.description },
+  });
+  if (tooLong) return tooLong;
 
   const validPriorities = ['low', 'medium', 'high'];
   const validDifficulties = ['easy', 'medium', 'hard'];

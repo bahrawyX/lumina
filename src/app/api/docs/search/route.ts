@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { docs } from '@/db/schema';
 import { sql, eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { buildDocsPrefixQuery } from '@/lib/docs/searchQuery';
 
 /** GET /api/docs/search?q=... — PostgreSQL full-text search across docs. */
 export async function GET(req: NextRequest) {
@@ -20,12 +21,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json([]);
   }
 
+  // P2-11: `to_tsquery` parses its ARGUMENT as query syntax, so any `!`, `&`,
+  // `|`, `(`, `)` or `:` in what the user typed raised `syntax error in
+  // tsquery` and surfaced as a 500 — mid-word, in a box that searches as you
+  // type. See `buildDocsPrefixQuery` for why this is not `websearch_to_tsquery`.
+  const queryArg = buildDocsPrefixQuery(q);
+  if (!queryArg) {
+    return NextResponse.json([]);
+  }
+
   try {
     const db = getDatabase();
 
+    // Must match `docs_content_fts_idx` EXACTLY (same expression, same
+    // config) or the GIN index is skipped and this recomputes `to_tsvector`
+    // over every doc on every keystroke.
     const tsvector = sql`to_tsvector('english', coalesce(${docs.title}, '') || ' ' || coalesce(${docs.contentText}, ''))`;
     // Prefix search: "quar" → "quar:*", "quarterly review" → "quarterly:* & review:*"
-    const tsquery = sql`to_tsquery('english', ${q.replace(/\s+/g, ':* & ') + ':*'})`;
+    const tsquery = sql`to_tsquery('english', ${queryArg})`;
 
     // We ask Postgres to mark matches with placeholder tokens (not <mark>),
     // then HTML-escape the entire excerpt client-side, then replace the

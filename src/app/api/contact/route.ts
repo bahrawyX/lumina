@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { contactSubmissions } from '@/db/schema';
-import { contactTypeSchema, contactSubjectSchema, contactMessageSchema } from '@/lib/validation';
+import {
+  contactTypeSchema,
+  contactSubjectSchema,
+  contactMessageSchema,
+  contactEmailSchema,
+} from '@/lib/validation';
 import { clientIp, createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 import { logger } from '@/lib/logger';
 
@@ -51,7 +56,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: messageResult.error.issues[0]?.message ?? 'Invalid message' }, { status: 400 });
   }
 
-  const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null;
+  // P3-2: this was stored with only a `typeof string` check — no format
+  // validation and no length cap — while `subject` (100) and `message` (1000)
+  // were properly bounded by the same module. `emailSchema` already existed and
+  // simply was not used here.
+  //
+  // The CRLF strip is not theoretical hygiene: this value is the reply-to for
+  // whatever eventually processes these submissions, and a newline in an
+  // address is how header injection starts.
+  let email: string | null = null;
+  if (body.email !== undefined && body.email !== null && body.email !== '') {
+    const emailResult = contactEmailSchema.safeParse(body.email);
+    if (!emailResult.success) {
+      return NextResponse.json(
+        { error: emailResult.error.issues[0]?.message ?? 'Invalid email address' },
+        { status: 400 },
+      );
+    }
+    email = emailResult.data;
+  }
 
   // Rate limit BEFORE the insert. The timestamp used to be recorded *after* a
   // successful insert, so N concurrent requests all passed the check before any

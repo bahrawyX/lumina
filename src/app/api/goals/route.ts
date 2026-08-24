@@ -7,6 +7,7 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
 import { logger } from '@/lib/logger';
+import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 
 function parseLinkedTaskIds(raw: string | null): string[] {
   if (!raw) return [];
@@ -191,6 +192,13 @@ export async function POST(req: NextRequest) {
   if (!title || typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });
   }
+
+  // P3-2: `goals.title` is varchar(255) — a tighter column than tasks/events.
+  const tooLong = checkFieldLengths({
+    title: { value: title, max: FIELD_LIMITS.shortTitle },
+    description: { value: description, max: FIELD_LIMITS.description },
+  });
+  if (tooLong) return tooLong;
   if (!startDate || !endDate) {
     return NextResponse.json({ error: 'startDate and endDate are required' }, { status: 400 });
   }

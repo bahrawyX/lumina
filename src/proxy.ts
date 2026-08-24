@@ -122,6 +122,52 @@ function block(reason: string): NextResponse {
   );
 }
 
+/**
+ * P3-1: no API route set `Cache-Control`, so Vercel stamped its default
+ * `public, max-age=0, must-revalidate` — with no `Vary: Cookie`.
+ *
+ * `max-age=0, must-revalidate` makes real-world leakage unlikely, but `public`
+ * marks PER-USER JSON as shared-cacheable. Any intervening corporate proxy that
+ * honours it, or any future CDN rule, can cross-serve one user's calendar to
+ * another. `Vary: Cookie` is the second half: without it, a cache that did
+ * store a response has no reason to key it by who asked.
+ *
+ * Stamped here rather than in 54 route handlers, so a route added tomorrow
+ * cannot forget it.
+ */
+function apiHeaders(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'private, no-store, max-age=0');
+  res.headers.set('Vary', 'Cookie, Accept-Encoding');
+  return res;
+}
+
+/**
+ * P3-2: Next.js route handlers have no default body cap, and `docs` writes
+ * arbitrary client JSON straight into a JSONB column. Confirmed by the audit:
+ * `POST /api/tasks` with a 100,000-character title returned 500, not 400.
+ *
+ * Checked at the edge against `Content-Length` so the body is rejected before a
+ * function is invoked at all. A chunked request omits the header and slips
+ * past — the platform's own request limit is the backstop there — but every
+ * ordinary client sends it, which is what makes this worth having.
+ */
+const MAX_BODY_BYTES = 64 * 1024;
+/** Documents legitimately carry a large ProseMirror JSON tree. */
+const MAX_DOC_BODY_BYTES = 1024 * 1024;
+
+function bodyLimitFor(pathname: string): number {
+  return pathname.startsWith('/api/docs') ? MAX_DOC_BODY_BYTES : MAX_BODY_BYTES;
+}
+
+function tooLarge(limit: number): NextResponse {
+  return apiHeaders(
+    NextResponse.json(
+      { error: `Request body exceeds ${Math.floor(limit / 1024)} KB` },
+      { status: 413 },
+    ),
+  );
+}
+
 
 /**
  * BetterAuth names the session cookie `<prefix>.session_token`, with a
@@ -209,19 +255,29 @@ export function proxy(req: NextRequest): NextResponse {
 
   if (!req.nextUrl.pathname.startsWith('/api/')) return NextResponse.next();
 
-  if (!MUTATING_METHODS.has(req.method)) return NextResponse.next();
-  if (isExempt(req.nextUrl.pathname)) return NextResponse.next();
+  // Every response from here down is per-user JSON.
+  const pass = () => apiHeaders(NextResponse.next());
+
+  if (!MUTATING_METHODS.has(req.method)) return pass();
+
+  const limit = bodyLimitFor(req.nextUrl.pathname);
+  const declaredLength = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    return tooLarge(limit);
+  }
+
+  if (isExempt(req.nextUrl.pathname)) return pass();
 
   const origin = req.headers.get('origin');
   if (origin !== null) {
-    return isSameSite(req, origin) ? NextResponse.next() : block('origin_mismatch');
+    return isSameSite(req, origin) ? pass() : block('origin_mismatch');
   }
 
   // No Origin header — some privacy setups and non-browser clients omit it.
   // Fall back to Referer; when present it must resolve to one of our hosts.
   const referer = req.headers.get('referer');
   if (referer !== null) {
-    return isSameSite(req, referer) ? NextResponse.next() : block('referer_mismatch');
+    return isSameSite(req, referer) ? pass() : block('referer_mismatch');
   }
 
   // Neither Origin nor Referer on a mutating request → REJECT (deliberate). A
