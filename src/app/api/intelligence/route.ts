@@ -16,18 +16,14 @@ import type {
   IntelligenceTask,
 } from '@/lib/intelligence/types';
 import { logger } from '@/lib/logger';
+import { MAX_PROVIDER_RANGE_DAYS, parseRange } from '@/lib/dateRange';
+import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 
 const DEFAULT_RANGE_DAYS_PAST = 1;
 const DEFAULT_RANGE_DAYS_FUTURE = 14;
 const DEFAULT_MIN_FOCUS_WINDOW_MINUTES = 60;
 const DEFAULT_FOCUS_HISTORY_DAYS = 30;
 
-function parseIsoOrDefault(value: string | null, fallbackMs: number): string {
-  if (!value) return new Date(fallbackMs).toISOString();
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return new Date(fallbackMs).toISOString();
-  return parsed.toISOString();
-}
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   if (!value) return fallback;
@@ -70,6 +66,9 @@ function mapFocusSessions(rows: Array<typeof focusSessions.$inferSelect>): Intel
   }));
 }
 
+/** P1-10: 10/min per user. The handler is expensive and provider-backed. */
+const intelligenceLimiter = createRateLimiter('intelligence', { windowMs: 60_000, max: 10 });
+
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
@@ -80,19 +79,30 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   const { searchParams } = new URL(req.url);
 
-  const startIso = parseIsoOrDefault(
-    searchParams.get('start'),
-    now - DEFAULT_RANGE_DAYS_PAST * 86_400_000,
-  );
-  const endIso = parseIsoOrDefault(
-    searchParams.get('end'),
-    now + DEFAULT_RANGE_DAYS_FUTURE * 86_400_000,
-  );
+  // P1-10: the range was uncapped — any parseable ISO pair was accepted. This
+  // handler reads the caller's entire tasks table, expands every recurrence
+  // rule, and makes live paginated Google AND Microsoft calls, so an unbounded
+  // window is both a CPU blowup and a way for one account to exhaust the
+  // SHARED OAuth quota for every user of the app.
+  const range = parseRange(searchParams.get('start'), searchParams.get('end'), {
+    defaultStart: new Date(now - DEFAULT_RANGE_DAYS_PAST * 86_400_000),
+    defaultEnd: new Date(now + DEFAULT_RANGE_DAYS_FUTURE * 86_400_000),
+    maxDays: MAX_PROVIDER_RANGE_DAYS,
+  });
+  if (range.kind === 'error') {
+    return NextResponse.json({ error: range.message }, { status: 400 });
+  }
+  const startIso = range.start.toISOString();
+  const endIso = range.end.toISOString();
 
   const minFocusWindowMinutes = parsePositiveInt(
     searchParams.get('minFocusWindowMinutes'),
     DEFAULT_MIN_FOCUS_WINDOW_MINUTES,
   );
+
+  // P1-10: no limiter at all on a handler this expensive.
+  const limit = await intelligenceLimiter.check(userId);
+  if (limit.limited) return rateLimitedResponse(limit.retryAfterMs);
 
   const timezone = searchParams.get('timezone')?.trim() || 'UTC';
   const includeNarrative = searchParams.get('includeNarrative') === '1';

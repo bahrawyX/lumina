@@ -35,6 +35,8 @@ const SERVER_ONLY_TESTS = [
   'tests/task-award-response.test.ts',
   // P1-2: imports the notification claim helper, which is server-only.
   'tests/notification-claim.test.ts',
+  // P1-10/P3-3: imports the integration error classifier, which is server-only.
+  'tests/range-and-provider-codes.test.ts',
 ];
 
 const baseTest = {

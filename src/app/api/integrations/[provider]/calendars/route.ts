@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { importGoogleCalendars, getGoogleCalendarsFromDb } from '@/lib/integrations/google/calendars';
+import { integrationErrorCode } from '@/lib/integrations/clientError';
 
 interface RouteContext {
   params: Promise<{ provider: string }>;
@@ -40,14 +41,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ calendars, count: calendars.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      if (
-        message.includes('No Google integration found') ||
-        message.includes('Google integration is not active') ||
-        message.includes('Google refresh token missing')
-      ) {
-        return NextResponse.json({ error: message }, { status: 403 });
+      // P3-3: the raw provider message never reaches the client.
+      const code = integrationErrorCode(err, message);
+      if (code === 'not_connected' || code === 'reconnect_required') {
+        return NextResponse.json({ error: code, provider: 'google' }, { status: 403 });
       }
-      return NextResponse.json({ error: 'Failed to import Google calendars' }, { status: 500 });
+      return NextResponse.json({ error: 'provider_error', provider: 'google' }, { status: 500 });
     }
   }
 

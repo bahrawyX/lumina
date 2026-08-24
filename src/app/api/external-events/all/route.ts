@@ -7,6 +7,7 @@ import { fetchGoogleExternalEvents } from '@/lib/integrations/google/fetchExtern
 import { fetchMicrosoftExternalEvents } from '@/lib/integrations/microsoft/fetchExternalEvents';
 import { getEnabledCalendarIds } from '@/lib/integrations/enabledCalendars';
 import type { ApiExternalEvent } from '@/lib/calendar/externalEventTypes';
+import { integrationErrorCode } from '@/lib/integrations/clientError';
 
 const DEFAULT_RANGE_DAYS_PAST   = 30;
 const DEFAULT_RANGE_DAYS_FUTURE = 90;
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
       ? fetchGoogleExternalEvents(userId, startIso, endIso, googleCalendarIds)
           .then((ev) => { googleResult.events = ev; })
           .catch((err) => {
-            googleResult.error = err instanceof Error ? err.message : 'Google fetch failed';
+            googleResult.error = integrationErrorCode(err);
           })
       : Promise.resolve(),
 
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
       ? fetchMicrosoftExternalEvents(userId, startIso, endIso, microsoftCalendarIds)
           .then((ev) => { msResult.events = ev; })
           .catch((err) => {
-            msResult.error = err instanceof Error ? err.message : 'Microsoft fetch failed';
+            msResult.error = integrationErrorCode(err);
           })
       : Promise.resolve(),
   ]);

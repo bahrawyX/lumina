@@ -7,6 +7,8 @@ import { runFullGoogleSync } from '@/lib/integrations/google/sync';
 import { runFullMicrosoftSync } from '@/lib/integrations/microsoft/sync';
 import type { FullSyncResult } from '@/lib/integrations/google/sync';
 import type { MicrosoftSyncResult } from '@/lib/integrations/microsoft/sync';
+import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+import { integrationErrorCode } from '@/lib/integrations/clientError';
 
 // TD-5: runs both providers' full syncs in parallel — the heaviest sync path.
 // Give it the Vercel Hobby maximum so a large account can't time out mid-sync.
@@ -26,6 +28,16 @@ type ProviderResult<T> =
  *
  * Response: { google?, microsoft?, partial }
  */
+/**
+ * P1-10: a full sync fans out to every connected calendar with
+ * `maxDuration = 60` and had NO limiter. Because the OAuth client is shared,
+ * one account hammering this exhausts the provider quota for every user.
+ *
+ * 2 per 5 minutes is far above any legitimate manual refresh — the client also
+ * coalesces through `singleFlight` — while making a hot loop pointless.
+ */
+const syncLimiter = createRateLimiter('syncAll', { windowMs: 5 * 60_000, max: 2 });
+
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
@@ -33,6 +45,11 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = session.user.id;
+
+  const limit = await syncLimiter.check(userId);
+  if (limit.limited) {
+    return rateLimitedResponse(limit.retryAfterMs, 'Sync already ran recently.');
+  }
   const db = getDatabase();
 
   const userIntegrations = await db
@@ -69,7 +86,8 @@ export async function POST(req: NextRequest) {
           .catch((err) => {
             results.google = {
               ok: false,
-              error: err instanceof Error ? err.message : 'Google sync failed',
+              // P3-3: was `err.message` verbatim.
+              error: integrationErrorCode(err),
             };
           })
       : Promise.resolve(),
@@ -80,7 +98,7 @@ export async function POST(req: NextRequest) {
           .catch((err) => {
             results.microsoft = {
               ok: false,
-              error: err instanceof Error ? err.message : 'Outlook sync failed',
+              error: integrationErrorCode(err),
             };
           })
       : Promise.resolve(),
