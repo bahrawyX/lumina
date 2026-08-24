@@ -15,6 +15,7 @@ import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
 import { logger } from '@/lib/logger';
+import { getUserTimeZone } from '@/lib/time/eventTimeZone';
 
 /** GET /api/focus-sessions — return session history for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -115,10 +116,17 @@ export async function POST(req: NextRequest) {
   // real elapsed time, never more than the client claims, never above the hard
   // cap (MAX_SESSION_MINUTES). This value drives every coin/streak award below.
   const durationMinutes = rewardedSessionMinutes(wallSeconds, duration);
-  const timezone = typeof body.timezone === 'string' ? body.timezone : 'UTC';
 
   try {
     const db = getDatabase();
+
+    // P2-8: the streak day used to come from `body.timezone` — a CLIENT-SUPPLIED
+    // field fed straight into `computeStreakUpdate`. A client claiming
+    // `Pacific/Kiritimati` (UTC+14) rolled the streak day forward early and
+    // could bump `dailyStreak` twice inside one real day. `users.timezone` is
+    // the account-level source of truth and is not attacker-controlled per
+    // request; the request field is ignored.
+    const timezone = await getUserTimeZone(db, userId);
 
     // Batch 5 (FK ownership on create): a session may only link the caller's own
     // task / goal. A foreign goalId would otherwise pollute that user's

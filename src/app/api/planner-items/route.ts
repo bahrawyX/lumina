@@ -7,6 +7,9 @@ import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { logger } from '@/lib/logger';
+import { getUserTimeZone } from '@/lib/time/eventTimeZone';
+import { userDayBounds } from '@/lib/time/userDay';
+import { zonedDayBounds } from '@/lib/time/zonedTime';
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
@@ -31,26 +34,36 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  // Optional ?date=YYYY-MM-DD filter — narrows the result to a single local
-  // calendar day. The DB stores timestamps in UTC; we compute the day's bounds
-  // in the server's local timezone (matches how the API already serializes
-  // start/end times), which is consistent with how the client groups items
-  // into plansByDate.
+  // Optional ?date=YYYY-MM-DD filter — narrows the result to a single calendar
+  // day. The DB stores instants; the day's bounds depend on WHERE THE USER IS.
+  //
+  // P2-8: this used `new Date(y, m - 1, d)`, which resolves in the SERVER's
+  // zone — UTC on Vercel. The original comment said "the server's local
+  // timezone (matches how the API already serializes start/end times)", which
+  // was an accurate description of a bug: a user in UTC-8 asking for the 3rd
+  // got 16:00 on the 2nd through 16:00 on the 3rd, so the evening of their day
+  // was missing and the previous evening was included.
   const url = new URL(req.url);
   const dateParam = url.searchParams.get('date');
-  let startBound: Date | null = null;
-  let endBound: Date | null = null;
-  if (dateParam) {
-    if (!DATE_PARAM_RE.test(dateParam)) {
-      return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
-    }
-    const [y, m, d] = dateParam.split('-').map(Number);
-    startBound = new Date(y, m - 1, d, 0, 0, 0, 0);
-    endBound = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+  if (dateParam && !DATE_PARAM_RE.test(dateParam)) {
+    return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
   }
 
   try {
     const db = getDatabase();
+
+    let startBound: Date | null = null;
+    let endBound: Date | null = null;
+    if (dateParam) {
+      const zone = await getUserTimeZone(db, userId);
+      const bounds = zonedDayBounds(dateParam, zone);
+      if (!bounds) {
+        return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
+      }
+      startBound = bounds.start;
+      endBound = bounds.end;
+    }
+
     const conditions = [eq(plannerItems.userId, userId)];
     if (startBound && endBound) {
       conditions.push(sql`${plannerItems.startTime} >= ${startBound}`);
@@ -136,16 +149,16 @@ export async function POST(req: NextRequest) {
     // response carries the post-award balance.
     let newBalance: number | undefined;
     try {
-      const today = new Date();
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const todayEnd = new Date(todayStart);
-      todayEnd.setDate(todayEnd.getDate() + 1);
+      // P2-8: `new Date(y, m, d)` is the SERVER's midnight. "Planned 3 tasks
+      // for today" was counted against a day that did not line up with the
+      // user's, so the award fired on the wrong side of their evening.
+      const day = await userDayBounds(db, userId);
 
       const items = await db.select({ id: plannerItems.id }).from(plannerItems)
         .where(and(
           eq(plannerItems.userId, userId),
-          sql`${plannerItems.startTime} >= ${todayStart}`,
-          sql`${plannerItems.startTime} < ${todayEnd}`
+          sql`${plannerItems.startTime} >= ${day.start}`,
+          sql`${plannerItems.startTime} < ${day.end}`
         ));
 
       if (items.length === 3) {

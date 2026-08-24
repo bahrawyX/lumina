@@ -40,6 +40,8 @@ const SERVER_ONLY_TESTS = [
   // P2-5: imports the shared primary-local calendar resolver, which is
   // server-only (it queries the database).
   'tests/link-and-stale-writes.test.ts',
+  // P2-8: imports the user-local-day helper, which is server-only.
+  'tests/user-local-day.test.ts',
 ];
 
 const baseTest = {

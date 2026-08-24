@@ -33,19 +33,32 @@ export function focusSessionAwards(durationMinutes: number, taskPriority?: strin
 
 // ── Tasks ────────────────────────────────────────────────────────────────────
 
-export function taskCompleteAwards(difficulty: string, dueDate: string | null | undefined, hasTaskMultiplier: boolean): Award[] {
+/**
+ * @param dueDay   The task's due date as a 'YYYY-MM-DD' calendar day IN THE
+ *                 USER'S timezone, or null.
+ * @param todayLocal Today as a 'YYYY-MM-DD' calendar day in the same zone.
+ *
+ * P2-8: this used to take a raw date and build both days with
+ * `new Date(y, m, d)`, which resolves in the SERVER's zone — UTC on Vercel. So
+ * "completed on due date" flipped a day early or late for every user west of
+ * Greenwich, silently paying `task_early` instead of `task_on_time` or nothing
+ * at all. Comparing two calendar-day strings both derived in the user's zone
+ * removes the ambiguity entirely: there is no Date arithmetic left to get wrong.
+ */
+export function taskCompleteAwards(
+  difficulty: string,
+  dueDay: string | null | undefined,
+  todayLocal: string,
+  hasTaskMultiplier: boolean,
+): Award[] {
   const awards: Award[] = [];
   const base = difficulty === 'hard' ? 10 : 5;
   awards.push({ amount: base, reason: 'task_complete', label: difficulty === 'hard' ? 'Hard task completed' : 'Task completed' });
 
-  if (dueDate) {
-    const due = new Date(dueDate);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
-    if (dueDay > today) {
+  if (dueDay) {
+    if (dueDay > todayLocal) {
       awards.push({ amount: 8, reason: 'task_early', label: 'Completed before due date' });
-    } else if (dueDay.getTime() === today.getTime()) {
+    } else if (dueDay === todayLocal) {
       awards.push({ amount: 5, reason: 'task_on_time', label: 'Completed on due date' });
     }
   }

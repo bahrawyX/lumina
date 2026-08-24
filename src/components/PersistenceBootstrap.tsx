@@ -45,6 +45,7 @@ import { authClient } from '@/lib/auth-client';
 import { useGuestStore } from '@/store/useGuestStore';
 import { migrateGuestData } from '@/lib/persistence/guestMigration';
 import notify from '@/utils/notify';
+import { adoptBrowserTimeZone } from '@/lib/time/adoptBrowserTimeZone';
 import {
   useHydrationStatusStore,
   type HydrationDomain,
@@ -281,6 +282,19 @@ export default function PersistenceBootstrap() {
               }>;
             })
             .then((prefs) => {
+              // P2-8: `users.timezone` is the single source of truth for every
+              // day boundary the server computes — task bursts, "completed on
+              // due date", planner day filters, the streak. It was only ever
+              // written when the user opened settings, so for most accounts it
+              // sat at UTC and every one of those calculations ran a day out
+              // for anyone west of Greenwich.
+              //
+              // Seed it from the browser on first authenticated load, but ONLY
+              // when nothing real is stored yet. Overwriting on every mismatch
+              // would fight a user who deliberately picked a zone in settings
+              // and then travelled.
+              adoptBrowserTimeZone(prefs.timezone);
+
               hydratePreferencesFromDb({
                 focusSessionLength: prefs.focusSessionLength,
                 timezone: prefs.timezone,

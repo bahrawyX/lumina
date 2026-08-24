@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { users } from '@/db/schema';
 import { getDatabase } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { invalidateUserTimeZone } from '@/lib/time/eventTimeZone';
 
 const MIN_FOCUS_MINUTES = 5;
 const MAX_FOCUS_MINUTES = 240;
@@ -261,6 +262,11 @@ export async function PATCH(req: NextRequest) {
       .update(users)
       .set(update)
       .where(eq(users.id, session.user.id));
+
+    // `getUserTimeZone` memoises for 30s per user. Now that every server-side
+    // day boundary reads that column (P2-8), a stale memo means the change the
+    // user just made does not take effect for half a minute.
+    if (update.timezone !== undefined) invalidateUserTimeZone(session.user.id);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

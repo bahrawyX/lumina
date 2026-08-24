@@ -5,6 +5,8 @@ import { tasks, users } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { userDayBounds } from '@/lib/time/userDay';
+import { utcToZonedWallClock } from '@/lib/time/zonedTime';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 import { logger } from '@/lib/logger';
@@ -181,16 +183,31 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             const consumables = (u?.consumables as Record<string, number>) ?? {};
             const hasTaskMultiplier = (consumables.taskMultiplier ?? 0) > 0;
 
+            // P2-8: `toISOString().slice(0, 10)` is the UTC day, and the
+            // `todayStart` below was built with `new Date(y, m, d)` — the
+            // SERVER's day. Both are now the user's local calendar day.
+            const day = await userDayBounds(db, userId);
+
             const awards = taskCompleteAwards(
               taskData.difficulty ?? 'medium',
-              taskData.dueDate?.toISOString().slice(0, 10) ?? null,
+              taskData.dueDate
+                ? utcToZonedWallClock(taskData.dueDate, day.zone).date
+                : null,
+              day.date,
               hasTaskMultiplier,
             );
 
-            const today = new Date();
-            const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            // A user in UTC-8 finishing their fifth task at 5pm local is at
+            // 01:00 UTC the next day: `task_burst_5` counted it into tomorrow
+            // and never fired, while `first_task_day` fired twice in one local
+            // day. Bound the count by the user's local day instead.
             const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(tasks)
-              .where(and(eq(tasks.userId, userId), eq(tasks.status, 'done'), sql`${tasks.updatedAt} >= ${todayStart}`));
+              .where(and(
+                eq(tasks.userId, userId),
+                eq(tasks.status, 'done'),
+                sql`${tasks.updatedAt} >= ${day.start}`,
+                sql`${tasks.updatedAt} < ${day.end}`,
+              ));
             const completedToday = countResult?.count ?? 0;
 
             if (completedToday === 1) awards.push(firstTaskOfDayAward());
