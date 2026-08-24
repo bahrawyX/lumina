@@ -72,6 +72,7 @@ import {
 import { toast } from 'sonner';
 import notify from '../utils/notify';
 import { signOutEverywhere } from '@/lib/auth/signOut';
+import { dedupedGetJson } from '@/lib/persistence/apiClient';
 
 const MoreIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -414,10 +415,18 @@ const AppSidebar: React.FC = () => {
   const [calendarFilters, setCalendarFilters] = React.useState<ExternalCalendarFilter[]>([]);
   const [savingCalendarId, setSavingCalendarId] = React.useState<string | null>(null);
 
-  const refreshIntegrationStatus = React.useCallback(async () => {
+  const refreshIntegrationStatus = React.useCallback(async (forceRefresh = false) => {
     try {
-      const res = await fetch('/api/integrations/status', { cache: 'no-store' });
-      if (!res.ok) {
+      // P1-15: this and `PersistenceBootstrap` both fetch this endpoint on the
+      // same page load. `force` is passed by the callers that need a fresh read
+      // (right after an OAuth connect completes), so the dedupe window never
+      // makes the "Connected" badge stale.
+      const result = await dedupedGetJson<{
+        google?: { connected: boolean };
+        microsoft?: { connected: boolean };
+      }>('/api/integrations/status', { force: forceRefresh });
+
+      if (result.kind === 'error') {
         setGoogleCalConnected(false);
         setGoogleConnected(false);
         setOutlookConnected(false);
@@ -425,10 +434,7 @@ const AppSidebar: React.FC = () => {
         return { google: false, microsoft: false };
       }
 
-      const data = (await res.json()) as {
-        google?: { connected: boolean };
-        microsoft?: { connected: boolean };
-      };
+      const data = result.data;
 
       const isGoogleConnected = Boolean(data.google?.connected);
       const isMicrosoftConnected = Boolean(data.microsoft?.connected);
@@ -520,7 +526,7 @@ const AppSidebar: React.FC = () => {
 
   const confirmIntegration = React.useCallback(async (provider: IntegrationProvider) => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const status = await refreshIntegrationStatus();
+      const status = await refreshIntegrationStatus(true);
       const connected = provider === 'google' ? status.google : status.microsoft;
       if (connected) return true;
       if (attempt < 2) {
@@ -544,11 +550,11 @@ const AppSidebar: React.FC = () => {
         // Clear provider-specific browser cache and in-memory events
         if (_userId) clearProvider(_userId, 'microsoft');
         setOutlookEvents([]);
-        await refreshIntegrationStatus();
+        await refreshIntegrationStatus(true);
         toast.success('Outlook Calendar disconnected.', { id: disconnectToastId, duration: 2_500 });
       } catch (err) {
         console.error('[Sidebar Outlook disconnect]', err);
-        await refreshIntegrationStatus();
+        await refreshIntegrationStatus(true);
         toast.error('Failed to disconnect Outlook Calendar.', { id: disconnectToastId, duration: 4_000 });
       }
       return;
@@ -559,7 +565,7 @@ const AppSidebar: React.FC = () => {
       const popupResult = await openIntegrationPopup('microsoft');
 
       if (!popupResult.ok) {
-        await refreshIntegrationStatus();
+        await refreshIntegrationStatus(true);
         notify(getIntegrationFailureMessage('microsoft', popupResult));
         return;
       }
@@ -577,7 +583,7 @@ const AppSidebar: React.FC = () => {
 
       window.dispatchEvent(new Event('lumina:external-sync-now'));
     } catch (err) {
-      await refreshIntegrationStatus();
+      await refreshIntegrationStatus(true);
       console.error('[Sidebar Outlook]', err);
       notify('Outlook OAuth failed. Connection was not completed. Try again in a regular browser window.');
     } finally {
@@ -592,6 +598,8 @@ const AppSidebar: React.FC = () => {
   ]);
 
   React.useEffect(() => {
+    // Deduped: PersistenceBootstrap requests the same endpoint in the same
+    // commit. Post-mutation refreshes elsewhere pass `true` to bypass it.
     void refreshIntegrationStatus();
   }, [refreshIntegrationStatus]);
 

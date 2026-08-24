@@ -1,5 +1,9 @@
 'use client';
 
+// P1-15: katex's stylesheet used to be imported in the ROOT layout, putting
+// 23.8 KB of CSS into the single stylesheet every route loads — including the
+// marketing page and the 404 — when only the Tiptap math node needs it.
+import 'katex/dist/katex.min.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {

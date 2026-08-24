@@ -160,3 +160,77 @@ export function describeFailure(failure: FetchFailure): string {
   if (typeof failure.status === 'number' && failure.status >= 500) return 'The server is having trouble.';
   return 'That request was rejected.';
 }
+
+// ── Request de-duplication ───────────────────────────────────────────────────
+
+/**
+ * In-flight coalescing plus a short freshness window, for GETs that several
+ * unrelated components each ask for on the same page load.
+ *
+ * P1-15: `/api/integrations/status` and `/api/users/preferences` were each
+ * fetched **twice** per load — `PersistenceBootstrap` + `Sidebar`, and
+ * `PersistenceBootstrap` + `streakPersistence` respectively. There is no
+ * SWR/React Query and no fetch dedupe anywhere: 58 `fetch('/api/...')` call
+ * sites across 28 files, and the one `singleFlight` helper has exactly one
+ * consumer.
+ *
+ * This is deliberately tiny rather than a caching layer. It coalesces
+ * concurrent callers onto one request and serves a result for a few seconds so
+ * two components mounting in the same commit do not both hit the network. It is
+ * NOT a store: nothing is revalidated in the background and nothing is kept
+ * beyond the window.
+ */
+interface CacheEntry<T> {
+  at: number;
+  value: FetchResult<T>;
+}
+
+const inFlight = new Map<string, Promise<FetchResult<unknown>>>();
+const recent = new Map<string, CacheEntry<unknown>>();
+
+/** How long a completed result is reused. One mount cycle, not a session. */
+const DEDUPE_WINDOW_MS = 5_000;
+
+export async function dedupedGetJson<T>(
+  path: string,
+  options: { force?: boolean; windowMs?: number } = {},
+): Promise<FetchResult<T>> {
+  const windowMs = options.windowMs ?? DEDUPE_WINDOW_MS;
+
+  if (options.force) {
+    recent.delete(path);
+    inFlight.delete(path);
+  } else {
+    const cached = recent.get(path);
+    if (cached && Date.now() - cached.at < windowMs) {
+      return cached.value as FetchResult<T>;
+    }
+    const pending = inFlight.get(path);
+    if (pending) return pending as Promise<FetchResult<T>>;
+  }
+
+  const request = apiGetJson<T>(path)
+    .then((result) => {
+      // Only a success is worth reusing — caching a failure would make a
+      // retry-on-error button do nothing for the length of the window.
+      if (result.kind === 'ok') recent.set(path, { at: Date.now(), value: result });
+      return result;
+    })
+    .finally(() => {
+      inFlight.delete(path);
+    });
+
+  inFlight.set(path, request as Promise<FetchResult<unknown>>);
+  return request;
+}
+
+/** Drop any cached copy, e.g. after a mutation that invalidates it. */
+export function invalidateDedupedGet(path?: string): void {
+  if (path) {
+    recent.delete(path);
+    inFlight.delete(path);
+    return;
+  }
+  recent.clear();
+  inFlight.clear();
+}

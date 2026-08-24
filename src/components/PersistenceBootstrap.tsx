@@ -49,7 +49,7 @@ import {
   useHydrationStatusStore,
   type HydrationDomain,
 } from '@/store/useHydrationStatusStore';
-import { apiGetList, type FetchResult } from '@/lib/persistence/apiClient';
+import { apiGetList, dedupedGetJson, type FetchResult } from '@/lib/persistence/apiClient';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
@@ -390,13 +390,13 @@ export default function PersistenceBootstrap() {
       // Integration connection status (google/microsoft) — sidebar + planner
       // both read these flags. Hydrating here avoids each consumer firing its
       // own status fetch and makes guest-mode handling uniform.
-      fetch('/api/integrations/status', { cache: 'no-store' })
-        .then(async (res) => {
-          if (!res.ok) return;
-          const data = (await res.json()) as {
-            google?: { connected: boolean };
-            microsoft?: { connected: boolean };
-          };
+      dedupedGetJson<{
+        google?: { connected: boolean };
+        microsoft?: { connected: boolean };
+      }>('/api/integrations/status')
+        .then(async (result) => {
+          if (result.kind === 'error') return;
+          const data = result.data;
           // Push into onboarding (used by integrations UI) and planner store
           // (used to gate Outlook event fetches).
           useOnboardingStore.getState().setGoogleConnected(Boolean(data.google?.connected));

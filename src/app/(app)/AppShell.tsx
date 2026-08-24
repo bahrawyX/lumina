@@ -2,15 +2,12 @@
 
 import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
-import EventModal from "@/components/EventModal";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { PageTransition } from "@/components/ui/PageTransition";
-import AmbientSoundDrawer from "@/components/ambient/AmbientSoundDrawer";
-import FloatingAmbientPlayer from "@/components/ambient/FloatingAmbientPlayer";
-import PomodoroFloatingWidget from "@/components/focus/PomodoroFloatingWidget";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCalendarStore } from "@/store/useCalendarStore";
 import { ViewType } from "@/types";
@@ -20,26 +17,54 @@ import { useTaskBoardStore } from "@/store/useTaskBoardStore";
 import { useFocusStore } from "@/store/useFocusStore";
 import { useOutlookSync } from "@/hooks/useOutlookSync";
 import PersistenceBootstrap from "@/components/PersistenceBootstrap";
-import InstallPrompt from "@/components/pwa/InstallPrompt";
 import OfflineIndicator from "@/components/pwa/OfflineIndicator";
-import TutorialOverlay from "@/components/tutorial/TutorialOverlay";
 import { GoogleProviderIcon, OutlookProviderIcon } from "@/components/icons";
 import { GuestBanner } from "@/components/auth/GuestBanner";
-import { CelebrationOverlay } from "@/components/coins/CelebrationOverlay";
 import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
-import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
-import { QuickCapture } from "@/components/quick-capture/QuickCapture";
 import { useQuickCaptureStore } from "@/store/useQuickCaptureStore";
 import { HydrationFailureBanner } from '@/components/system/HydrationFailureBanner';
 import { SessionExpiredDialog } from '@/components/system/SessionExpiredDialog';
 import { SessionExpiryWatcher } from '@/components/system/SessionExpiryWatcher';
 
-// Genuinely gated — QuickSwitcher only mounts once Cmd+K fires. The
-// other global surfaces (EventModal, TutorialOverlay, AmbientSoundDrawer,
-// InstallPrompt) are eagerly imported above because wrapping them in a
-// Suspense boundary at the layout level caused a perceived lag on every
-// route change (the boundary re-evaluates even after chunks are cached).
+/**
+ * Global surfaces, all code-split.
+ *
+ * P1-15: these were EAGERLY imported into the shared `(app)` layout, which is
+ * why every app route shipped a near-identical ~547 KB gzip first-load bundle —
+ * one monolithic chunk. The comment that used to sit here justified it as
+ * avoiding "a perceived lag on every route change" from a Suspense boundary
+ * re-evaluating.
+ *
+ * That is a `loading` fallback problem, not a reason to eager-load. `next/dynamic`
+ * with `loading: () => null` renders nothing while the chunk arrives — there is
+ * no boundary to flicker — and none of these are visible on first paint anyway:
+ * every one is a modal, drawer, floating widget or overlay that is closed until
+ * the user opens it.
+ *
+ * `ssr: false` because each reads client-only state (open/closed flags, audio
+ * elements, install-prompt events) and none contributes to the prerendered HTML.
+ */
+const EventModal = dynamic(() => import("@/components/EventModal"), { ssr: false, loading: () => null });
+const AmbientSoundDrawer = dynamic(() => import("@/components/ambient/AmbientSoundDrawer"), { ssr: false, loading: () => null });
+const FloatingAmbientPlayer = dynamic(() => import("@/components/ambient/FloatingAmbientPlayer"), { ssr: false, loading: () => null });
+const PomodoroFloatingWidget = dynamic(() => import("@/components/focus/PomodoroFloatingWidget"), { ssr: false, loading: () => null });
+const InstallPrompt = dynamic(() => import("@/components/pwa/InstallPrompt"), { ssr: false, loading: () => null });
+const TutorialOverlay = dynamic(() => import("@/components/tutorial/TutorialOverlay"), { ssr: false, loading: () => null });
+const CelebrationOverlay = dynamic(
+  () => import("@/components/coins/CelebrationOverlay").then((m) => m.CelebrationOverlay),
+  { ssr: false, loading: () => null },
+);
+const TaskCompletionPrompt = dynamic(
+  () => import("@/components/tasks/TaskCompletionPrompt").then((m) => m.TaskCompletionPrompt),
+  { ssr: false, loading: () => null },
+);
+const QuickCapture = dynamic(
+  () => import("@/components/quick-capture/QuickCapture").then((m) => m.QuickCapture),
+  { ssr: false, loading: () => null },
+);
+
+// Genuinely gated — QuickSwitcher only mounts once Cmd+K fires.
 const QuickSwitcher = lazy(() => import("@/components/docs/QuickSwitcher"));
 
 
