@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
         sessionsPerCycle: users.sessionsPerCycle,
         ambientTrack: users.ambientTrack,
         customCategories: users.customCategories,
+        onboardingCompletedAt: users.onboardingCompletedAt,
+        userRole: users.userRole,
       })
       .from(users)
       .where(eq(users.id, session.user.id))
@@ -79,10 +81,29 @@ export async function GET(req: NextRequest) {
       sessionsPerCycle: row.sessionsPerCycle ?? 4,
       ambientTrack: row.ambientTrack ?? null,
       customCategories: row.customCategories ?? [],
+      // F8.1 — the durable record of onboarding. localStorage is only a cache.
+      onboardingCompleted: row.onboardingCompletedAt !== null,
+      onboardingCompletedAt: row.onboardingCompletedAt,
+      userRole: row.userRole ?? '',
     });
   } catch (err) {
     logger.error('unhandled', { route: 'GET /api/users/preferences' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * True if `tz` is a zone this runtime recognises. Guards against a client
+ * writing junk (or a deliberately wrong zone) into the column that day
+ * boundaries, streaks and reminders are computed from.
+ */
+function isValidTimeZone(tz: string): boolean {
+  if (tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -109,6 +130,9 @@ export async function PATCH(req: NextRequest) {
     sessionsPerCycle: number;
     ambientTrack: string | null;
     customCategories: Array<{ name: string; color: string }>;
+    timezone: string;
+    userRole: string;
+    onboardingCompletedAt: Date | null;
     updatedAt: Date;
   }> = { updatedAt: new Date() };
 
@@ -197,6 +221,34 @@ export async function PATCH(req: NextRequest) {
       cleaned.push({ name, color });
     }
     update.customCategories = cleaned;
+  }
+
+  if (body.timezone !== undefined) {
+    // `users.timezone` was previously written ONLY when the user opened
+    // settings, while three other places guessed at "the user's timezone" —
+    // including a client-supplied body field that fed the streak calculation
+    // directly. This makes the column writable from onboarding so it can be the
+    // single source of truth.
+    if (typeof body.timezone !== 'string' || !isValidTimeZone(body.timezone)) {
+      return NextResponse.json({ error: 'timezone must be a valid IANA zone' }, { status: 400 });
+    }
+    update.timezone = body.timezone;
+  }
+
+  if (body.userRole !== undefined) {
+    if (typeof body.userRole !== 'string') {
+      return NextResponse.json({ error: 'userRole must be a string' }, { status: 400 });
+    }
+    update.userRole = body.userRole.trim().slice(0, 120);
+  }
+
+  if (body.onboardingCompleted !== undefined) {
+    if (typeof body.onboardingCompleted !== 'boolean') {
+      return NextResponse.json({ error: 'onboardingCompleted must be a boolean' }, { status: 400 });
+    }
+    // Set once, never un-set by a later PATCH re-sending `true` — re-running the
+    // flow should not rewrite the original completion time.
+    update.onboardingCompletedAt = body.onboardingCompleted ? new Date() : null;
   }
 
   if (Object.keys(update).length === 1) {

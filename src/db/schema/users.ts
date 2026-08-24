@@ -49,6 +49,21 @@ export const users = pgTable(
     }),
     workStart: varchar('work_start', { length: 5 }).default('09:00'),
     workEnd: varchar('work_end', { length: 5 }).default('17:00'),
+    /**
+     * When this user finished onboarding. NULL means they have not.
+     *
+     * Onboarding completion previously lived ONLY in
+     * `localStorage['lumina-onboarding']` — `grep -rn "onboard" src/db/ src/app/api/`
+     * returned nothing. So a returning user on a new device, a cleared browser,
+     * a private window or a different browser was force-marched through the
+     * entire flow again, every time, and the flow overwrote their existing
+     * `workStart` / `workEnd` / `timezone` on the way through.
+     *
+     * localStorage is now a cache; this column is the record.
+     */
+    onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+    /** Free-text role captured during onboarding ("Engineer", "Student", ...). */
+    userRole: varchar('user_role', { length: 120 }),
     /** User-defined calendar contexts (custom categories) */
     customCategories: jsonb('custom_categories').$type<Array<{ name: string; color: string }>>().default([]),
     shortBreakMins: integer('short_break_mins').notNull().default(5),

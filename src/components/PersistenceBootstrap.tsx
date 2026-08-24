@@ -253,6 +253,8 @@ export default function PersistenceBootstrap() {
                 sessionsPerCycle?: number;
                 ambientTrack?: string | null;
                 customCategories?: Array<{ name: string; color: string }>;
+                onboardingCompleted?: boolean;
+                userRole?: string;
               }>;
             })
             .then((prefs) => {
@@ -283,6 +285,19 @@ export default function PersistenceBootstrap() {
               }
               // Hydrate ambient track from DB (only fills in if localStorage has nothing)
               useAmbientStore.getState().hydrateTrackFromDb(prefs.ambientTrack ?? null);
+
+              // F8.1 — adopt the server's onboarding record. Without this, a
+              // returning user on a new device, a cleared browser or a private
+              // window has `completed: false` locally and is force-marched
+              // through the entire flow again, overwriting the work hours and
+              // timezone already stored against their account.
+              useOnboardingStore.getState().hydrateFromServer({
+                onboardingCompleted: prefs.onboardingCompleted === true,
+                userRole: prefs.userRole,
+                workStart: prefs.workStart,
+                workEnd: prefs.workEnd,
+                timezone: prefs.timezone,
+              });
             })
             .catch(() => {
               // Keep local persisted settings if DB prefs are unavailable.

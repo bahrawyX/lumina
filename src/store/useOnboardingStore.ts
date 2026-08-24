@@ -49,9 +49,22 @@ export interface OnboardingState {
   toggleFocusGoal: (goal: FocusGoal) => void;
   complete: () => void;
   reset: () => void;
+  /**
+   * Adopt the server's record. Called from `PersistenceBootstrap` with the
+   * payload from `/api/users/preferences`.
+   */
+  hydrateFromServer: (server: {
+    onboardingCompleted: boolean;
+    userRole?: string;
+    workStart?: string;
+    workEnd?: string;
+    timezone?: string;
+  }) => void;
 }
 
 const DETECTED_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const DEFAULT_WORK_START = '09:00';
+const DEFAULT_WORK_END = '17:00';
 
 export const useOnboardingStore = create<OnboardingState>()(
   persist(
@@ -60,8 +73,8 @@ export const useOnboardingStore = create<OnboardingState>()(
       step: 0,
       userName: '',
       userRole: '',
-      workStart: '09:00',
-      workEnd: '17:00',
+      workStart: DEFAULT_WORK_START,
+      workEnd: DEFAULT_WORK_END,
       timezone: DETECTED_TZ,
       focusPreference: 'none',
       focusSessionLength: '50/10',
@@ -92,15 +105,72 @@ export const useOnboardingStore = create<OnboardingState>()(
             : [...current, goal],
         });
       },
-      complete: () => set({ completed: true }),
+      /**
+       * Mark onboarding done, locally AND on the server.
+       *
+       * The durable record is `users.onboarding_completed_at`. localStorage was
+       * previously the ONLY trace, so a returning user on a new device, a
+       * cleared browser or a private window was force-marched through the whole
+       * flow again — overwriting the `workStart`/`workEnd`/`timezone` they had
+       * already set, every time.
+       *
+       * The collected preferences go up in the same request, so the profile the
+       * user just entered is what the server has.
+       */
+      complete: () => {
+        set({ completed: true });
+        const s = get();
+        void fetch('/api/users/preferences', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            onboardingCompleted: true,
+            userRole: s.userRole,
+            workStart: s.workStart,
+            workEnd: s.workEnd,
+            timezone: s.timezone,
+          }),
+        }).catch(() => {
+          // Non-fatal: the local flag still lets this device through, and the
+          // next successful preferences PATCH re-sends it. Failing the whole
+          // onboarding on a flaky request would be worse.
+        });
+      },
+
+      hydrateFromServer: ({ onboardingCompleted, userRole, workStart, workEnd, timezone }) => {
+        const current = get();
+
+        /**
+         * The server wins over an untouched default; the local value wins if
+         * the user actually changed it.
+         *
+         * Comparing against the default is the only way to tell "the user set
+         * 09:00" from "nobody has set anything and 09:00 is what the store
+         * starts with". Treating every non-empty local value as user intent
+         * would mean a returning user's real 10:00 start could never load,
+         * because the default 09:00 always looked like a deliberate choice.
+         */
+        const adopt = <T,>(local: T, fallback: T, server: T | undefined): T =>
+          local !== fallback ? local : (server ?? fallback);
+
+        set({
+          // The server is authoritative for completion. A device that has never
+          // seen this account still learns the user is onboarded.
+          completed: current.completed || onboardingCompleted,
+          userRole: adopt(current.userRole, '', userRole),
+          workStart: adopt(current.workStart, DEFAULT_WORK_START, workStart),
+          workEnd: adopt(current.workEnd, DEFAULT_WORK_END, workEnd),
+          timezone: adopt(current.timezone, DETECTED_TZ, timezone),
+        });
+      },
       reset: () =>
         set({
           completed: false,
           step: 0,
           userName: '',
           userRole: '',
-          workStart: '09:00',
-          workEnd: '17:00',
+          workStart: DEFAULT_WORK_START,
+          workEnd: DEFAULT_WORK_END,
           timezone: DETECTED_TZ,
           focusPreference: 'none',
           focusSessionLength: '50/10',
@@ -113,6 +183,23 @@ export const useOnboardingStore = create<OnboardingState>()(
     }),
     {
       name: 'lumina-onboarding',
+      version: 1,
+      // Persisted stores had no `version` and no `migrate`, so `persist`
+      // shallow-merged whatever JSON was in localStorage over the current
+      // defaults with zero validation. A field whose type changed between
+      // deploys rehydrated as the stale shape and reached code expecting the
+      // new one — a white screen for RETURNING users only, invisible in CI and
+      // in any fresh browser.
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Partial<OnboardingState>;
+        if (version >= 1) return state;
+        return {
+          ...state,
+          // v0 stored these as free-form values with no guarantee of shape.
+          focusGoals: Array.isArray(state.focusGoals) ? state.focusGoals : [],
+          timezone: typeof state.timezone === 'string' ? state.timezone : DETECTED_TZ,
+        };
+      },
     }
   )
 );

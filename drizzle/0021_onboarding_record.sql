@@ -1,0 +1,40 @@
+-- ============================================================================
+-- 0021_onboarding_record
+--
+-- F8.1 — onboarding completion was localStorage-only.
+--
+-- `grep -rn "onboard" src/db/ src/app/api/` returned NOTHING: `complete()` was
+-- `set({ completed: true })` and the only durable trace was
+-- `localStorage['lumina-onboarding']`.
+--
+-- Consequences, all of them real:
+--   * A returning user on a new device, a cleared browser, a private window or
+--     a different browser got `completed: false` and was force-marched through
+--     the entire flow again — overwriting the workStart / workEnd / timezone
+--     already stored against their account on the way through.
+--   * A guest who completed onboarding and then signed in already had
+--     `completed: true`, so the new real account never got an onboarding pass
+--     and inherited the GUEST's name, role and work hours.
+--   * Two accounts on one browser produced a visible
+--     /onboarding -> /calendar -> reload -> /onboarding bounce, with account
+--     A's userName briefly rendered inside account B's flow.
+--
+-- `onboarding_completed_at` is now the record; localStorage is a cache.
+-- `user_role` moves alongside it — it was collected during onboarding and
+-- likewise never persisted server-side.
+--
+-- Additive and idempotent: `ADD COLUMN IF NOT EXISTS` on nullable columns takes
+-- no table rewrite and no long lock, so this is safe to run against production
+-- while it serves traffic.
+--
+-- NOTE ON EXISTING USERS: this deliberately does NOT backfill
+-- `onboarding_completed_at` for accounts that already exist. We cannot know
+-- from the database whether they finished the flow, and guessing "yes" would
+-- skip onboarding for someone who genuinely never did it. Their browser's
+-- localStorage still carries the flag, and `complete()` now writes the column
+-- the first time they pass through — so existing users converge on their next
+-- visit without anyone being wrongly skipped.
+-- ============================================================================
+
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_completed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "user_role" varchar(120);

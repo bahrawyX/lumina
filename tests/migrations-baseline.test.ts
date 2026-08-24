@@ -65,12 +65,32 @@ function stripLeadingComments(chunk: string): string {
     .trim();
 }
 
-async function applyBaseline(db: PGlite): Promise<void> {
-  const sql = readFileSync(BASELINE, 'utf8');
+async function applyFile(db: PGlite, file: string): Promise<void> {
+  const sql = readFileSync(file, 'utf8');
   for (const chunk of sql.split('--> statement-breakpoint')) {
     const statement = stripLeadingComments(chunk);
     if (!statement) continue;
     await db.exec(statement);
+  }
+}
+
+/**
+ * The baseline plus every migration that comes after it, in journal order.
+ *
+ * The baseline creates tables with `IF NOT EXISTS`, which by design does
+ * nothing to a table that already exists — so a later column addition needs its
+ * own `ALTER ... ADD COLUMN IF NOT EXISTS` migration to reach production. This
+ * applies the same sequence a real deploy would.
+ */
+const POST_BASELINE = readdirSync(DRIZZLE_DIR)
+  .filter((f) => f.endsWith('.sql') && f > '0020_')
+  .sort()
+  .map((f) => join(DRIZZLE_DIR, f));
+
+async function applyBaseline(db: PGlite): Promise<void> {
+  await applyFile(db, BASELINE);
+  for (const file of POST_BASELINE) {
+    await applyFile(db, file);
   }
 }
 
@@ -116,6 +136,20 @@ describe('P0-1 — the baseline builds the whole schema from empty', () => {
     );
     const names = res.rows.map((r) => r.indexname);
     expect(names).toContain('coin_tx_user_dedupe_uniq');
+  });
+
+  it('applies post-baseline migrations, so a column added later reaches production', async () => {
+    // 0021 adds users.onboarding_completed_at / users.user_role. The baseline's
+    // CREATE TABLE IF NOT EXISTS is a no-op against an existing table, so
+    // without the follow-up ALTER these columns would exist in a fresh database
+    // and be missing in production — the worst kind of drift.
+    const res = await db.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'users'`,
+    );
+    const columns = res.rows.map((r) => r.column_name);
+    expect(columns).toContain('onboarding_completed_at');
+    expect(columns).toContain('user_role');
   });
 
   it('creates the docs full-text index', async () => {

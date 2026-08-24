@@ -320,6 +320,8 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"notification_preferences" jsonb DEFAULT '{"dailyBrief":true,"eventReminders":true,"streakReminder":true,"taskReminders":true,"focusComplete":false}'::jsonb,
 	"work_start" varchar(5) DEFAULT '09:00',
 	"work_end" varchar(5) DEFAULT '17:00',
+	"onboarding_completed_at" timestamp with time zone,
+	"user_role" varchar(120),
 	"custom_categories" jsonb DEFAULT '[]'::jsonb,
 	"short_break_mins" integer DEFAULT 5 NOT NULL,
 	"long_break_mins" integer DEFAULT 20 NOT NULL,
