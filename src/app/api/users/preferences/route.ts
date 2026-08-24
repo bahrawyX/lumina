@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
-import { users } from '@/db/schema';
+import { accounts, users } from '@/db/schema';
 import { getDatabase } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { invalidateUserTimeZone } from '@/lib/time/eventTimeZone';
@@ -59,6 +59,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // P2-14: the delete-account flow needs to know whether to ask for a
+    // password or to require a recently-created session. Only the boolean is
+    // exposed — never the hash, and never which social provider is linked.
+    const credential = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.userId, session.user.id), eq(accounts.providerId, 'credential')))
+      .limit(1);
+
     const row = rows[0];
     return NextResponse.json({
       focusSessionLength: row.focusSessionLength ?? DEFAULT_FOCUS_MINUTES,
@@ -86,6 +95,7 @@ export async function GET(req: NextRequest) {
       onboardingCompleted: row.onboardingCompletedAt !== null,
       onboardingCompletedAt: row.onboardingCompletedAt,
       userRole: row.userRole ?? '',
+      hasPassword: credential.length > 0,
     });
   } catch (err) {
     logger.error('unhandled', { route: 'GET /api/users/preferences' }, err);

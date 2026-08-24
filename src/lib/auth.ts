@@ -4,6 +4,8 @@ import { customSession, haveIBeenPwned } from 'better-auth/plugins';
 import { google, microsoft } from 'better-auth/social-providers';
 import { db } from '@/lib/db';
 import * as schema from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 import {
   isEmailConfigured,
   sendPasswordResetMail,
@@ -164,6 +166,50 @@ export const auth = betterAuth({
       '/reset-password': { window: 3600, max: 5 },
       '/change-password': { window: 3600, max: 5 },
       '/change-email': { window: 3600, max: 3 },
+    },
+  },
+
+  /**
+   * P2-14 — there was no way for a user to delete their account.
+   *
+   * Every child table already cascades from `users`, so the database was ready
+   * for it; there was simply no endpoint, no soft-delete flag and no export.
+   * For a product storing calendar contents, document bodies and mood logs
+   * that is a GDPR Article 17 (erasure) gap.
+   *
+   * BetterAuth's own `/delete-user` is used rather than a hand-rolled route:
+   * it re-verifies the caller before doing anything irreversible — the
+   * password for a credential account, or a session created inside `freshAge`
+   * (24h) for an OAuth-only one — then deletes the user, drops every session
+   * row, and clears the cookie. `DELETE /api/users/me` is a thin wrapper that
+   * additionally requires an explicit confirmation string.
+   *
+   * `sendDeleteAccountVerification` is deliberately NOT configured: with it,
+   * deletion would depend on email delivery, and an account whose address has
+   * lapsed could never be deleted at all.
+   */
+  user: {
+    deleteUser: {
+      enabled: true,
+
+      /**
+       * `contact_submissions.user_id` is `ON DELETE SET NULL` — support tickets
+       * are meant to outlive the account. But the row also carries the email
+       * and message the user wrote, which is exactly the personal data an
+       * erasure request covers, and a null `user_id` does not un-write it.
+       * Their own submissions go with them.
+       *
+       * Everything else is reached by cascade from `users`.
+       */
+      beforeDelete: async (user: { id: string }) => {
+        if (!db) return;
+        await db.delete(schema.contactSubmissions).where(eq(schema.contactSubmissions.userId, user.id));
+        logger.info('account deletion starting', { userId: user.id });
+      },
+
+      afterDelete: async (user: { id: string }) => {
+        logger.info('account deleted', { userId: user.id });
+      },
     },
   },
 

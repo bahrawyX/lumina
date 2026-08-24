@@ -36,6 +36,7 @@ import { useGoalsStore, selectActiveGoalCount } from '../store/useGoalsStore';
 import { useCoinsStore, selectCoinBalance } from '../store/useCoinsStore';
 import ContactDrawer from './contact/ContactDrawer';
 import NotificationSettings from './settings/NotificationSettings';
+import AccountDataSheet from './settings/AccountDataSheet';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -221,6 +222,9 @@ const AppSidebar: React.FC = () => {
   const [customContextDialogOpen, setCustomContextDialogOpen] = useState(false);
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
+  // P2-14: export + delete. Reachable from the account menu, because a right
+  // the user cannot find is not a right they have.
+  const [accountDataOpen, setAccountDataOpen] = useState(false);
   const [editingContextName, setEditingContextName] = useState<string | null>(null);
   const [contextPendingDelete, setContextPendingDelete] = useState<string | null>(null);
   const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
@@ -1214,6 +1218,13 @@ const AppSidebar: React.FC = () => {
                 Settings
               </DropdownMenuItem>
 
+              <DropdownMenuItem onClick={() => setAccountDataOpen(true)}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Your data
+              </DropdownMenuItem>
+
               <DropdownMenuItem onClick={startTutorial}>
                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
                   <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -1432,6 +1443,7 @@ const AppSidebar: React.FC = () => {
       </Dialog>
       <ContactDrawer open={contactDrawerOpen} onClose={() => setContactDrawerOpen(false)} />
       <NotificationSettings open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen} />
+      <AccountDataSheet open={accountDataOpen} onOpenChange={setAccountDataOpen} />
     </motion.aside>
   );
 };
