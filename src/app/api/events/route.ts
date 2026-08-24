@@ -258,44 +258,22 @@ export async function POST(req: NextRequest) {
       calendarId = newCal.id;
     }
 
-    const [row] = await db
-      .insert(events)
-      .values({
-        userId,
-        calendarId,
-        title,
-        description: typeof description === 'string' ? description : null,
-        location: typeof location === 'string' ? location : null,
-        startTime: startTs,
-        endTime: endTs,
-        isAllDay: isAllDay === true,
-        timezone,
-        category,
-        color,
-        completed: completed === true,
-        linkedTaskId,
-        provider,
-        externalEventId: normalizedExternalEventId,
-        externalEtag: typeof externalEtag === 'string' ? externalEtag : null,
-        sourceUpdatedAt,
-        syncStatus,
-        meetingUrl: typeof meetingUrl === 'string' ? meetingUrl : null,
-        organizerEmail: typeof organizerEmail === 'string' ? organizerEmail : null,
-        source,
-        externalId: normalizedExternalEventId,
-        lastSyncedAt: sourceUpdatedAt,
-        createdViaNl: rawCreatedViaNL === true,
-      })
-      .returning();
-
-    // If recurrence rule is provided, validate and create the event_recurrence row.
-    // Pre-validation protects against DoS via pathological rules (sub-daily
-    // frequencies, enormous COUNT/INTERVAL) that would blow up CPU every
-    // time the engine later expands them.
+    // P2-3: the event used to be INSERTed here and the RRULE validated only
+    // afterwards, so an invalid rule returned 400 with the event already
+    // committed — the client believed creation failed while an orphan event
+    // sat in the calendar. `create-linked` already validated first; this now
+    // matches it, and both rows commit together or not at all.
+    //
+    // Pre-validation also protects against DoS via pathological rules
+    // (sub-daily frequencies, enormous COUNT/INTERVAL) that would blow up CPU
+    // every time the engine later expands them.
     const recurrenceRule = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
-    let recurrenceData = null;
-    if (recurrenceRule && typeof recurrenceRule.rrule === 'string' && recurrenceRule.rrule.trim()) {
-      const trimmedRrule = recurrenceRule.rrule.trim();
+    const trimmedRrule =
+      recurrenceRule && typeof recurrenceRule.rrule === 'string' && recurrenceRule.rrule.trim()
+        ? recurrenceRule.rrule.trim()
+        : null;
+
+    if (trimmedRrule) {
       const validation = validateRRule(trimmedRrule, startTs);
       if (validation.ok === false) {
         return NextResponse.json(
@@ -303,18 +281,59 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const [recRow] = await db
-        .insert(eventRecurrence)
+    }
+
+    const { row, recurrenceData } = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(events)
         .values({
-          eventId: row.id,
           userId,
-          rrule: trimmedRrule,
-          exdates: Array.isArray(recurrenceRule.exdates) ? recurrenceRule.exdates : [],
-          recurrenceEnd: recurrenceRule.until ? new Date(recurrenceRule.until) : null,
+          calendarId,
+          title,
+          description: typeof description === 'string' ? description : null,
+          location: typeof location === 'string' ? location : null,
+          startTime: startTs,
+          endTime: endTs,
+          isAllDay: isAllDay === true,
+          timezone,
+          category,
+          color,
+          completed: completed === true,
+          linkedTaskId,
+          provider,
+          externalEventId: normalizedExternalEventId,
+          externalEtag: typeof externalEtag === 'string' ? externalEtag : null,
+          sourceUpdatedAt,
+          syncStatus,
+          meetingUrl: typeof meetingUrl === 'string' ? meetingUrl : null,
+          organizerEmail: typeof organizerEmail === 'string' ? organizerEmail : null,
+          source,
+          externalId: normalizedExternalEventId,
+          lastSyncedAt: sourceUpdatedAt,
+          createdViaNl: rawCreatedViaNL === true,
         })
         .returning();
-      recurrenceData = { id: recRow.id, rrule: recRow.rrule, exdates: recRow.exdates };
-    }
+
+      let rec: { id: string; rrule: string; exdates: string[] } | null = null;
+      if (trimmedRrule) {
+        const [recRow] = await tx
+          .insert(eventRecurrence)
+          .values({
+            eventId: inserted.id,
+            userId,
+            rrule: trimmedRrule,
+            exdates: Array.isArray(recurrenceRule?.exdates) ? recurrenceRule.exdates : [],
+            // `new Date(recurrenceRule.until)` was unguarded: a junk `until`
+            // produced an Invalid Date and the driver raised a type error
+            // AFTER the event row was already committed.
+            recurrenceEnd: parseIso(recurrenceRule?.until),
+          })
+          .returning();
+        rec = { id: recRow.id, rrule: recRow.rrule, exdates: recRow.exdates };
+      }
+
+      return { row: inserted, recurrenceData: rec };
+    });
 
     return NextResponse.json({ id: row.id, event: mapRowToApiEvent(row), recurrence: recurrenceData }, { status: 201 });
   } catch (err) {

@@ -155,9 +155,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     if (patch.status !== undefined) {
       // ── Goal target auto-update (fire-and-forget) ─────────────────
       // Extracted to an awaitable, userId-scoped helper (Batch 5, M14) so the
-      // fan-out is testable on its own; still fire-and-forget here since it
-      // doesn't gate the response.
-      void syncTaskCompletionTargets(db, userId, id).catch((e) =>
+      // fan-out is testable on its own.
+      //
+      // P2-4: this was `void`-ed. On Vercel the function may be frozen or
+      // terminated the moment the response is returned, so under load the
+      // goal-target progress write was simply lost — the task showed done and
+      // the goal it fed never moved. It is awaited now; it is a bounded
+      // per-task fan-out, not a background job.
+      await syncTaskCompletionTargets(db, userId, id).catch((e) =>
         logger.error('unhandled', { route: 'task PATCH goal-target fan-out' }, e),);
 
       // ── Coin awards on task completion (awaited) ──────────────────

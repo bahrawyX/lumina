@@ -3,17 +3,19 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { EditScope } from '@/types';
 import { logger } from '@/lib/logger';
 import { utcToZonedWallClock, zonedWallClockToUtc } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 import { checkLinkedOwnership } from '@/lib/ownership';
 import { invalidIdResponse, parseEventRouteId } from '@/lib/routeParams';
+import { appendExdate } from '@/lib/recurrence/exdates';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
+
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
   const { id: rawId } = await context.params;
@@ -90,37 +92,39 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       const durationMs = master.endTime.getTime() - master.startTime.getTime();
       const instanceEnd = new Date(instanceStart.getTime() + durationMs);
 
-      // Create exception event
-      const [exception] = await db
-        .insert(events)
-        .values({
-          userId,
-          calendarId: master.calendarId,
-          title: typeof title === 'string' && title.trim() ? title.trim() : master.title,
-          description: typeof description === 'string' ? description : master.description,
-          location: typeof location === 'string' ? location : master.location,
-          startTime: typeof startAt === 'string' ? new Date(startAt) : instanceStart,
-          endTime: typeof endAt === 'string' ? new Date(endAt) : instanceEnd,
-          isAllDay: typeof isAllDay === 'boolean' ? isAllDay : master.isAllDay,
-          timezone: typeof timezone === 'string' ? timezone : master.timezone,
-          category: typeof category === 'string' ? category : master.category,
-          color: typeof color === 'string' ? color : master.color,
-          completed: typeof completed === 'boolean' ? completed : false,
-          linkedTaskId: typeof linkedTaskId === 'string' ? linkedTaskId : master.linkedTaskId,
-          provider: master.provider,
-          syncStatus: master.syncStatus,
-          source: master.source,
-          recurringEventId: masterEventId,
-          originalStartTime: instanceStart,
-          isRecurrenceException: true,
-        })
-        .returning();
+      // P2-3: the exception INSERT and the exdate append were two unwrapped
+      // writes. If the second failed, the series still expanded that occurrence
+      // *and* the exception existed beside it — a duplicate the user could not
+      // cleanly delete. They commit together now.
+      const exception = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(events)
+          .values({
+            userId,
+            calendarId: master.calendarId,
+            title: typeof title === 'string' && title.trim() ? title.trim() : master.title,
+            description: typeof description === 'string' ? description : master.description,
+            location: typeof location === 'string' ? location : master.location,
+            startTime: typeof startAt === 'string' ? new Date(startAt) : instanceStart,
+            endTime: typeof endAt === 'string' ? new Date(endAt) : instanceEnd,
+            isAllDay: typeof isAllDay === 'boolean' ? isAllDay : master.isAllDay,
+            timezone: typeof timezone === 'string' ? timezone : master.timezone,
+            category: typeof category === 'string' ? category : master.category,
+            color: typeof color === 'string' ? color : master.color,
+            completed: typeof completed === 'boolean' ? completed : false,
+            linkedTaskId: typeof linkedTaskId === 'string' ? linkedTaskId : master.linkedTaskId,
+            provider: master.provider,
+            syncStatus: master.syncStatus,
+            source: master.source,
+            recurringEventId: masterEventId,
+            originalStartTime: instanceStart,
+            isRecurrenceException: true,
+          })
+          .returning();
 
-      // Add exdate to the recurrence rule
-      const { sql } = await import('drizzle-orm');
-      await db.execute(
-        sql`UPDATE event_recurrence SET exdates = array_append(exdates, ${instanceStartIso}), updated_at = NOW() WHERE event_id = ${masterEventId} AND user_id = ${userId}`,
-      );
+        await appendExdate(tx, masterEventId, userId, instanceStartIso);
+        return row;
+      });
 
       return NextResponse.json({ ok: true, exceptionId: exception.id });
     }
@@ -170,7 +174,6 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       const newStartTime = typeof startAt === 'string' ? new Date(startAt as string) : cutoffDate;
       const newEndTime = typeof endAt === 'string' ? new Date(endAt as string) : new Date(newStartTime.getTime() + durationMs);
 
-      const { sql } = await import('drizzle-orm');
 
       const result = await db.transaction(async (tx) => {
         // 1. Truncate original series
@@ -362,15 +365,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'endAt must be after startAt' }, { status: 400 });
     }
 
-    await db
-      .update(events)
-      .set(patch)
-      .where(and(eq(events.id, id), eq(events.userId, userId)));
-
-    // If editScope is 'all' and recurrence data is provided, update the recurrence rule
+    // If editScope is 'all' and recurrence data is provided, update the rule too.
     const recurrenceBody = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
-    if (editScope === 'all' && recurrenceBody && typeof recurrenceBody.rrule === 'string') {
-      // Pre-validate RRULE before storage (DoS protection).
+    const updatesRecurrence =
+      editScope === 'all' && recurrenceBody && typeof recurrenceBody.rrule === 'string';
+
+    let recPatch: Record<string, unknown> | null = null;
+    if (updatesRecurrence) {
+      // Pre-validate the RRULE before storage (DoS protection) AND before the
+      // event write, so a rejected rule cannot leave the times already changed.
       const dtstartForValidation = (patch.startTime as Date | undefined) ?? existing.startTime;
       const validation = validateRRule(recurrenceBody.rrule, dtstartForValidation);
       if (validation.ok === false) {
@@ -379,21 +382,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           { status: 400 },
         );
       }
-      const recPatch: Record<string, unknown> = {
-        rrule: recurrenceBody.rrule,
-        updatedAt: new Date(),
-      };
+      recPatch = { rrule: recurrenceBody.rrule, updatedAt: new Date() };
       if (Array.isArray(recurrenceBody.exdates)) {
         recPatch.exdates = recurrenceBody.exdates;
       }
-      if (recurrenceBody.until) {
-        recPatch.recurrenceEnd = new Date(recurrenceBody.until);
-      }
-      await db
-        .update(eventRecurrence)
-        .set(recPatch)
-        .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)));
+      const until = recurrenceBody.until ? new Date(recurrenceBody.until) : null;
+      // An unguarded `new Date(junk)` produced an Invalid Date that the driver
+      // rejected *after* the event row had already been updated.
+      if (until && !isNaN(until.getTime())) recPatch.recurrenceEnd = until;
     }
+
+    // P2-3: `events` and `event_recurrence` were updated separately, so the
+    // times could change while the rule update failed — anchoring the series to
+    // a DTSTART that no longer matched it.
+    await db.transaction(async (tx) => {
+      await tx
+        .update(events)
+        .set(patch)
+        .where(and(eq(events.id, id), eq(events.userId, userId)));
+
+      if (recPatch) {
+        await tx
+          .update(eventRecurrence)
+          .set(recPatch)
+          .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)));
+      }
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -428,10 +442,13 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     // Handle deletion of a single virtual recurring instance
     if (editScope === 'this' && id.includes(':')) {
       const [masterEventId, instanceStartIso] = id.split(':');
-      const { sql } = await import('drizzle-orm');
-      await db.execute(
-        sql`UPDATE event_recurrence SET exdates = array_append(exdates, ${instanceStartIso}), updated_at = NOW() WHERE event_id = ${masterEventId} AND user_id = ${userId}`,
-      );
+      const touched = await appendExdate(db, masterEventId, userId, instanceStartIso);
+      // P2-2: this answered 200 for a master event the user does not own (or
+      // that has no recurrence rule), so "delete this occurrence" silently
+      // did nothing and the occurrence reappeared on the next expand.
+      if (touched.length === 0) {
+        return NextResponse.json({ error: 'Recurring event not found' }, { status: 404 });
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -439,9 +456,13 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     // The exdate was already appended to the master's recurrence when the
     // exception was created, so we only need to remove the exception row.
     if (editScope === 'this') {
-      await db
+      const deleted = await db
         .delete(events)
-        .where(and(eq(events.id, id), eq(events.userId, userId)));
+        .where(and(eq(events.id, id), eq(events.userId, userId)))
+        .returning({ id: events.id });
+      if (deleted.length === 0) {
+        return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -449,7 +470,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     if (editScope === 'this_and_following' && originalStartTime) {
       const cutoffDate = new Date(originalStartTime);
       const cutoffBefore = new Date(cutoffDate.getTime() - 1000);
-      const { sql } = await import('drizzle-orm');
 
       // Get current RRULE
       const recRows = await db
@@ -466,33 +486,47 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
           ? currentRRule.replace(/;?(UNTIL|COUNT)=[^;]*/g, '') + `;UNTIL=${untilStr}`
           : currentRRule + `;UNTIL=${untilStr}`;
 
-        await db
-          .update(eventRecurrence)
-          .set({ rrule: updatedRRule, recurrenceEnd: cutoffBefore, updatedAt: new Date() })
-          .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)));
+        // P2-3: truncating the rule and dropping the now-orphaned exceptions
+        // were two unwrapped writes. If the second failed, exceptions survived
+        // past the UNTIL and rendered as stray one-off events.
+        await db.transaction(async (tx) => {
+          await tx
+            .update(eventRecurrence)
+            .set({ rrule: updatedRRule, recurrenceEnd: cutoffBefore, updatedAt: new Date() })
+            .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)));
 
-        // Delete any exceptions at or after the cutoff
-        await db.execute(
-          sql`DELETE FROM events WHERE recurring_event_id = ${id} AND user_id = ${userId} AND is_recurrence_exception = true AND original_start_time >= ${cutoffDate}`,
-        );
+          // Delete any exceptions at or after the cutoff
+          await tx.execute(
+            sql`DELETE FROM events WHERE recurring_event_id = ${id} AND user_id = ${userId} AND is_recurrence_exception = true AND original_start_time >= ${cutoffDate}`,
+          );
+        });
       }
 
       return NextResponse.json({ ok: true });
     }
 
     // Default: delete 'all' — delete the master event (cascade handles recurrence + exceptions)
-    // First delete exceptions
-    const { sql } = await import('drizzle-orm');
-    await db.execute(
-      sql`DELETE FROM events WHERE recurring_event_id = ${id} AND user_id = ${userId}`,
-    );
-    // Then delete the recurrence rule and master event
-    await db
-      .delete(eventRecurrence)
-      .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)));
-    await db
-      .delete(events)
-      .where(and(eq(events.id, id), eq(events.userId, userId)));
+    // Exceptions, then the rule, then the master.
+    //
+    // P2-3: three unwrapped writes. A failure after the first left a series
+    // whose exceptions were gone but whose master still expanded them.
+    const deleted = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`DELETE FROM events WHERE recurring_event_id = ${id} AND user_id = ${userId}`,
+      );
+      await tx
+        .delete(eventRecurrence)
+        .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)));
+      return tx
+        .delete(events)
+        .where(and(eq(events.id, id), eq(events.userId, userId)))
+        .returning({ id: events.id });
+    });
+
+    // P2-2: DELETE reported success for an id that never existed.
+    if (deleted.length === 0) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

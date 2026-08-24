@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         let sawFirstChunk = false;
+        let awardPromise: Promise<unknown> | null = null;
         try {
           const response = await ai.models.generateContentStream({
             model: GEMINI_MODEL,
@@ -169,12 +170,13 @@ export async function POST(req: NextRequest) {
               // award used to run ahead of the request, so a 503 from Gemini
               // still paid out the daily `ai_docs` coin.
               //
-              // Still `void` rather than awaited: blocking the first token of a
-              // streaming response on a coin write would be a visible latency
-              // regression, and the ledger key `ai_docs:<utc-date>` makes the
-              // award idempotent, so a lost one is recoverable and a duplicate
-              // is impossible.
-              void awardCoins(userId, [
+              // P2-4: this was `void`-ed and never awaited anywhere, so the
+              // platform could tear the function down the moment the stream
+              // closed and drop the write. Blocking the FIRST TOKEN on a coin
+              // write would still be a visible latency regression, so the
+              // promise is started here and awaited in `finally` — the stream
+              // is not held up, but the function cannot exit before it lands.
+              awardPromise = awardCoins(userId, [
                 scopeAward(aiInDocsAward(), { utcDate: utcDateKey(new Date()) }),
               ]).catch((e) => logger.error('unhandled', { route: 'ai-docs coin award' }, e));
             }
@@ -195,6 +197,9 @@ export async function POST(req: NextRequest) {
           logger.error('unhandled', { route: 'AI stream error' }, err);
           controller.error(err);
         } finally {
+          // Settle the in-flight coin award before the handler returns, so the
+          // serverless function is not frozen mid-write.
+          if (awardPromise) await awardPromise;
           cleanup();
         }
       },

@@ -107,14 +107,20 @@ export async function applyCoinDelta(tx: Tx, userId: string, e: AwardEntry): Pro
   return { status: 'ok', balanceAfter: updated.coins };
 }
 
-/** Apply one keyed entry in its own transaction (wraps applyCoinDelta). */
+/**
+ * Apply one keyed entry inside the caller's transaction, isolated by a
+ * SAVEPOINT so a DuplicateAwardRace rolls back only this entry.
+ */
 async function awardOne(
-  db: ReturnType<typeof getDatabase>,
+  tx: Tx,
   userId: string,
   e: AwardEntry,
 ): Promise<{ outcome: AwardOutcome; balance: number; applied: number }> {
   try {
-    const res = await db.transaction((tx) => applyCoinDelta(tx, userId, e));
+    // A nested drizzle transaction is `savepoint spN` / `rollback to savepoint
+    // spN`, so the outer transaction survives a losing dedupe race and the rest
+    // of the batch still commits.
+    const res = await tx.transaction((sp) => applyCoinDelta(sp, userId, e));
     if (res.status === 'ok') {
       return { outcome: { dedupeKey: e.dedupeKey, awarded: true }, balance: res.balanceAfter, applied: e.amount };
     }
@@ -127,7 +133,10 @@ async function awardOne(
     if (err instanceof DuplicateAwardRace) {
       return {
         outcome: { dedupeKey: e.dedupeKey, awarded: false, skipped: 'duplicate' },
-        balance: await currentBalance(db, userId),
+        // Read the balance through `tx`, not a fresh pooled connection: the
+        // outer transaction holds the `users` row lock, so an outside read
+        // would block on it.
+        balance: await currentBalance(tx, userId),
         applied: 0,
       };
     }
@@ -137,23 +146,31 @@ async function awardOne(
 
 /**
  * Award (or spend) a batch of keyed coin entries. Each entry is independently
- * idempotent and atomic; a duplicate or rejected spend is skipped, not fatal.
+ * idempotent; a duplicate or rejected spend is skipped, not fatal.
+ *
+ * P2-3: this used to open ONE TRANSACTION PER ENTRY, so a crash (or a frozen
+ * serverless function) between them committed `task_complete` and lost
+ * `first_task_day`. Because those dedupe keys are day-scoped, the lost entry
+ * could never be granted later — the user was permanently short. The batch now
+ * commits or rolls back as a unit.
  */
 export async function awardCoins(userId: string, entries: AwardEntry[]): Promise<AwardResult> {
   const db = getDatabase();
   if (entries.length === 0) {
     return { newBalance: await currentBalance(db, userId), applied: 0, outcomes: [] };
   }
-  let balance = 0;
-  let applied = 0;
-  const outcomes: AwardOutcome[] = [];
-  for (const e of entries) {
-    const r = await awardOne(db, userId, e);
-    outcomes.push(r.outcome);
-    balance = r.balance;
-    applied += r.applied;
-  }
-  return { newBalance: balance, applied, outcomes };
+  return db.transaction(async (tx) => {
+    let balance = 0;
+    let applied = 0;
+    const outcomes: AwardOutcome[] = [];
+    for (const e of entries) {
+      const r = await awardOne(tx, userId, e);
+      outcomes.push(r.outcome);
+      balance = r.balance;
+      applied += r.applied;
+    }
+    return { newBalance: balance, applied, outcomes };
+  });
 }
 
 export interface FocusAwardArgs {
