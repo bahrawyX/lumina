@@ -27,6 +27,14 @@ const baseTest = {
   environment: 'jsdom' as const,
   setupFiles: ['./tests/setup.ts'],
   css: false,
+  // The DB-backed suites (cross-user access, TOCTOU, cron dedupe, token-refresh
+  // races) each stand up an in-process PGlite instance and run the real schema
+  // against it. On a cold cache that is comfortably over Vitest's 10s default,
+  // so the whole suite failed at the `beforeAll` hook on slower machines and in
+  // CI — reported as 12 failures that had nothing to do with the code under
+  // test. The work itself is bounded; only the setup is slow.
+  hookTimeout: 120_000,
+  testTimeout: 60_000,
 };
 
 export default defineConfig({
