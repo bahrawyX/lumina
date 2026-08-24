@@ -12,6 +12,16 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Claude Code agent worktrees are full copies of the repo. Without this,
+    // `eslint .` walks every stale duplicate of src/ and reports ~53,000
+    // problems, which makes the real 65-error baseline impossible to see.
+    ".claude/**",
+    // Build/report artefacts.
+    "coverage/**",
+    "playwright-report/**",
+    "test-results/**",
+    "public/sw.js",
+    "public/workbox-*.js",
   ]),
 ]);
 

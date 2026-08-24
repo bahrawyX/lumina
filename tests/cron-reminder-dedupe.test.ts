@@ -15,7 +15,7 @@
  * concurrency (row locks during UPDATE); this validates the claim/release LOGIC.
  * True multi-connection contention is tracked in TD-3 for Batch 9.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { randomUUID } from 'node:crypto';
@@ -86,10 +86,27 @@ async function reminderSentAt(id: string): Promise<string | null> {
 
 const req = () => new Request('http://localhost/api/cron/event-reminders');
 
-beforeEach(async () => {
+// ONE PGlite for the whole file, truncated between tests.
+//
+// This used to be `new PGlite()` in `beforeEach` — a full Postgres compiled to
+// WASM, created per test and never closed. Each instance reserves a large
+// ArrayBuffer, so the file leaked one Postgres per case and later tests failed
+// with `RangeError: Array buffer allocation failed` /
+// "PGlite failed to initialize properly" whenever memory was tight. Closing
+// them was not enough: the WASM heap is not reclaimed promptly. Truncating is
+// both correct and far faster.
+beforeAll(async () => {
   client = new PGlite();
   await client.exec(DDL);
   h.db = drizzle(client, { schema });
+});
+
+afterAll(async () => {
+  await client?.close();
+});
+
+beforeEach(async () => {
+  await client.exec('TRUNCATE users, events RESTART IDENTITY CASCADE;');
   vi.mocked(sendPushToUser).mockReset();
   vi.mocked(sendPushToUser).mockResolvedValue(undefined as never);
 });

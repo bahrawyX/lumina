@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { goals, goalTargets } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string; targetId: string }>;
@@ -52,7 +53,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[PATCH /api/goals/[id]/targets/[targetId]]', err);
+    logger.error('unhandled', { route: 'PATCH /api/goals/[id]/targets/[targetId]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -82,7 +83,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[DELETE /api/goals/[id]/targets/[targetId]]', err);
+    logger.error('unhandled', { route: 'DELETE /api/goals/[id]/targets/[targetId]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

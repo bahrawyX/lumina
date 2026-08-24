@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { docs } from '@/db/schema';
 import { sql, eq, and } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 /** GET /api/docs/search?q=... — PostgreSQL full-text search across docs. */
 export async function GET(req: NextRequest) {
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    console.error('[GET /api/docs/search]', err);
+    logger.error('unhandled', { route: 'GET /api/docs/search' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

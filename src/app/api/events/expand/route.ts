@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence } from '@/db/schema';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
+import { logger } from '@/lib/logger';
 
 /**
  * GET /api/events/expand?start=ISO&end=ISO
@@ -157,7 +158,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ instances });
   } catch (err) {
-    console.error('[GET /api/events/expand]', err);
+    logger.error('unhandled', { route: 'GET /api/events/expand' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

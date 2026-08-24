@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { fetchGoogleExternalEvents } from '@/lib/integrations/google/fetchExternalEvents';
 import { fetchMicrosoftExternalEvents } from '@/lib/integrations/microsoft/fetchExternalEvents';
 import { getEnabledCalendarIds } from '@/lib/integrations/enabledCalendars';
+import { logger } from '@/lib/logger';
 
 const DEFAULT_RANGE_DAYS_PAST = 30;
 const DEFAULT_RANGE_DAYS_FUTURE = 90;
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: true, events });
   } catch (err) {
     const message = err instanceof Error ? err.message : `${provider} fetch failed`;
-    console.error(`[GET /api/external-events/${provider}]`, message);
+    logger.error('unhandled', { route: `GET /api/external-events/${provider}` }, message);
 
     if (
       message.includes('No Google account linked') ||

@@ -6,6 +6,7 @@ import { and, eq, inArray, sum, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
+import { logger } from '@/lib/logger';
 
 function parseLinkedTaskIds(raw: string | null): string[] {
   if (!raw) return [];
@@ -150,7 +151,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    console.error('[GET /api/goals]', err);
+    logger.error('unhandled', { route: 'GET /api/goals' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -253,7 +254,7 @@ export async function POST(req: NextRequest) {
       ]);
       newBalance = res.newBalance;
     } catch (e) {
-      console.error('[goal create coin award]', e);
+      logger.error('unhandled', { route: 'goal create coin award' }, e);
     }
 
     return NextResponse.json({ ...result, newBalance }, { status: 201 });
@@ -263,17 +264,14 @@ export async function POST(req: NextRequest) {
     // made the actual cause (drizzle constraint, enum mismatch, transaction
     // failure, etc.) impossible to diagnose from the client.
     const e = err as Error & { code?: string; cause?: unknown; detail?: string };
-    console.error('[POST /api/goals]', {
-      message: e?.message,
-      name:    e?.name,
-      code:    e?.code,
-      detail:  e?.detail,
-      stack:   e?.stack,
-      cause:   e?.cause,
-    });
-    return NextResponse.json({
-      error: 'Internal server error',
-      detail: process.env.NODE_ENV !== 'production' ? String(e?.message ?? err) : undefined,
-    }, { status: 500 });
+    // The logger serialises name/message/stack/cause from the Error itself, so
+    // the hand-built object is redundant; `code` and `detail` are Postgres
+    // specifics worth keeping as explicit context.
+    logger.error('unhandled', {
+      route: 'POST /api/goals',
+      pgCode: e?.code,
+      pgDetail: e?.detail,
+    }, err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -38,6 +38,28 @@ const baseTest = {
   // test. The work itself is bounded; only the setup is slow.
   hookTimeout: 120_000,
   testTimeout: 60_000,
+  // Several suites stand up their own in-process PGlite — a full Postgres
+  // compiled to WASM, which reserves a large ArrayBuffer per instance. Running
+  // many of those in parallel forks exhausts memory and the workers die with
+  // `RangeError: Array buffer allocation failed`, which Vitest surfaces as
+  // unhandled errors rather than test failures — so a run can look almost green
+  // while whole files never execute. Capping concurrency trades a little
+  // wall-clock for a suite whose result means something.
+  // Several suites stand up their own in-process PGlite — a full Postgres
+  // compiled to WASM, which reserves a large ArrayBuffer per instance. Running
+  // them in parallel workers exhausts memory: workers die with
+  // `RangeError: Array buffer allocation failed` /
+  // `Fatal process out of memory: Zone`, which Vitest reports as *unhandled
+  // errors* rather than test failures — so a run looks almost green while whole
+  // files never execute. That is the worst possible failure mode for a suite
+  // whose whole job is to be believed.
+  //
+  // One worker. It costs ~30s of wall clock and buys a result that means
+  // something. (Vitest 4 removed `poolOptions`; concurrency is top-level now,
+  // which is why the earlier `poolOptions.forks.maxForks` setting silently did
+  // nothing.)
+  maxWorkers: 1,
+  minWorkers: 1,
 };
 
 export default defineConfig({

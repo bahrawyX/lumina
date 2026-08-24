@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events } from '@/db/schema';
+import { logger } from '@/lib/logger';
 
 /**
  * POST /api/maintenance/cleanup-external-events
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, deleted: deleted.length });
   } catch (err) {
-    console.error('[POST /api/maintenance/cleanup-external-events]', err);
+    logger.error('unhandled', { route: 'POST /api/maintenance/cleanup-external-events' }, err);
     return NextResponse.json({ error: 'Cleanup failed' }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@ import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { firstDocEverAward } from '@/lib/coins/earnRules';
+import { logger } from '@/lib/logger';
 
 /** GET /api/docs — return flat list of DocTreeNode[] for sidebar (no content field). */
 export async function GET(req: NextRequest) {
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    console.error('[GET /api/docs]', err);
+    logger.error('unhandled', { route: 'GET /api/docs' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -172,7 +173,7 @@ export async function POST(req: NextRequest) {
         const res = await awardCoins(userId, [scopeAward(firstDocEverAward(), { utcDate: utcDateKey(new Date()) })]);
         newBalance = res.newBalance;
       }
-    } catch (e) { console.error('[docs first-doc award]', e); }
+    } catch (e) { logger.error('unhandled', { route: 'docs first-doc award' }, e); }
 
     return NextResponse.json(
       {
@@ -197,7 +198,7 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
-    console.error('[POST /api/docs]', err);
+    logger.error('unhandled', { route: 'POST /api/docs' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

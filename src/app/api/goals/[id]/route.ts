@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { goalCompleteAwards } from '@/lib/coins/earnRules';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -73,17 +74,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         newBalance = res.newBalance;
         coinsEarned = res.applied;
       } catch (e) {
-        console.error('[goal complete coin award]', e);
+        logger.error('unhandled', { route: 'goal complete coin award' }, e);
       }
     }
 
     return NextResponse.json({ ok: true, newBalance, coinsEarned });
   } catch (err) {
-    console.error('[PATCH /api/goals/[id]]', err);
-    return NextResponse.json({
-      error: 'Internal server error',
-      detail: process.env.NODE_ENV !== 'production' ? String((err as Error)?.message ?? err) : undefined,
-    }, { status: 500 });
+    logger.error('unhandled', { route: 'PATCH /api/goals/[id]' }, err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -106,7 +104,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[DELETE /api/goals/[id]]', err);
+    logger.error('unhandled', { route: 'DELETE /api/goals/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

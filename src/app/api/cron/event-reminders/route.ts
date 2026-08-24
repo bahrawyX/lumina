@@ -4,6 +4,7 @@ import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { events, users } from '@/db/schema';
 import { sendPushToUser } from '@/lib/push/sendPushNotification';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +109,7 @@ export async function GET(req: Request) {
 
       sentCount++;
     } catch (err) {
-      console.error(`[Cron:event-reminders] Error for event ${event.id}:`, err);
+      logger.error('Error for event ${event.id}', { route: `Cron:event-reminders` }, err);
       // Release the claim so a genuine send failure is retried next run (mirrors
       // the pre-fix behavior, where a failed send was never marked as sent).
       await db

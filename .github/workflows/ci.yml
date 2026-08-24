@@ -1,0 +1,101 @@
+name: CI
+
+# There was no CI at all — no `.github/` directory existed. Running the checks
+# locally showed why that mattered: `tsc --noEmit` and `next build` were clean
+# and the test suite passed, but **eslint reported 65 errors**, and Next 16 no
+# longer runs ESLint during `next build`, so those errors had never blocked a
+# deploy and never would.
+#
+# This runs everything on every push and PR.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes an in-flight run for the same ref.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # `next build` and the auth module both fail closed without these. They are
+  # not secrets in CI — nothing here talks to a real database or provider; the
+  # values only have to be well-formed enough to get past the boot-time guards
+  # in src/lib/auth.ts and src/lib/db.ts.
+  BETTER_AUTH_SECRET: ci-placeholder-secret-at-least-32-characters
+  BETTER_AUTH_URL: http://localhost:3000
+  NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
+  DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  verify:
+    name: typecheck · test · lint · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `npm install`: the lockfile is the input, and a
+      # silently-updated dependency tree is exactly what CI exists to prevent.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Runs before the build because it is the fastest signal, and because the
+      # DB-backed suites (multi-tenant isolation, TOCTOU, token-refresh races,
+      # coin exploits) are the ones worth failing fast on.
+      - name: Test
+        run: npx vitest run
+
+      # ── ESLint ratchet ────────────────────────────────────────────────────
+      # The repository currently has 65 errors and ~125 warnings. Blocking on
+      # zero would mean either a large cleanup before CI can exist at all, or —
+      # far more likely — CI never being turned on.
+      #
+      # So: errors are capped at the current count and warnings at the current
+      # count. New problems fail the build; the existing ones are paid down
+      # separately, and each time the number drops, LOWER IT HERE. A ratchet
+      # only works if it is tightened.
+      - name: Lint (ratcheted)
+        run: |
+          set -o pipefail
+          npx eslint . -f json --output-file eslint-report.json || true
+          node -e "
+            const r = require('./eslint-report.json');
+            const errors = r.reduce((n, f) => n + f.errorCount, 0);
+            const warnings = r.reduce((n, f) => n + f.warningCount, 0);
+            const MAX_ERRORS = 65;
+            const MAX_WARNINGS = 125;
+            console.log('eslint: ' + errors + ' errors, ' + warnings + ' warnings');
+            console.log('budget: ' + MAX_ERRORS + ' errors, ' + MAX_WARNINGS + ' warnings');
+            if (errors > MAX_ERRORS || warnings > MAX_WARNINGS) {
+              console.error('New lint problems introduced. Fix them, or if you removed some, lower the budget in .github/workflows/ci.yml.');
+              process.exit(1);
+            }
+            if (errors < MAX_ERRORS || warnings < MAX_WARNINGS) {
+              console.log('Budget is now slack — please lower MAX_ERRORS/MAX_WARNINGS in .github/workflows/ci.yml.');
+            }
+          "
+
+      - name: Build
+        run: npx next build
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.json
+          if-no-files-found: ignore

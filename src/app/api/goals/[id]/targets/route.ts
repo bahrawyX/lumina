@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { goals, goalTargets } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ id: row.id }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/goals/[id]/targets]', err);
+    logger.error('unhandled', { route: 'POST /api/goals/[id]/targets' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { focusSessions } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -25,7 +26,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[DELETE /api/focus-sessions/[id]]', err);
+    logger.error('unhandled', { route: 'DELETE /api/focus-sessions/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks, events } from '@/db/schema';
+import { logger } from '@/lib/logger';
 
 const linkSchema = z.object({
   taskId: z.string().uuid(),
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, taskId, eventId }, { status: 200 });
   } catch (err) {
-    console.error('[POST /api/link]', err);
+    logger.error('unhandled', { route: 'POST /api/link' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -147,7 +148,7 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
-    console.error('[DELETE /api/link]', err);
+    logger.error('unhandled', { route: 'DELETE /api/link' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

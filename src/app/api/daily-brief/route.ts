@@ -16,6 +16,7 @@ import { detectFocusWindows } from '@/lib/intelligence/focusWindows';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import type { IntelligenceCalendarEvent, IntelligencePlannedItem } from '@/lib/intelligence/types';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+import { logger } from '@/lib/logger';
 
 // The cached daily-brief path is cheap. The `?refresh=true` path re-runs
 // the Gemini narrative generation, which costs real money and seconds of
@@ -372,7 +373,7 @@ Write 2 sentences that:
             narrative = text;
           }
         } catch (err) {
-          console.error('[GET /api/daily-brief] Gemini narrative failed:', err);
+          logger.error('Gemini narrative failed', { route: 'GET /api/daily-brief' }, err);
         }
 
         // Cache to DB (upsert via ON CONFLICT)
@@ -394,7 +395,7 @@ Write 2 sentences that:
               },
             });
         } catch (cacheErr) {
-          console.error('[GET /api/daily-brief] Cache write failed:', cacheErr);
+          logger.error('Cache write failed', { route: 'GET /api/daily-brief' }, cacheErr);
         }
       }
     }
@@ -417,7 +418,7 @@ Write 2 sentences that:
 
     return NextResponse.json(brief);
   } catch (err) {
-    console.error('[GET /api/daily-brief]', err);
+    logger.error('unhandled', { route: 'GET /api/daily-brief' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { eq, and } from 'drizzle-orm';
 import type { EditScope } from '@/types';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -363,7 +364,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[PATCH /api/events/[id]]', err);
+    logger.error('unhandled', { route: 'PATCH /api/events/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -454,7 +455,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[DELETE /api/events/[id]]', err);
+    logger.error('unhandled', { route: 'DELETE /api/events/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

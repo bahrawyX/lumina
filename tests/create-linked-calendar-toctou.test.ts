@@ -17,7 +17,7 @@
  * connection (Promise.all serializes, so the route's two INSERTs never truly
  * race). The DB-level guard test below is the faithful reproduction.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { randomUUID } from 'node:crypto';
@@ -52,10 +52,22 @@ async function seedPrimaryLocal(userId: string) {
     .values({ userId, provider: 'local', name: 'My Calendar', isPrimary: true });
 }
 
-beforeEach(async () => {
-  const client = new PGlite();
+let client: PGlite;
+
+// One PGlite for the file, truncated between tests. See cron-reminder-dedupe
+// for why per-test instances exhaust memory.
+beforeAll(async () => {
+  client = new PGlite();
   await client.exec(DDL);
   db = drizzle(client, { schema });
+});
+
+afterAll(async () => {
+  await client?.close();
+});
+
+beforeEach(async () => {
+  await client.exec('TRUNCATE calendars RESTART IDENTITY CASCADE;');
 });
 
 describe('M5 — primary-local calendar create is race-safe', () => {

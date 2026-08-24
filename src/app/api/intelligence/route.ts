@@ -15,6 +15,7 @@ import type {
   IntelligencePlannedItem,
   IntelligenceTask,
 } from '@/lib/intelligence/types';
+import { logger } from '@/lib/logger';
 
 const DEFAULT_RANGE_DAYS_PAST = 1;
 const DEFAULT_RANGE_DAYS_FUTURE = 14;
@@ -155,7 +156,7 @@ export async function GET(req: NextRequest) {
           ),
         )
         .catch((err) => {
-          console.error('[GET /api/intelligence] planner_items query failed', err);
+          logger.error('planner_items query failed', { route: 'GET /api/intelligence' }, err);
           return [] as { taskId: string; startTime: Date; endTime: Date; taskTitle: string | null }[];
         }),
     ]);
@@ -176,7 +177,7 @@ export async function GET(req: NextRequest) {
             const ids = await getEnabledCalendarIds(userId, 'google');
             return fetchGoogleExternalEvents(userId, startIso, endIso, ids);
           })().catch((err) => {
-            console.error('[GET /api/intelligence] Google fetch failed', err);
+            logger.error('Google fetch failed', { route: 'GET /api/intelligence' }, err);
             return [];
           })
         : Promise.resolve([]),
@@ -185,7 +186,7 @@ export async function GET(req: NextRequest) {
             const ids = await getEnabledCalendarIds(userId, 'microsoft');
             return fetchMicrosoftExternalEvents(userId, startIso, endIso, ids);
           })().catch((err) => {
-            console.error('[GET /api/intelligence] Microsoft fetch failed', err);
+            logger.error('Microsoft fetch failed', { route: 'GET /api/intelligence' }, err);
             return [];
           })
         : Promise.resolve([]),
@@ -280,7 +281,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error('[GET /api/intelligence]', err);
+    logger.error('unhandled', { route: 'GET /api/intelligence' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

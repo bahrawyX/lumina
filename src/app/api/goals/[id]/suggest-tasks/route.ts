@@ -17,6 +17,7 @@ import { goals, tasks } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+import { logger } from '@/lib/logger';
 
 const apiKey = process.env.GEMINI_API_KEY ?? '';
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
@@ -186,9 +187,11 @@ Return ONLY a JSON object of the form { "tasks": [string, ...] }. Nothing else.`
     return NextResponse.json({ tasks: inserted }, { status: 201 });
   } catch (err) {
     const e = err as Error & { code?: string; detail?: string };
-    console.error('[POST /api/goals/[id]/suggest-tasks]', {
-      message: e.message, code: e.code, detail: e.detail,
-    });
+    logger.error('unhandled', {
+      route: 'POST /api/goals/[id]/suggest-tasks',
+      pgCode: e?.code,
+      pgDetail: e?.detail,
+    }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

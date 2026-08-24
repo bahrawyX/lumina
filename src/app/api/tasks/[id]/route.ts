@@ -7,6 +7,7 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
+import { logger } from '@/lib/logger';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -120,8 +121,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       // fan-out is testable on its own; still fire-and-forget here since it
       // doesn't gate the response.
       void syncTaskCompletionTargets(db, userId, id).catch((e) =>
-        console.error('[task PATCH goal-target fan-out]', e),
-      );
+        logger.error('unhandled', { route: 'task PATCH goal-target fan-out' }, e),);
 
       // ── Coin awards on task completion (awaited) ──────────────────
       // C2: only on a real not-done → done transition. Idempotency is also
@@ -188,14 +188,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             }
           }
         } catch (e) {
-          console.error('[task PATCH coin award]', e);
+          logger.error('unhandled', { route: 'task PATCH coin award' }, e);
         }
       }
     }
 
     return NextResponse.json({ ok: true, newBalance, coinsEarned });
   } catch (err) {
-    console.error('[PATCH /api/tasks/[id]]', err);
+    logger.error('unhandled', { route: 'PATCH /api/tasks/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -217,7 +217,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[DELETE /api/tasks/[id]]', err);
+    logger.error('unhandled', { route: 'DELETE /api/tasks/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
+import { logger } from '@/lib/logger';
 
 /**
  * POST /api/events/create-linked
@@ -241,7 +242,7 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
-    console.error('[POST /api/events/create-linked]', err);
+    logger.error('unhandled', { route: 'POST /api/events/create-linked' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
       updatedAt: row.updatedAt.toISOString(),
     });
   } catch (err) {
-    console.error('[GET /api/docs/[id]]', err);
+    logger.error('unhandled', { route: 'GET /api/docs/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -148,7 +149,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         );
         const res = await awardCoins(userId, [entry]);
         newBalance = res.newBalance;
-      } catch (e) { console.error('[doc 500-word award]', e); }
+      } catch (e) { logger.error('unhandled', { route: 'doc 500-word award' }, e); }
     }
 
     return NextResponse.json({
@@ -157,7 +158,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       newBalance,
     });
   } catch (err) {
-    console.error('[PATCH /api/docs/[id]]', err);
+    logger.error('unhandled', { route: 'PATCH /api/docs/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -217,7 +218,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[DELETE /api/docs/[id]]', err);
+    logger.error('unhandled', { route: 'DELETE /api/docs/[id]' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

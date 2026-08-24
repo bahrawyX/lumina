@@ -124,24 +124,23 @@ describe('P0-1 — the baseline builds the whole schema from empty', () => {
     );
     expect(res.rows.map((r) => r.indexname).length).toBeGreaterThan(0);
   });
-});
 
-describe('P0-1 — the baseline is a no-op against a database that already has the schema', () => {
-  it('applies twice without error', async () => {
-    const db = new PGlite();
-    try {
-      await applyBaseline(db);
-      // The second pass is the production case: every object already exists.
-      // Any statement lacking IF NOT EXISTS / a duplicate_object guard throws
-      // here, which is exactly what would happen on a real deploy.
-      await expect(applyBaseline(db)).resolves.toBeUndefined();
 
-      const after = await tableNames(db);
-      for (const table of EXPECTED_TABLES) {
-        expect(after).toContain(table);
-      }
-    } finally {
-      await db.close();
+  it('is a no-op against a database that already has the schema', async () => {
+    // Re-applies to the SAME instance the suite already populated — which is
+    // exactly the production case: every object already exists. Any statement
+    // lacking its IF NOT EXISTS / duplicate_object guard throws here, as it
+    // would on a real deploy.
+    //
+    // Reusing the instance rather than standing up a second one is deliberate:
+    // each PGlite is a full Postgres compiled to WASM reserving a large
+    // ArrayBuffer, and two live at once is enough to fail allocation on a
+    // memory-constrained runner.
+    await expect(applyBaseline(db)).resolves.toBeUndefined();
+
+    const after = await tableNames(db);
+    for (const table of EXPECTED_TABLES) {
+      expect(after).toContain(table);
     }
   });
 });

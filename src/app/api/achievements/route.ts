@@ -3,6 +3,7 @@ import { desc, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { achievements } from '@/db/schema';
 import { getDatabase } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 /** GET /api/achievements — all achievements for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
       }))
     );
   } catch (err) {
-    console.error('[GET /api/achievements]', err);
+    logger.error('unhandled', { route: 'GET /api/achievements' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -71,7 +72,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[PATCH /api/achievements]', err);
+    logger.error('unhandled', { route: 'PATCH /api/achievements' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

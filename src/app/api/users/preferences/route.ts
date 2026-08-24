@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { users } from '@/db/schema';
 import { getDatabase } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 const MIN_FOCUS_MINUTES = 5;
 const MAX_FOCUS_MINUTES = 240;
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
       customCategories: row.customCategories ?? [],
     });
   } catch (err) {
-    console.error('[GET /api/users/preferences]', err);
+    logger.error('unhandled', { route: 'GET /api/users/preferences' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -211,7 +212,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('[PATCH /api/users/preferences]', err);
+    logger.error('unhandled', { route: 'PATCH /api/users/preferences' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

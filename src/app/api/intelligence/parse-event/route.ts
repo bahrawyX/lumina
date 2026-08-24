@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+import { logger } from '@/lib/logger';
 
 // 20 parses per minute per user. Gemini calls cost money and latency —
 // without a cap any authenticated user could run the bill up via a script.
@@ -223,13 +224,13 @@ Rules:
     // rather than "Couldn't understand that".
     const errStatus = (err as { status?: number }).status;
     if (errStatus === 429) {
-      console.warn('[POST /api/intelligence/parse-event] Gemini quota exceeded');
+      logger.warn('Gemini quota exceeded', { route: 'POST /api/intelligence/parse-event' });
       return NextResponse.json(
         { error: 'AI service quota exceeded. Please try again later.' },
         { status: 429 },
       );
     }
-    console.error('[POST /api/intelligence/parse-event]', err);
+    logger.error('unhandled', { route: 'POST /api/intelligence/parse-event' }, err);
     return NextResponse.json({ error: 'Could not parse event', raw: input }, { status: 422 });
   }
 }

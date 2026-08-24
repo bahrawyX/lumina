@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 /** POST /api/shop/activate-cosmetic — activate a cosmetic override */
 export async function POST(req: NextRequest) {
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, activeCosmetics: patch });
   } catch (err) {
-    console.error('[POST /api/shop/activate-cosmetic]', err);
+    logger.error('unhandled', { route: 'POST /api/shop/activate-cosmetic' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

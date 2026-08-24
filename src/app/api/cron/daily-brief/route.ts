@@ -4,6 +4,7 @@ import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { users, pushSubscriptions, events, tasks } from '@/db/schema';
 import { sendPushToUser } from '@/lib/push/sendPushNotification';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,7 +146,7 @@ export async function GET(req: Request) {
 
       sentCount++;
     } catch (err) {
-      console.error(`[Cron:daily-brief] Error for user ${userId}:`, err);
+      logger.error('Error for user ${userId}', { route: `Cron:daily-brief` }, err);
     }
   }
 

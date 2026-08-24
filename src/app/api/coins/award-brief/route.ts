@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { dailyBriefDismissAward } from '@/lib/coins/earnRules';
+import { logger } from '@/lib/logger';
 
 /** POST /api/coins/award-brief — award coins for reading the daily brief (once per UTC day) */
 export async function POST(req: NextRequest) {
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
       newBalance,
     });
   } catch (err) {
-    console.error('[POST /api/coins/award-brief]', err);
+    logger.error('unhandled', { route: 'POST /api/coins/award-brief' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

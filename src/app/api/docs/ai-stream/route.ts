@@ -5,6 +5,7 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { aiInDocsAward } from '@/lib/coins/earnRules';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+import { logger } from '@/lib/logger';
 
 // Durable, cross-instance. The previous hand-rolled `Map` was per-lambda
 // memory, so the effective ceiling was 10 x (warm instances) rather than 10.
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest) {
               // is impossible.
               void awardCoins(userId, [
                 scopeAward(aiInDocsAward(), { utcDate: utcDateKey(new Date()) }),
-              ]).catch((e) => console.error('[ai-docs coin award]', e));
+              ]).catch((e) => logger.error('unhandled', { route: 'ai-docs coin award' }, e));
             }
 
             controller.enqueue(new TextEncoder().encode(text));
@@ -191,7 +192,7 @@ export async function POST(req: NextRequest) {
             }
             return;
           }
-          console.error('[AI stream error]', err);
+          logger.error('unhandled', { route: 'AI stream error' }, err);
           controller.error(err);
         } finally {
           cleanup();
@@ -217,7 +218,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error('[POST /api/docs/ai-stream]', err);
+    logger.error('unhandled', { route: 'POST /api/docs/ai-stream' }, err);
     return NextResponse.json({ error: 'AI generation failed' }, { status: 500 });
   }
 }

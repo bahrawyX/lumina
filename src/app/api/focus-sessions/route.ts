@@ -8,6 +8,7 @@ import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
+import { logger } from '@/lib/logger';
 
 /** GET /api/focus-sessions — return session history for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    console.error('[GET /api/focus-sessions]', err);
+    logger.error('unhandled', { route: 'GET /api/focus-sessions' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -82,7 +83,8 @@ export async function POST(req: NextRequest) {
   // exceeds real elapsed time beyond a small skew/rounding tolerance is a
   // fabricated session — reject it. Logged without PII.
   if (isDurationTampered(wallSeconds, duration)) {
-    console.warn('[focus-sessions] rejected: reported duration exceeds elapsed time', {
+    logger.warn('rejected: reported duration exceeds elapsed time', {
+      route: 'POST /api/focus-sessions',
       userId,
       wallSeconds: Math.round(wallSeconds),
       reportedDurationSecs: Math.round(duration),
@@ -317,7 +319,7 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
-    console.error('[POST /api/focus-sessions]', err);
+    logger.error('unhandled', { route: 'POST /api/focus-sessions' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

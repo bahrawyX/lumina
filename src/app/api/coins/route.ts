@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { users, coinTransactions } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 /** GET /api/coins — returns full economy data for authenticated user */
 export async function GET(req: NextRequest) {
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
       activeCosmetics: user.activeCosmetics ?? {},
     });
   } catch (err) {
-    console.error('[GET /api/coins]', err);
+    logger.error('unhandled', { route: 'GET /api/coins' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

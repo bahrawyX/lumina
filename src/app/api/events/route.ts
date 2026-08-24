@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
+import { logger } from '@/lib/logger';
 
 type EventProvider = 'local' | 'google' | 'outlook';
 type ApiEventProvider = 'local' | 'google' | 'microsoft';
@@ -110,7 +111,7 @@ export async function GET(req: NextRequest) {
       rows.map((row) => mapRowToApiEvent(row.event, row.calendarProvider ?? undefined)),
     );
   } catch (err) {
-    console.error('[GET /api/events]', err);
+    logger.error('unhandled', { route: 'GET /api/events' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -284,7 +285,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: row.id, event: mapRowToApiEvent(row), recurrence: recurrenceData }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/events]', err);
+    logger.error('unhandled', { route: 'POST /api/events' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

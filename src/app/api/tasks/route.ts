@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks, events, docs, goals } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    console.error('[GET /api/tasks]', err);
+    logger.error('unhandled', { route: 'GET /api/tasks' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -173,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: row.id }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/tasks]', err);
+    logger.error('unhandled', { route: 'POST /api/tasks' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

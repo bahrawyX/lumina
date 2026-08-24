@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { runFullGoogleSync, runEventsSyncOnly } from '@/lib/integrations/google/sync';
+import { logger } from '@/lib/logger';
 
 // TD-5: full sync is a multi-calendar, paginated fetch; give it the Vercel Hobby
 // maximum instead of the lower platform default so it can't time out mid-sync.
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[POST /api/integrations/google/events/sync]', message);
+    logger.error('unhandled', { route: 'POST /api/integrations/google/events/sync' }, message);
 
     if (
       message.includes('No Google integration found') ||

@@ -6,6 +6,7 @@ import { plannerItems, tasks } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
+import { logger } from '@/lib/logger';
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    console.error('[GET /api/planner-items]', err);
+    logger.error('unhandled', { route: 'GET /api/planner-items' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -157,12 +158,12 @@ export async function POST(req: NextRequest) {
         newBalance = res.newBalance;
       }
     } catch (e) {
-      console.error('[planner coin award]', e);
+      logger.error('unhandled', { route: 'planner coin award' }, e);
     }
 
     return NextResponse.json({ id: row.id, newBalance }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/planner-items]', err);
+    logger.error('unhandled', { route: 'POST /api/planner-items' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { contactSubmissions } from '@/db/schema';
 import { contactTypeSchema, contactSubjectSchema, contactMessageSchema } from '@/lib/validation';
 import { clientIp, createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
+import { logger } from '@/lib/logger';
 
 /**
  * `/api/contact` is the only unauthenticated write endpoint in the app, so it
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/contact]', err);
+    logger.error('unhandled', { route: 'POST /api/contact' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
