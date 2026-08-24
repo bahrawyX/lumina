@@ -398,24 +398,41 @@ function SignInPageInner() {
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); clearErr('password'); }}
                 placeholder={authMode === 'signup' ? `Min. ${MIN_PASSWORD_LENGTH} characters` : '••••••••'}
-                // SECURITY: always "new-password" — even in sign-in mode.
-                // Browsers treat "current-password" as an invitation to autofill
-                // saved credentials, which means anyone returning to /auth/signin
-                // on a shared device can log in without typing anything. The
-                // email field still autofills (good UX — it's just the account
-                // identifier), but the password must be typed every time.
-                autoComplete="new-password"
-                // Belt-and-braces: disable 1Password / LastPass inline fill
-                // heuristics that look for `name` / `data-*` attrs on the input.
-                name="auth-password-no-autofill"
-                data-lpignore="true"
-                data-1p-ignore="true"
+                // F3.5 — this was hard-coded to "new-password" in BOTH modes,
+                // with a decoy `name`, `data-lpignore` and `data-1p-ignore`,
+                // justified as stopping anyone on a shared device signing in
+                // without typing.
+                //
+                // That is not a security control. The saved credential is
+                // already gated by the OS or browser profile, and the session
+                // cookie makes the shared-device scenario moot anyway. What it
+                // actually did was force every returning user to hand-type
+                // their password — which pushes people toward short, memorable,
+                // reused passwords, the exact opposite of the stated goal — and
+                // block 1Password and LastPass users outright.
+                //
+                // It also contradicted this app's OTHER form: OnboardingFlow
+                // already did the correct thing, so the same user got different
+                // autofill behaviour on two screens of the same product.
+                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                name={authMode === 'signup' ? 'new-password' : 'current-password'}
+                required
                 disabled={Boolean(busy)}
                 className={inputCls('password')}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
               />
             </AuthField>
           </div>
+
+          {authMode === 'signin' && (
+            <p className="text-right">
+              <a
+                href="/auth/forgot-password"
+                className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              >
+                Forgot your password?
+              </a>
+            </p>
+          )}
 
           {/* Error */}
           {message && Object.keys(fieldErrors).length === 0 && (

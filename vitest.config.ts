@@ -23,6 +23,11 @@ const SERVER_ONLY_TESTS = [
   // P1-9: imports the real rate limiter, which carries the `server-only` guard
   // directly. @/lib/db is vi.mock'd to an ephemeral PGlite.
   'tests/rate-limit-durable.test.ts',
+  // F3.6: these import `@/lib/auth`, whose tree now includes the email sender.
+  // That module reads RESEND_API_KEY, so its `server-only` guard is correct and
+  // stays — unlike the logger's, which was removed because it guarded nothing.
+  'tests/password-recovery.test.ts',
+  'tests/auth-config.test.ts',
 ];
 
 const baseTest = {

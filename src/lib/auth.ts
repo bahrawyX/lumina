@@ -4,6 +4,11 @@ import { customSession, haveIBeenPwned } from 'better-auth/plugins';
 import { google, microsoft } from 'better-auth/social-providers';
 import { db } from '@/lib/db';
 import * as schema from '@/db/schema';
+import {
+  isEmailConfigured,
+  sendPasswordResetMail,
+  sendVerificationMail,
+} from '@/lib/email/send';
 
 const secret = process.env.BETTER_AUTH_SECRET;
 const baseURL = process.env.BETTER_AUTH_URL;
@@ -210,6 +215,51 @@ export const auth = betterAuth({
      */
     minPasswordLength: 12,
     maxPasswordLength: 128,
+
+    /**
+     * F3.4 — password users were permanently locked out of Google sign-in.
+     *
+     * Password sign-up hard-codes `emailVerified: false`, nothing ever flipped
+     * it, and BetterAuth's account linker defaults
+     * `requireLocalEmailVerified: true`. So a password user who later clicked
+     * "Sign in with Google" hit a hard `account not linked` error **with no way
+     * out**, because there was no verification flow to flip the flag.
+     *
+     * Gated on mail actually working: turning verification on without a way to
+     * send the verification email would make registration impossible. When
+     * unconfigured this stays false and the deployment behaves as it did
+     * before — see `src/lib/email/send.ts`.
+     */
+    requireEmailVerification: isEmailConfigured(),
+
+    /**
+     * F3.6 — there was no password reset or change flow at all.
+     * `/request-password-reset` threw `400 RESET_PASSWORD_DISABLED` before
+     * doing anything, because this callback was unset.
+     */
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetMail(user.email, url, user.name ?? undefined);
+    },
+
+    /**
+     * Defaults to `false`, which means a reset leaves every stolen session
+     * alive — the exact thing the user is resetting to stop.
+     */
+    revokeSessionsOnPasswordReset: true,
+  },
+
+  /**
+   * F3.4 / P1-7 — the verification flow that makes `emailVerified` mean
+   * something. Without it the column was written once at sign-up and read by
+   * exactly nothing (`grep -rn "emailVerified|email_verified" src tests` found
+   * one hit: the schema definition).
+   */
+  emailVerification: {
+    sendOnSignUp: isEmailConfigured(),
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendVerificationMail(user.email, url, user.name ?? undefined);
+    },
   },
 
   account: {
