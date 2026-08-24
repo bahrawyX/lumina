@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLuminaAuthClient } from '@/components/AuthProvider';
 import { GoogleProviderIcon } from '@/components/icons';
 import { useGuestStore } from '@/store/useGuestStore';
 import { cn } from '@/lib/utils';
+import { resolveNextDestination } from '@/lib/auth/nextDestination';
 import {
   getFieldError,
   nameSchema,
@@ -139,11 +140,19 @@ function useOAuthPopup(authClient: ReturnType<typeof useLuminaAuthClient>) {
 /* ═══════════════════════════════════════════════════════════════
    SIGN IN / SIGN UP PAGE
    ═══════════════════════════════════════════════════════════════ */
-export default function SignInPage() {
+function SignInPageInner() {
   const router = useRouter();
   const authClient = useLuminaAuthClient();
   const { data: session, isPending: sessionLoading } = authClient.useSession();
   const startOAuth = useOAuthPopup(authClient);
+
+  // Where to go once authenticated. The route guard in `src/proxy.ts` sets
+  // `?next=` when it bounces an unauthenticated request off an app route, and
+  // any link into sign-in may carry one. `resolveNextDestination` accepts only
+  // same-origin relative paths, so a crafted value cannot become an open
+  // redirect; anything else falls back to /onboarding.
+  const searchParams = useSearchParams();
+  const destination = resolveNextDestination(searchParams.get('next'));
 
   const [authMode, setAuthMode] = useState<AuthMode>('signin');
   const [name, setName] = useState('');
@@ -200,15 +209,15 @@ export default function SignInPage() {
         email: normalizedEmail,
         password,
         name: normalizedName,
-        callbackURL: '/onboarding',
+        callbackURL: destination,
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign up failed.'); return; }
       useGuestStore.getState().setGuest(false);
-      router.replace('/onboarding');
+      router.replace(destination);
     } finally {
       setBusy(null);
     }
-  }, [authClient, name, email, password, router]);
+  }, [authClient, name, email, password, router, destination]);
 
   const handleSignIn = useCallback(async () => {
     clearMessage();
@@ -221,15 +230,15 @@ export default function SignInPage() {
       const result = await authClient.signIn.email({
         email: normalizedEmail,
         password,
-        callbackURL: '/onboarding',
+        callbackURL: destination,
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
       useGuestStore.getState().setGuest(false);
-      router.replace('/onboarding');
+      router.replace(destination);
     } finally {
       setBusy(null);
     }
-  }, [authClient, email, password, router]);
+  }, [authClient, email, password, router, destination]);
 
   const handleGoogleSignIn = useCallback(async () => {
     clearMessage();
@@ -238,13 +247,13 @@ export default function SignInPage() {
       const completed = await startOAuth('google');
       if (!completed) { setMessage('Google sign-in was cancelled.'); return; }
       useGuestStore.getState().setGuest(false);
-      router.replace('/onboarding');
+      router.replace(destination);
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
     } finally {
       setBusy(null);
     }
-  }, [startOAuth, router]);
+  }, [startOAuth, router, destination]);
 
   const handleSubmit = () => {
     if (!validate()) return;
@@ -253,10 +262,14 @@ export default function SignInPage() {
   };
 
   /* ── Already logged in ─────────────────────────────────── */
-  if (!sessionLoading && session?.user) {
-    router.replace('/onboarding');
-    return null;
-  }
+  // In an effect, not during render: calling router.replace() inline double-
+  // fires under React 19 + reactStrictMode and warns about updating a component
+  // while rendering another.
+  const alreadySignedIn = !sessionLoading && Boolean(session?.user);
+  useEffect(() => {
+    if (alreadySignedIn) router.replace(destination);
+  }, [alreadySignedIn, router, destination]);
+  if (alreadySignedIn) return null;
 
   /* ── Render ────────────────────────────────────────────── */
   return (
@@ -432,5 +445,25 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * `useSearchParams` requires a Suspense boundary on a statically prerendered
+ * route; without one the whole page opts into dynamic rendering.
+ */
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[100dvh] flex items-center justify-center bg-background">
+          <span className="font-logo text-2xl font-medium tracking-[-0.035em] text-foreground/20">
+            Lumina
+          </span>
+        </div>
+      }
+    >
+      <SignInPageInner />
+    </Suspense>
   );
 }

@@ -33,6 +33,25 @@ import { NextResponse, type NextRequest } from 'next/server';
  * purely to bounce signed-in users to /calendar. That made the prerendered
  * marketing HTML a single wordmark. The bounce now happens here, from the
  * session cookie, before any HTML is produced.
+ *
+ * -- 3. Route protection on the authenticated app --
+ * Before this existed there was NO route protection anywhere in the product.
+ * `AppShell` referenced no session at all; the only gate was
+ * `onboardingCompleted`, read from localStorage. So anyone whose session had
+ * expired - or who had ever used guest mode - sat inside the full application,
+ * signed out, indefinitely: every API call 401'd, the persistence layer turned
+ * each 401 into an empty array, and the app rendered as a clean, empty,
+ * completely functional-looking workspace.
+ *
+ * Data was never exposed - the API layer is correctly authenticated and every
+ * query is user-scoped. The defect was in the product: there was no way to tell
+ * "signed out" from "you have no data", and a localStorage flag was doing the
+ * job of access control.
+ *
+ * The cookie check here is a *presence* check, not authentication, so a stale
+ * or forged cookie still reaches the app. That is the remaining case the 401
+ * interceptor handles; this stops the far more common one - arriving with no
+ * cookie at all - before a single byte of app HTML is served.
  */
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -126,6 +145,50 @@ function hasSessionCookie(req: NextRequest): boolean {
  * `/` with a session → /calendar, unless `?preview=1` was passed (which lets a
  * signed-in user read the marketing copy without being bounced).
  */
+/**
+ * Page routes that require a session. These are the `(app)` route group plus
+ * `/onboarding`, which collects profile data against the signed-in user.
+ *
+ * Kept as an explicit list rather than "everything except X" so that adding a
+ * new PUBLIC route can never accidentally end up behind the wall, and adding a
+ * new private route is a visible one-line change in review.
+ */
+const PROTECTED_PREFIXES = [
+  '/calendar',
+  '/tasks',
+  '/plan',
+  '/docs',
+  '/focus',
+  '/goals',
+  '/intelligence',
+  '/performance',
+  '/pomodoro',
+  '/shop',
+  '/onboarding',
+] as const;
+
+function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+}
+
+/**
+ * An app route with no session cookie -> /auth/signin, carrying where they were
+ * headed so the sign-in page can return them there instead of dead-ending
+ * everyone at /onboarding.
+ */
+function handleProtected(req: NextRequest): NextResponse | null {
+  if (!isProtectedPath(req.nextUrl.pathname)) return null;
+  if (hasSessionCookie(req)) return null;
+
+  const url = req.nextUrl.clone();
+  url.pathname = '/auth/signin';
+  url.search = '';
+  // Same-origin relative path only. `nextUrl.pathname` is server-derived and
+  // already normalised, so this cannot become an open redirect.
+  url.searchParams.set('next', req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.redirect(url, 307);
+}
+
 function handleLanding(req: NextRequest): NextResponse | null {
   if (req.nextUrl.pathname !== '/') return null;
   if (req.nextUrl.searchParams.get('preview') === '1') return null;
@@ -140,6 +203,9 @@ function handleLanding(req: NextRequest): NextResponse | null {
 export function proxy(req: NextRequest): NextResponse {
   const landing = handleLanding(req);
   if (landing) return landing;
+
+  const guarded = handleProtected(req);
+  if (guarded) return guarded;
 
   if (!req.nextUrl.pathname.startsWith('/api/')) return NextResponse.next();
 
@@ -167,5 +233,19 @@ export function proxy(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/', '/api/:path*'],
+  matcher: [
+    '/',
+    '/api/:path*',
+    '/calendar/:path*',
+    '/tasks/:path*',
+    '/plan/:path*',
+    '/docs/:path*',
+    '/focus/:path*',
+    '/goals/:path*',
+    '/intelligence/:path*',
+    '/performance/:path*',
+    '/pomodoro/:path*',
+    '/shop/:path*',
+    '/onboarding/:path*',
+  ],
 };
