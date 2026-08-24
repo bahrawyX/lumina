@@ -5,6 +5,7 @@ import { getDatabase } from '@/lib/db';
 import { plannerItems } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
@@ -30,7 +31,11 @@ interface RouteContext {
 // ── PATCH /api/planner-items/[id] ─────────────────────────────────────────────
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -60,10 +65,19 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     if (parsed.data.endTime) patch.endTime = new Date(parsed.data.endTime);
     if (parsed.data.isAutoScheduled !== undefined) patch.isAutoScheduled = parsed.data.isAutoScheduled;
 
-    await db
+    const updated = await db
       .update(plannerItems)
       .set(patch)
-      .where(and(eq(plannerItems.id, id), eq(plannerItems.userId, userId)));
+      .where(and(eq(plannerItems.id, id), eq(plannerItems.userId, userId)))
+      .returning({ id: plannerItems.id });
+
+    // P2-2: the write was issued and success returned unconditionally, so a
+    // request for a nonexistent (or another user's) id answered 200 {ok:true}.
+    // Ownership is enforced by the WHERE, so this was never a security hole —
+    // but the client could not distinguish a lost write from a real one.
+    if (updated.length === 0) {
+      return NextResponse.json({ error: 'Planner item not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -75,7 +89,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 // ── DELETE /api/planner-items/[id] ────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -84,9 +102,18 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
   try {
     const db = getDatabase();
-    await db
+    const deleted = await db
       .delete(plannerItems)
-      .where(and(eq(plannerItems.id, id), eq(plannerItems.userId, userId)));
+      .where(and(eq(plannerItems.id, id), eq(plannerItems.userId, userId)))
+      .returning({ id: plannerItems.id });
+
+    // P2-2: the write was issued and success returned unconditionally, so a
+    // request for a nonexistent (or another user's) id answered 200 {ok:true}.
+    // Ownership is enforced by the WHERE, so this was never a security hole —
+    // but the client could not distinguish a lost write from a real one.
+    if (deleted.length === 0) {
+      return NextResponse.json({ error: 'Planner item not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

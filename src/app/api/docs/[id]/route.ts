@@ -8,6 +8,7 @@ import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
 import { logger } from '@/lib/logger';
 import { checkLinkedOwnership, wouldCreateDocCycle } from '@/lib/ownership';
+import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -15,7 +16,11 @@ interface RouteContext {
 
 /** GET /api/docs/[id] — return full doc including content JSONB. */
 export async function GET(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -60,7 +65,11 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
 /** PATCH /api/docs/[id] — update a doc with stale-write protection. */
 export async function PATCH(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -188,7 +197,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
 /** DELETE /api/docs/[id] — soft delete (archive) or hard delete with confirmation. */
 export async function DELETE(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -200,6 +213,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
   try {
     const db = getDatabase();
+    let affected: Array<{ id: string }> = [];
 
     if (hard) {
       // Hard delete requires confirmation body
@@ -222,21 +236,31 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         .set({ parentId: null })
         .where(and(eq(docs.parentId, id), eq(docs.userId, userId)));
 
-      await db
+      affected = await db
         .delete(docs)
-        .where(and(eq(docs.id, id), eq(docs.userId, userId)));
+        .where(and(eq(docs.id, id), eq(docs.userId, userId)))
+        .returning({ id: docs.id });
     } else {
       // Soft delete: archive this doc and all descendants
-      await db
+      affected = await db
         .update(docs)
         .set({ isArchived: true, updatedAt: new Date() })
-        .where(and(eq(docs.id, id), eq(docs.userId, userId)));
+        .where(and(eq(docs.id, id), eq(docs.userId, userId)))
+        .returning({ id: docs.id });
 
       // Also archive direct children (recursive would need CTE, but immediate children is sufficient for MVP)
       await db
         .update(docs)
         .set({ isArchived: true, updatedAt: new Date() })
         .where(and(eq(docs.parentId, id), eq(docs.userId, userId)));
+    }
+
+    // P2-2: the write was issued and success returned unconditionally, so a
+    // request for a nonexistent (or another user's) id answered 200 {ok:true}.
+    // Ownership is enforced by the WHERE, so this was never a security hole —
+    // but the client could not distinguish a lost write from a real one.
+    if (affected.length === 0) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
     return NextResponse.json({ ok: true });

@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { goals, goalTargets } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
   params: Promise<{ id: string; targetId: string }>;
@@ -11,7 +12,12 @@ interface RouteContext {
 
 /** PATCH /api/goals/[id]/targets/[targetId] — update a target */
 export async function PATCH(req: NextRequest, context: RouteContext) {
-  const { id: goalId, targetId } = await context.params;
+  const { id: rawGoalId, targetId: rawTargetId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const goalId = parseRouteId(rawGoalId);
+  const targetId = parseRouteId(rawTargetId);
+  if (!goalId || !targetId) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -60,7 +66,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
 /** DELETE /api/goals/[id]/targets/[targetId] — hard delete target */
 export async function DELETE(req: NextRequest, context: RouteContext) {
-  const { id: goalId, targetId } = await context.params;
+  const { id: rawGoalId, targetId: rawTargetId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const goalId = parseRouteId(rawGoalId);
+  const targetId = parseRouteId(rawTargetId);
+  if (!goalId || !targetId) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

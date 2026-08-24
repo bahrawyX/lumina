@@ -9,13 +9,22 @@ import { logger } from '@/lib/logger';
 import { utcToZonedWallClock, zonedWallClockToUtc } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 import { checkLinkedOwnership } from '@/lib/ownership';
+import { invalidIdResponse, parseEventRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: `events/[id]` also accepts the composite `masterId:isoDate` form for a
+  // single occurrence of a series, so the uuid check applies to the segment
+  // before the first ':' and the remainder must be a parseable instant.
+  // Previously any junk went straight into `eq(events.id, id)` and Postgres
+  // raised 22P02, surfacing as a generic 500.
+  const parsedId = parseEventRouteId(rawId);
+  if (!parsedId) return invalidIdResponse();
+  const id = rawId;
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -394,7 +403,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: `events/[id]` also accepts the composite `masterId:isoDate` form for a
+  // single occurrence of a series, so the uuid check applies to the segment
+  // before the first ':' and the remainder must be a parseable instant.
+  // Previously any junk went straight into `eq(events.id, id)` and Postgres
+  // raised 22P02, surfacing as a generic 500.
+  const parsedId = parseEventRouteId(rawId);
+  if (!parsedId) return invalidIdResponse();
+  const id = rawId;
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

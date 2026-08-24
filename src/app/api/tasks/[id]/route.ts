@@ -9,6 +9,7 @@ import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, fir
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 import { logger } from '@/lib/logger';
 import { checkLinkedOwnership } from '@/lib/ownership';
+import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -34,7 +35,11 @@ interface RouteContext {
  *  Note: parentTaskId and depth are immutable — not included in the patch builder.
  *  Reparenting is not supported. */
 export async function PATCH(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -126,10 +131,20 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       prevTaskStatus = prevT?.status;
     }
 
-    await db
+    const updatedRows = await db
       .update(tasks)
       .set(patch)
-      .where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+      .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+      .returning({ id: tasks.id });
+
+    // P2-2: this issued the write and returned success unconditionally, so
+    // `PATCH /api/tasks/00000000-0000-0000-0000-000000000000` answered
+    // `200 {"ok":true}`. Ownership IS enforced (the write matches zero rows),
+    // so it was never a security hole — but the API reported success for a
+    // no-op, and the client had no way to detect a lost write.
+    if (updatedRows.length === 0) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
 
     // Goal target updates + coin awards on status change. Coin awards are
     // awaited (not fire-and-forget) so we can return newBalance — the
@@ -224,7 +239,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
 /** DELETE /api/tasks/[id] — delete a task (ownership enforced) */
 export async function DELETE(req: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  // P2-1: every PK is a uuid and this went straight into `eq(table.id, id)`,
+  // so Postgres raised 22P02 and the client got a generic 500.
+  const id = parseRouteId(rawId);
+  if (!id) return invalidIdResponse();
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -233,9 +252,14 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
   try {
     const db = getDatabase();
-    await db
+    const deletedRows = await db
       .delete(tasks)
-      .where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+      .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+      .returning({ id: tasks.id });
+
+    if (deletedRows.length === 0) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
