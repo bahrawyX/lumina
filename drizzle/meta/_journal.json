@@ -64,6 +64,90 @@
       "when": 1775000000000,
       "tag": "0008_focus_session_task_title",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775000900000,
+      "tag": "0009_recurring_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775001000000,
+      "tag": "0010_created_via_nl",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775001100000,
+      "tag": "0011_linked_event_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1775001200000,
+      "tag": "0012_daily_brief_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1775001300000,
+      "tag": "0013_task_difficulty",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775001400000,
+      "tag": "0014_pwa_push_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1775001500000,
+      "tag": "0015_user_timezone",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1775001600000,
+      "tag": "0016_preferences_and_ambient",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1775001700000,
+      "tag": "0017_user_custom_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1775001800000,
+      "tag": "0018_coin_ledger_and_caps",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1775001900000,
+      "tag": "0019_achievements_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1775002000000,
+      "tag": "0020_schema_baseline",
+      "breakpoints": true
     }
   ]
 }
