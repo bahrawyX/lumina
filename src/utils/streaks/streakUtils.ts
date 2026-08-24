@@ -17,6 +17,36 @@ export const MAX_SESSION_MINUTES = 480;
 export const MAX_DAILY_FOCUS_MINUTES = 720;
 
 /**
+ * Shortest session that earns anything, in real elapsed seconds.
+ *
+ * `rewardedSessionMinutes` floored at 1, so an INSTANTANEOUS session
+ * (`serverWallMinutes === 0`) still granted 1 rewarded minute. Combined with
+ * the flat per-session bonuses in `focusSessionAwards`, that is the whole of
+ * P1-3:
+ *
+ *   one honest 720-min session   720 granted min   720 + 5 + 144 =   869 coins
+ *   720 instantaneous sessions     1 granted min   (1 + 5) x 720  = 4,320 coins
+ *
+ * Same daily minute cap, ~5x the coins, for 720 API calls. `isDurationTampered`
+ * did not catch it because it only fires when the client claims MORE than
+ * wall-clock; claiming less was fine.
+ *
+ * A session under this threshold is not focus. It is still recorded — the
+ * history is the user's — it simply earns nothing.
+ */
+export const MIN_REWARDABLE_SESSION_SECONDS = 60;
+
+/**
+ * Per-user, per-UTC-day ceiling on how many focus sessions can earn coins.
+ *
+ * The second half of the P1-3 fix. The minute cap alone cannot bound a reward
+ * that does not scale with minutes, so the flat `focus_session` base is bounded
+ * by counting sessions instead. 30/day is far above any real usage — a session
+ * every 20 minutes for ten hours — while making the 720-call farm worthless.
+ */
+export const MAX_DAILY_FOCUS_SESSIONS = 30;
+
+/**
  * How far a client-reported duration may exceed server wall-clock time before
  * it is treated as tampering rather than clock skew / rounding.
  */
@@ -32,6 +62,11 @@ export const DURATION_TAMPER_TOLERANCE_SECS = 120;
  * fabricated `duration` can no longer mint unbounded coins.
  */
 export function rewardedSessionMinutes(wallSeconds: number, clientDurationSecs: number): number {
+  // A session shorter than MIN_REWARDABLE_SESSION_SECONDS of REAL elapsed time
+  // earns nothing. This used to floor at 1, which is what made 720
+  // instantaneous sessions worth ~5x an honest 12-hour day (P1-3).
+  if (Math.max(0, wallSeconds) < MIN_REWARDABLE_SESSION_SECONDS) return 0;
+
   const serverWallMinutes = Math.floor(Math.max(0, wallSeconds) / 60);
   const clientMinutes = Math.round(Math.max(0, clientDurationSecs) / 60);
   return Math.max(1, Math.min(serverWallMinutes, clientMinutes, MAX_SESSION_MINUTES));

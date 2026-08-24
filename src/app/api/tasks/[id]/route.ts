@@ -8,6 +8,7 @@ import { scopeAward, scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 import { logger } from '@/lib/logger';
+import { checkLinkedOwnership } from '@/lib/ownership';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -83,6 +84,22 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       const ts = new Date(body.dueDate);
       if (!isNaN(ts.getTime())) patch.dueDate = ts;
     }
+    // P1-4: POST /api/tasks validates every linked FK against the caller, with
+    // a comment explaining that a foreign goalId would otherwise be counted
+    // into another user's goal-progress aggregation. PATCH did not — so the
+    // exact scenario that guard was written to prevent was reachable via
+    // `PATCH /api/tasks/{myTaskId} {"goalId": "<victim-goal-uuid>"}`.
+    const ownershipFailure = await checkLinkedOwnership(db, userId, {
+      linkedEventId: { value: body.linkedEventId, table: 'events' },
+      goalId: { value: body.goalId, table: 'goals' },
+    });
+    if (ownershipFailure) {
+      return NextResponse.json(
+        { error: `${ownershipFailure.field} not found` },
+        { status: 404 },
+      );
+    }
+
     if (body.linkedEventId === null) patch.linkedEventId = null;
     else if (typeof body.linkedEventId === 'string' && body.linkedEventId.trim()) {
       patch.linkedEventId = body.linkedEventId;

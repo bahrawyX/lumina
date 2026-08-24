@@ -29,6 +29,8 @@ import { POST as docsPost } from '@/app/api/docs/route';
 import { POST as focusPost } from '@/app/api/focus-sessions/route';
 import { POST as moodPost } from '@/app/api/mood-logs/route';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
+import { PATCH as tasksPatch } from '@/app/api/tasks/[id]/route';
+import { PATCH as docsPatch } from '@/app/api/docs/[id]/route';
 
 let client: MultiUserTestDb['client'];
 
@@ -49,6 +51,14 @@ function post(path: string, body: unknown): NextRequest {
 function get(path: string): NextRequest {
   return new NextRequest(`http://localhost${path}`, { method: 'GET' });
 }
+function patch(path: string, body: unknown): NextRequest {
+  return new NextRequest(`http://localhost${path}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
 async function one(sql: string, params: unknown[] = []): Promise<string> {
   const r = await client.query<{ id: string }>(sql, params);
@@ -244,5 +254,105 @@ describe('Finding 5 — FK ownership on create', () => {
     expect((await moodPost(post('/api/mood-logs', { mood: 'good', focusSessionId: aSession }))).status).toBe(404);
     // B can log a mood with no session reference.
     expect((await moodPost(post('/api/mood-logs', { mood: 'good' }))).status).toBe(201);
+  });
+});
+
+// ── P1-4: PATCH wrote cross-tenant FKs that POST explicitly rejects ──────────
+describe('P1-4 — FK ownership on UPDATE, not just on create', () => {
+  it('tasks PATCH rejects a foreign goalId — the case the POST guard was written for', async () => {
+    const A = await seedUser(client);
+    const B = await seedUser(client);
+    const aGoal = await seedGoal(A);
+
+    act(B);
+    const bTask = await seedTask(B);
+    // Reachable before this fix as:
+    //   PATCH /api/tasks/{myTaskId} {"goalId": "<victim-goal-uuid>"}
+    const res = await tasksPatch(patch(`/api/tasks/${bTask}`, { goalId: aGoal }), ctx(bTask));
+    expect(res.status).toBe(404);
+
+    const row = await client.query<{ goal_id: string | null }>(
+      `SELECT goal_id FROM tasks WHERE id = $1`,
+      [bTask],
+    );
+    expect(row.rows[0].goal_id).toBeNull();
+  });
+
+  it('tasks PATCH rejects a foreign linkedEventId', async () => {
+    const A = await seedUser(client);
+    const B = await seedUser(client);
+    const aEvent = await seedEvent(A);
+
+    act(B);
+    const bTask = await seedTask(B);
+    const res = await tasksPatch(
+      patch(`/api/tasks/${bTask}`, { linkedEventId: aEvent }),
+      ctx(bTask),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('tasks PATCH still accepts the caller OWN goal', async () => {
+    const B = await seedUser(client);
+    act(B);
+    const bGoal = await seedGoal(B);
+    const bTask = await seedTask(B);
+    const res = await tasksPatch(patch(`/api/tasks/${bTask}`, { goalId: bGoal }), ctx(bTask));
+    expect(res.status).toBe(200);
+  });
+
+  it('tasks PATCH still accepts clearing a link with null', async () => {
+    const B = await seedUser(client);
+    act(B);
+    const bGoal = await seedGoal(B);
+    const bTask = await seedTask(B, { goalId: bGoal });
+    const res = await tasksPatch(patch(`/api/tasks/${bTask}`, { goalId: null }), ctx(bTask));
+    expect(res.status).toBe(200);
+  });
+
+  it('docs PATCH rejects a foreign parentId / linkedTaskId / linkedEventId', async () => {
+    const A = await seedUser(client);
+    const B = await seedUser(client);
+    const aDoc = await seedDoc(A);
+    const aTask = await seedTask(A);
+    const aEvent = await seedEvent(A);
+
+    act(B);
+    const bDoc = await seedDoc(B);
+    for (const body of [
+      { parentId: aDoc },
+      { linkedTaskId: aTask },
+      { linkedEventId: aEvent },
+    ]) {
+      const res = await docsPatch(patch(`/api/docs/${bDoc}`, body), ctx(bDoc));
+      expect(res.status, JSON.stringify(body)).toBe(404);
+    }
+  });
+
+  it('docs PATCH rejects a parentId that would create a CYCLE', async () => {
+    // Setting a doc's parent to itself, or to one of its own descendants, makes
+    // any recursive walk of the docs tree loop forever.
+    const B = await seedUser(client);
+    act(B);
+    const root = await seedDoc(B);
+    const child = await one(
+      `INSERT INTO docs (user_id, parent_id) VALUES ($1,$2) RETURNING id`,
+      [B, root],
+    );
+
+    const self = await docsPatch(patch(`/api/docs/${root}`, { parentId: root }), ctx(root));
+    expect(self.status).toBe(400);
+
+    const descendant = await docsPatch(patch(`/api/docs/${root}`, { parentId: child }), ctx(root));
+    expect(descendant.status).toBe(400);
+  });
+
+  it('docs PATCH still accepts a legitimate re-parent', async () => {
+    const B = await seedUser(client);
+    act(B);
+    const a = await seedDoc(B);
+    const b = await seedDoc(B);
+    const res = await docsPatch(patch(`/api/docs/${b}`, { parentId: a }), ctx(b));
+    expect(res.status).toBe(200);
   });
 });

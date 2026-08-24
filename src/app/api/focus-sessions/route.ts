@@ -3,7 +3,13 @@ import { eq, and, sql } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { focusSessions, users, achievements, tasks, goals } from '@/db/schema';
-import { computeStreakUpdate, rewardedSessionMinutes, isDurationTampered, MAX_DAILY_FOCUS_MINUTES } from '@/utils/streaks/streakUtils';
+import {
+  computeStreakUpdate,
+  rewardedSessionMinutes,
+  isDurationTampered,
+  MAX_DAILY_FOCUS_MINUTES,
+  MAX_DAILY_FOCUS_SESSIONS,
+} from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
@@ -261,7 +267,11 @@ export async function POST(req: NextRequest) {
     // H10) and bounded by the per-day focus-minute cap. Skipped under threshold.
     let finalCoins = userRow.coins;
     let coinsEarned = 0;
-    if (streakUpdate) {
+    // P1-3: a session with zero rewarded minutes earns nothing at all. It is
+    // still recorded — the history belongs to the user — but it does not touch
+    // the economy, and in particular it does not collect the flat per-session
+    // base that made 720 instantaneous sessions worth ~5x an honest day.
+    if (streakUpdate && durationMinutes > 0) {
       // Task priority + focus-boost consumable feed the reward and the decrement.
       let taskPriority: string | undefined;
       if (rawTaskId) {
@@ -281,6 +291,10 @@ export async function POST(req: NextRequest) {
         utcDate,
         requestedMinutes: durationMinutes,
         maxDailyMinutes: MAX_DAILY_FOCUS_MINUTES,
+        // The minute cap cannot bound a reward that does not scale with
+        // minutes. `focusSessionAwards` returns a FLAT base of 5 regardless of
+        // duration, so the flat component is bounded by counting sessions.
+        maxDailySessions: MAX_DAILY_FOCUS_SESSIONS,
         coinsForMinutes: (granted) =>
           granted + focusSessionAwards(granted, taskPriority, false, hasFocusBoost).reduce((s, a) => s + a.amount, 0),
       });

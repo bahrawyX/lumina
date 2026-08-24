@@ -8,6 +8,7 @@ import type { EditScope } from '@/types';
 import { logger } from '@/lib/logger';
 import { utcToZonedWallClock, zonedWallClockToUtc } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
+import { checkLinkedOwnership } from '@/lib/ownership';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -279,10 +280,18 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     // linkedDocId
+    // P1-4: this was unchecked while the adjacent `linkedTaskId` IS correctly
+    // verified, two lines below.
     const linkedDocId = body.linkedDocId;
     if (linkedDocId === null) {
       patch.linkedDocId = null;
     } else if (typeof linkedDocId === 'string' && linkedDocId.trim()) {
+      const docFailure = await checkLinkedOwnership(db, userId, {
+        linkedDocId: { value: linkedDocId, table: 'docs' },
+      });
+      if (docFailure) {
+        return NextResponse.json({ error: 'linkedDocId not found' }, { status: 404 });
+      }
       patch.linkedDocId = linkedDocId;
     }
 

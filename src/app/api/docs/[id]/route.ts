@@ -7,6 +7,7 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
 import { logger } from '@/lib/logger';
+import { checkLinkedOwnership, wouldCreateDocCycle } from '@/lib/ownership';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -115,8 +116,30 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     if (typeof body.isPinned === 'boolean') patch.isPinned = body.isPinned;
     if (typeof body.position === 'number') patch.position = body.position;
 
+    // P1-4: none of these three were ownership-checked on PATCH.
+    const ownershipFailure = await checkLinkedOwnership(db, userId, {
+      parentId: { value: body.parentId, table: 'docs' },
+      linkedTaskId: { value: body.linkedTaskId, table: 'tasks' },
+      linkedEventId: { value: body.linkedEventId, table: 'events' },
+    });
+    if (ownershipFailure) {
+      return NextResponse.json(
+        { error: `${ownershipFailure.field} not found` },
+        { status: 404 },
+      );
+    }
+
     if (body.parentId === null) patch.parentId = null;
     else if (typeof body.parentId === 'string' && body.parentId.trim()) {
+      // `docs.parentId` could additionally be set to the doc itself or one of
+      // its own descendants, producing a CYCLE — after which any recursive walk
+      // of the docs tree loops forever.
+      if (await wouldCreateDocCycle(db, userId, id, body.parentId.trim())) {
+        return NextResponse.json(
+          { error: 'parentId would create a cycle' },
+          { status: 400 },
+        );
+      }
       patch.parentId = body.parentId;
     }
 

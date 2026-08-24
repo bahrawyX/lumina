@@ -36,8 +36,18 @@ describe('C1 — focus-session duration is server-bounded', () => {
     expect(rewardedSessionMinutes(25 * 60, 25 * 60)).toBe(25);
   });
 
-  it('floors sub-minute sessions to a minimum of 1', () => {
-    expect(rewardedSessionMinutes(30, 30)).toBe(1);
+  it('P1-3 — sub-minute sessions now earn NOTHING, not a floor of 1', () => {
+    // This previously asserted `toBe(1)`, i.e. it pinned the exploitable
+    // behaviour: an instantaneous session still granted one rewarded minute,
+    // which collected the flat 5-coin `focus_session` base. 720 of those were
+    // worth ~5x an honest 12-hour day inside the same minute cap.
+    //
+    // A 30-second "focus session" is not focus. It is still recorded; it just
+    // does not pay.
+    expect(rewardedSessionMinutes(30, 30)).toBe(0);
+    expect(rewardedSessionMinutes(0, 0)).toBe(0);
+    // The first genuinely rewardable duration.
+    expect(rewardedSessionMinutes(60, 60)).toBe(1);
   });
 
   it('allows small clock skew within tolerance but rejects beyond it', () => {

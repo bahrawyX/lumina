@@ -164,6 +164,16 @@ export interface FocusAwardArgs {
   requestedMinutes: number;
   /** Per-day ceiling on rewarded focus minutes (MAX_DAILY_FOCUS_MINUTES). */
   maxDailyMinutes: number;
+  /**
+   * Per-day ceiling on how many sessions may earn coins
+   * (MAX_DAILY_FOCUS_SESSIONS).
+   *
+   * P1-3: the minute cap alone cannot bound a reward that does not scale with
+   * minutes. `focusSessionAwards` returns a FLAT base of 5 whatever the
+   * duration, so 720 one-minute sessions collected 720 x 5 = 3,600 flat coins
+   * inside the same 720-minute budget an honest single session spends on 5.
+   */
+  maxDailySessions: number;
   /** Coins earned for the granted (post-cap) minutes — the full focus reward formula. */
   coinsForMinutes: (grantedMinutes: number) => number;
   label?: string;
@@ -215,6 +225,43 @@ export async function awardFocusCoins(
       if (granted <= 0) {
         return { grantedMinutes: 0, newBalance: await currentBalance(tx, userId), awarded: false };
       }
+
+      // ── Session-count cap (P1-3) ─────────────────────────────────────────
+      // A second bucket in the same table, keyed 'focus_sessions', counting
+      // rewarded sessions rather than minutes. Claimed inside the SAME
+      // transaction and after the minute cap, preserving the documented lock
+      // order (daily_reward_caps -> users) — taking it in a separate
+      // transaction would open a deadlock window against concurrent awards.
+      await tx
+        .insert(dailyRewardCaps)
+        .values({ userId, reason: 'focus_sessions', bucketDate: args.utcDate, usedUnits: 0 })
+        .onConflictDoNothing({
+          target: [dailyRewardCaps.userId, dailyRewardCaps.reason, dailyRewardCaps.bucketDate],
+        });
+      const [sessionCap] = await tx
+        .select({ used: dailyRewardCaps.usedUnits })
+        .from(dailyRewardCaps)
+        .where(
+          and(
+            eq(dailyRewardCaps.userId, userId),
+            eq(dailyRewardCaps.reason, 'focus_sessions'),
+            eq(dailyRewardCaps.bucketDate, args.utcDate),
+          ),
+        )
+        .for('update');
+      if ((sessionCap?.used ?? 0) >= args.maxDailySessions) {
+        return { grantedMinutes: 0, newBalance: await currentBalance(tx, userId), awarded: false };
+      }
+      await tx
+        .update(dailyRewardCaps)
+        .set({ usedUnits: sql`${dailyRewardCaps.usedUnits} + 1`, updatedAt: new Date() })
+        .where(
+          and(
+            eq(dailyRewardCaps.userId, userId),
+            eq(dailyRewardCaps.reason, 'focus_sessions'),
+            eq(dailyRewardCaps.bucketDate, args.utcDate),
+          ),
+        );
 
       await tx
         .update(dailyRewardCaps)
