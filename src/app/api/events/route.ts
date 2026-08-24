@@ -11,6 +11,7 @@ import {
   zonedWallClockToUtc,
 } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
+import { resolvePrimaryLocalCalendarId } from '@/lib/calendars/primaryLocal';
 
 type EventProvider = 'local' | 'google' | 'outlook';
 type ApiEventProvider = 'local' | 'google' | 'microsoft';
@@ -240,22 +241,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Find or create the user's default local calendar
-    let calendarId: string;
-    const existing = await db
-      .select({ id: calendars.id })
-      .from(calendars)
-      .where(and(eq(calendars.userId, userId), eq(calendars.provider, 'local'), eq(calendars.isPrimary, true)))
-      .limit(1);
-
-    if (existing.length > 0) {
-      calendarId = existing[0].id;
-    } else {
-      const [newCal] = await db
-        .insert(calendars)
-        .values({ userId, provider: 'local', name: 'My Calendar', isPrimary: true })
-        .returning({ id: calendars.id });
-      calendarId = newCal.id;
+    // P2-5: this was a find-then-insert with no ON CONFLICT and no re-select —
+    // the exact default-calendar TOCTOU `create-linked` had already been fixed
+    // for. Two concurrent first-use event creations both inserted and the loser
+    // hit `calendars_one_primary_local_per_user` → unhandled 23505 → 500, on
+    // the first event a new account ever creates. Both routes share one
+    // idempotent resolver now.
+    const calendarId = await resolvePrimaryLocalCalendarId(db, userId);
+    if (!calendarId) {
+      return NextResponse.json({ error: 'Failed to resolve default calendar' }, { status: 500 });
     }
 
     // P2-3: the event used to be INSERTed here and the RRULE validated only

@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -78,7 +79,14 @@ export const tasks = pgTable(
     // the board read and the due-date read.
     index('tasks_user_status_position_idx').on(table.userId, table.status, table.position),
     index('tasks_user_due_idx').on(table.userId, table.dueDate),
-    index('tasks_linked_event_id_idx').on(table.linkedEventId),
+    // P2-5: nothing stopped two tasks from claiming the same event. The
+    // "already linked?" read in `POST /api/link` and `create-linked` was
+    // outside the transaction, so two concurrent calls each created an event
+    // and one was permanently orphaned. This index is the backstop the guarded
+    // UPDATEs sit on top of. Partial, because unlinked tasks are the norm.
+    uniqueIndex('tasks_linked_event_uniq')
+      .on(table.linkedEventId)
+      .where(sql`${table.linkedEventId} is not null`),
     index('tasks_parent_task_id_idx').on(table.parentTaskId),
     index('tasks_goal_id_idx').on(table.goalId),
     foreignKey({

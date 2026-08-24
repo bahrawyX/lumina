@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
@@ -56,7 +56,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event not found or not owned by user' }, { status: 404 });
     }
 
-    // Check neither is already linked to something else
+    // P2-5: these two reads were the ONLY thing standing between two concurrent
+    // links and a mutually inconsistent pair. They stay as a fast-fail with a
+    // clear message, but they are no longer what enforces the invariant — the
+    // guarded UPDATEs inside the transaction are.
     if (task.linkedEventId && task.linkedEventId !== eventId) {
       return NextResponse.json(
         { error: 'Task is already linked. Unlink first.' },
@@ -70,17 +73,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Atomic transaction: set both sides
-    await db.transaction(async (tx) => {
-      await tx
+    // Atomic transaction: set both sides. Each UPDATE re-asserts "unlinked, or
+    // already linked to this exact counterpart" in its WHERE, so a request that
+    // lost the race matches zero rows and rolls the whole link back rather than
+    // half-writing it.
+    const linked = await db.transaction(async (tx) => {
+      const t = await tx
         .update(tasks)
         .set({ linkedEventId: eventId, updatedAt: new Date() })
-        .where(eq(tasks.id, taskId));
-      await tx
+        .where(
+          and(
+            eq(tasks.id, taskId),
+            or(isNull(tasks.linkedEventId), eq(tasks.linkedEventId, eventId)),
+          ),
+        )
+        .returning({ id: tasks.id });
+      if (t.length === 0) return false;
+
+      const e = await tx
         .update(events)
         .set({ linkedTaskId: taskId, updatedAt: new Date() })
-        .where(eq(events.id, eventId));
+        .where(
+          and(
+            eq(events.id, eventId),
+            or(isNull(events.linkedTaskId), eq(events.linkedTaskId, taskId)),
+          ),
+        )
+        .returning({ id: events.id });
+      return e.length > 0;
     });
+
+    if (!linked) {
+      return NextResponse.json(
+        { error: 'Task or event was linked by another request. Reload and retry.' },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ ok: true, taskId, eventId }, { status: 200 });
   } catch (err) {

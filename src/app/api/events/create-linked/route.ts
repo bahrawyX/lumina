@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
-import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
+import { events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { logger } from '@/lib/logger';
 import { zonedWallClockToUtc } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
+import { resolvePrimaryLocalCalendarId } from '@/lib/calendars/primaryLocal';
 
 /**
  * POST /api/events/create-linked
@@ -15,6 +16,9 @@ import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
  * Atomically create an event AND link it to a task in a single DB transaction.
  * Eliminates the orphan-event risk of the two-call pattern (POST /api/events + POST /api/link).
  */
+
+/** A concurrent request linked this task first; the transaction must roll back. */
+class TaskAlreadyLinked extends Error {}
 
 const createLinkedSchema = z.object({
   title: z.string().min(1, 'title is required'),
@@ -128,6 +132,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
+    // P2-5: "already linked?" is only a fast-fail. The authoritative check is
+    // the guarded UPDATE inside the transaction below — reading it out here and
+    // trusting it let two concurrent calls each create an event, and one was
+    // permanently orphaned with no way for the user to find or delete it.
     if (task.linkedEventId) {
       return NextResponse.json(
         { error: 'Task is already linked to an event. Unlink first.' },
@@ -135,55 +143,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Find or create user's default local calendar.
-    //
-    // M5 (TOCTOU): the previous find-then-insert raced. Two concurrent first-use
-    // requests both saw no primary-local calendar and both INSERTed, so the second
-    // hit the `calendars_one_primary_local_per_user` partial unique index and the
-    // whole request 500'd. Fix: make the create idempotent with ON CONFLICT DO
-    // NOTHING (targeting that partial index), then ALWAYS re-select — so whether
-    // we won the insert or a concurrent request did, we resolve the same id and
-    // no request crashes.
-    const primaryLocal = and(
-      eq(calendars.userId, userId),
-      eq(calendars.provider, 'local'),
-      eq(calendars.isPrimary, true),
-    );
-
-    let calendarId: string;
-    const existing = await db
-      .select({ id: calendars.id })
-      .from(calendars)
-      .where(primaryLocal)
-      .limit(1);
-
-    if (existing.length > 0) {
-      calendarId = existing[0].id;
-    } else {
-      await db
-        .insert(calendars)
-        .values({ userId, provider: 'local', name: 'My Calendar', isPrimary: true })
-        // NB: onConflictDoNothing takes the partial-index predicate as `where`
-        // (drizzle only wires `targetWhere` for onConflictDoUpdate); passing
-        // `targetWhere` here is silently dropped and Postgres 42P10s.
-        .onConflictDoNothing({
-          target: calendars.userId,
-          where: sql`${calendars.provider} = 'local' and ${calendars.isPrimary} = true`,
-        });
-
-      const [primary] = await db
-        .select({ id: calendars.id })
-        .from(calendars)
-        .where(primaryLocal)
-        .limit(1);
-
-      if (!primary) {
-        return NextResponse.json(
-          { error: 'Failed to resolve default calendar' },
-          { status: 500 },
-        );
-      }
-      calendarId = primary.id;
+    const calendarId = await resolvePrimaryLocalCalendarId(db, userId);
+    if (!calendarId) {
+      return NextResponse.json(
+        { error: 'Failed to resolve default calendar' },
+        { status: 500 },
+      );
     }
 
     // ── Single atomic transaction ───────────────────────────────────────────
@@ -230,11 +195,16 @@ export async function POST(req: NextRequest) {
         recurrenceId = recRow.id;
       }
 
-      // 3. Link task → event
-      await tx
+      // 3. Link task → event, but ONLY if it is still unlinked. Zero rows here
+      // means a concurrent request won the race; rolling back takes the event
+      // we just inserted with it, so no orphan survives.
+      const linked = await tx
         .update(tasks)
         .set({ linkedEventId: eventId, updatedAt: new Date() })
-        .where(eq(tasks.id, taskId));
+        .where(and(eq(tasks.id, taskId), isNull(tasks.linkedEventId)))
+        .returning({ id: tasks.id });
+
+      if (linked.length === 0) throw new TaskAlreadyLinked();
 
       return { eventId, recurrenceId };
     });
@@ -249,6 +219,12 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
+    if (err instanceof TaskAlreadyLinked) {
+      return NextResponse.json(
+        { error: 'Task is already linked to an event. Unlink first.' },
+        { status: 409 },
+      );
+    }
     logger.error('unhandled', { route: 'POST /api/events/create-linked' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

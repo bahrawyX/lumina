@@ -37,6 +37,9 @@ const SERVER_ONLY_TESTS = [
   'tests/notification-claim.test.ts',
   // P1-10/P3-3: imports the integration error classifier, which is server-only.
   'tests/range-and-provider-codes.test.ts',
+  // P2-5: imports the shared primary-local calendar resolver, which is
+  // server-only (it queries the database).
+  'tests/link-and-stale-writes.test.ts',
 ];
 
 const baseTest = {

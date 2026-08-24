@@ -136,40 +136,6 @@ export async function POST(req: NextRequest) {
       if (!g) return NextResponse.json({ error: 'goalId not found' }, { status: 404 });
     }
 
-    // Fetch current user streak data (outside transaction — read-only)
-    const [userRow] = await db
-      .select({
-        coins: users.coins,
-        dailyStreak: users.dailyStreak,
-        bestDailyStreak: users.bestDailyStreak,
-        sessionStreak: users.sessionStreak,
-        bestSessionStreak: users.bestSessionStreak,
-        lastFocusDate: users.lastFocusDate,
-        lastSessionAt: users.lastSessionAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (!userRow) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Compute streak + coin updates — skipped entirely when under threshold so
-    // a fractional session cannot move the streak forward or award coins.
-    const previousCoins = userRow.coins;
-    const streakUpdate = underThreshold
-      ? null
-      : computeStreakUpdate(
-          {
-            ...userRow,
-            lastFocusDate: userRow.lastFocusDate ?? null,
-            lastSessionAt: userRow.lastSessionAt ?? null,
-          },
-          durationMinutes,
-          timezone,
-        );
-
     // Resolve task title before the transaction (read-only lookup)
     const rawTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
     // Prefer client-sent taskTitle, but validate/fallback to DB lookup
@@ -192,6 +158,49 @@ export async function POST(req: NextRequest) {
 
     // All writes in a single transaction for atomicity
     const result = await db.transaction(async (tx) => {
+      // P2-6: the streak was read OUT HERE, outside the transaction, and
+      // written back blind. Two focus sessions completing at once both read
+      // `sessionStreak = 3` and both wrote `4` — one increment silently lost,
+      // and the same for dailyStreak and the two `best_*` columns, which is a
+      // number the user watches.
+      //
+      // The read now happens inside the transaction and takes a row lock, so
+      // the second caller blocks until the first commits and then computes from
+      // the value that was actually written. `computeStreakUpdate` stays a pure
+      // function of the row — the fix is WHERE the row comes from, not how the
+      // arithmetic is done.
+      const [userRow] = await tx
+        .select({
+          coins: users.coins,
+          dailyStreak: users.dailyStreak,
+          bestDailyStreak: users.bestDailyStreak,
+          sessionStreak: users.sessionStreak,
+          bestSessionStreak: users.bestSessionStreak,
+          lastFocusDate: users.lastFocusDate,
+          lastSessionAt: users.lastSessionAt,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1)
+        .for('update');
+
+      if (!userRow) return { kind: 'no_user' as const };
+
+      // Streak + coin updates are skipped entirely when under threshold, so a
+      // fractional session cannot move the streak forward or award coins.
+      const previousCoins = userRow.coins;
+      const streakUpdate = underThreshold
+        ? null
+        : computeStreakUpdate(
+            {
+              ...userRow,
+              lastFocusDate: userRow.lastFocusDate ?? null,
+              lastSessionAt: userRow.lastSessionAt ?? null,
+            },
+            durationMinutes,
+            timezone,
+          );
+
       // Insert focus session
       const [row] = await tx
         .insert(focusSessions)
@@ -210,7 +219,14 @@ export async function POST(req: NextRequest) {
       // Under-threshold sessions are logged for history only — no streak bump,
       // no coin award, no achievement unlocks.
       if (!streakUpdate) {
-        return { sessionId: row.id, newAchievements: [] as { type: string; unlockedAt: string }[] };
+        return {
+          kind: 'ok' as const,
+          sessionId: row.id,
+          newAchievements: [] as { type: string; unlockedAt: string }[],
+          userRow,
+          streakUpdate,
+          previousCoins,
+        };
       }
 
       // Update user streak + coin fields
@@ -260,8 +276,15 @@ export async function POST(req: NextRequest) {
         if (ach) newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
       }
 
-      return { sessionId: row.id, newAchievements };
+      return { kind: 'ok' as const, sessionId: row.id, newAchievements, userRow, streakUpdate, previousCoins };
     });
+
+    // A string discriminant, not a boolean: `strict: false` means boolean
+    // literal types widen and `{ok:true}|{ok:false}` would not narrow.
+    if (result.kind === 'no_user') {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    const { userRow, streakUpdate, previousCoins } = result;
 
     // Coins are awarded here (awaited, not fire-and-forget — durable on serverless,
     // H10) and bounded by the per-day focus-minute cap. Skipped under threshold.

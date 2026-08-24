@@ -8,6 +8,7 @@ import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
 import { logger } from '@/lib/logger';
 import { checkLinkedOwnership, wouldCreateDocCycle } from '@/lib/ownership';
+import { docStaleGuard, nextDocUpdatedAt } from '@/lib/docs/staleWrite';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
@@ -86,27 +87,25 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const db = getDatabase();
 
-    // Stale-write check: if client sends updatedAt AND content changed,
-    // compare to DB updatedAt — return 409 if stale.
-    if (typeof body.updatedAt === 'string' && body.content !== undefined) {
-      const [current] = await db
-        .select({ updatedAt: docs.updatedAt, content: docs.content })
-        .from(docs)
-        .where(and(eq(docs.id, id), eq(docs.userId, userId)));
+    // P2-6: the stale-write check used to be a SELECT here followed by a blind
+    // UPDATE below. Two concurrent saves both read the same `updated_at`, both
+    // passed, and the second silently overwrote the first — so the 409 fired
+    // only for a client that was already visibly behind, and never under the
+    // real concurrency it exists to catch.
+    //
+    // The check is folded into the write's WHERE instead (`updated_at <=` the
+    // client's copy), which Postgres evaluates against the row it is about to
+    // lock. Whoever commits second matches zero rows and gets the 409.
+    const clientUpdatedAt =
+      typeof body.updatedAt === 'string' && body.content !== undefined
+        ? new Date(body.updatedAt)
+        : null;
+    const staleGuard = docStaleGuard(clientUpdatedAt);
 
-      if (current) {
-        const clientUpdatedAt = new Date(body.updatedAt as string).getTime();
-        const serverUpdatedAt = current.updatedAt.getTime();
-        if (clientUpdatedAt < serverUpdatedAt) {
-          return NextResponse.json(
-            { error: 'conflict', serverContent: current.content },
-            { status: 409 }
-          );
-        }
-      }
-    }
-
-    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    // The new `updated_at` comes from the DATABASE clock, not this instance's.
+    // See `nextDocUpdatedAt` for why an app-server timestamp made the guard
+    // depend on clock skew between serverless instances.
+    const patch: Record<string, unknown> = { updatedAt: nextDocUpdatedAt() };
 
     if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
     if (body.content !== undefined) patch.content = body.content;
@@ -165,8 +164,26 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const [updated] = await db
       .update(docs)
       .set(patch)
-      .where(and(eq(docs.id, id), eq(docs.userId, userId)))
+      .where(and(eq(docs.id, id), eq(docs.userId, userId), staleGuard))
       .returning({ updatedAt: docs.updatedAt });
+
+    if (!updated) {
+      // Zero rows means one of two things. One read tells them apart, and it
+      // only runs on the failure path.
+      const [current] = await db
+        .select({ content: docs.content })
+        .from(docs)
+        .where(and(eq(docs.id, id), eq(docs.userId, userId)));
+
+      // P2-2: PATCH on a nonexistent doc used to answer 200 {"ok":true}.
+      if (!current) {
+        return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      }
+      return NextResponse.json(
+        { error: 'conflict', serverContent: current.content },
+        { status: 409 },
+      );
+    }
 
     // Award coins for 500+ word doc, dedup by docId. Awaited so the
     // response carries the post-award balance.

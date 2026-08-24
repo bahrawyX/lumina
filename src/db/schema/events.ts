@@ -83,6 +83,10 @@ export const events = pgTable(
     index('events_calendar_start_time_idx').on(table.calendarId, table.startTime),
     index('events_external_id_idx').on(table.externalId),
     index('events_recurring_event_id_idx').on(table.recurringEventId),
+    // P2-5: the other half of the task↔event link invariant.
+    uniqueIndex('events_linked_task_uniq')
+      .on(table.linkedTaskId)
+      .where(sql`${table.linkedTaskId} is not null`),
     uniqueIndex('events_calendar_external_event_unique')
       .on(table.calendarId, table.externalEventId)
       .where(sql`${table.externalEventId} is not null`),
