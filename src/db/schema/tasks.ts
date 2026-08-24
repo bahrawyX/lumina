@@ -57,12 +57,27 @@ export const tasks = pgTable(
     parentTaskId: uuid('parent_task_id'),
     /** Nesting depth: 0 = root, 1 = subtask, 2 = sub-subtask. Max 2. */
     depth: integer('depth').notNull().default(0),
+    /**
+     * Manual position within a status column.
+     *
+     * There was NO order column. `GET /api/tasks` synthesised `order: index`
+     * from a `createdAt` sort on every read, and the PATCH handler ignored the
+     * field entirely — so a drag-reorder fired N requests that each wrote
+     * nothing, and the board snapped back to created-at order on the next
+     * reload. (Matches `docs.position`.)
+     */
+    position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('tasks_user_id_idx').on(table.userId),
     index('tasks_status_idx').on(table.status),
+    // P2-7: `tasks` had only single-column (user_id) and (status) indexes, and
+    // no composite matching any real query shape. These are the two hot ones —
+    // the board read and the due-date read.
+    index('tasks_user_status_position_idx').on(table.userId, table.status, table.position),
+    index('tasks_user_due_idx').on(table.userId, table.dueDate),
     index('tasks_linked_event_id_idx').on(table.linkedEventId),
     index('tasks_parent_task_id_idx').on(table.parentTaskId),
     index('tasks_goal_id_idx').on(table.goalId),

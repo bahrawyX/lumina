@@ -91,8 +91,14 @@ export async function createOne(task: Task): Promise<string | null> {
   }
 }
 
-/** Update an existing task in the DB. Fire-and-forget safe. */
-export async function updateOne(id: string, patch: Partial<Task>): Promise<void> {
+/**
+ * Update an existing task.
+ *
+ * P1-17: this returned `void` and only inspected `res.ok` to decide whether to
+ * award coins — a 400/403/500 on the PATCH itself was discarded. Callers that
+ * want to revert an optimistic edit can now await the boolean.
+ */
+export async function updateOne(id: string, patch: Partial<Task>): Promise<boolean> {
   if (isGuestUser()) {
     const tasks = readGuestTasks();
     const index = tasks.findIndex((t) => t.id === id);
@@ -101,7 +107,7 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
       writeGuestTasks(tasks);
     }
     // No coin award: the economy is account-only and runs server-side.
-    return;
+    return index >= 0;
   }
   try {
     const payload = {
@@ -140,25 +146,70 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
         useCoinsStore.getState().invalidateBalance();
       }
     }
+    return res.ok;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[tasksPersistence] updateOne failed:', err);
     }
+    return false;
   }
 }
 
 /** Delete a task from the DB. Fire-and-forget safe. */
-export async function deleteOne(id: string): Promise<void> {
+/**
+ * Delete a task.
+ *
+ * P1-17: this never read `res.ok` at all, so a failed delete was
+ * indistinguishable from a successful one and the row reappeared on reload.
+ */
+export async function deleteOne(id: string): Promise<boolean> {
   if (isGuestUser()) {
     writeGuestTasks(readGuestTasks().filter((t) => t.id !== id));
-    return;
+    return true;
   }
   try {
-    await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    return res.ok;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[tasksPersistence] deleteOne failed:', err);
     }
+    return false;
+  }
+}
+
+/**
+ * Persist a new order for several tasks in ONE request.
+ *
+ * P1-17: a drag-reorder fired `updated.forEach(t => updateOne(t.id, {order}))`
+ * — an N-request fan-out where any subset can fail, leaving the board's order
+ * permanently divergent from the database with no signal. One request either
+ * applies the whole reorder or none of it.
+ */
+export async function reorderMany(
+  items: Array<{ id: string; order: number }>,
+): Promise<boolean> {
+  if (items.length === 0) return true;
+
+  if (isGuestUser()) {
+    const byId = new Map(items.map((i) => [i.id, i.order]));
+    writeGuestTasks(
+      readGuestTasks().map((t) => (byId.has(t.id) ? { ...t, order: byId.get(t.id)! } : t)),
+    );
+    return true;
+  }
+
+  try {
+    const res = await apiFetch('/api/tasks/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify({ items }),
+    });
+    return res.ok;
+  } catch (err) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[tasksPersistence] reorderMany failed:', err);
+    }
+    return false;
   }
 }
 

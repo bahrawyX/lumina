@@ -11,6 +11,7 @@ import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 import { unlinkTaskEvent, createLinkedEvent } from '@/lib/persistence/linkPersistence';
 import { getStorageItem, setStorageItem } from '@/lib/storage';
 import { uid } from '@/lib/uid';
+import notify from '@/utils/notify';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -286,7 +287,20 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     // unblock — either with the new UUID or with `null` to signal failure.
     void tasksPersistence.createOne(task).then((dbId) => {
       if (!dbId) {
+        // P1-17: this used to stop here. The optimistic task stayed on the
+        // board with a client-side `uid()`, NO TOAST FIRED, and every
+        // subsequent PATCH against that fake id 404'd silently — so the user
+        // kept working on a task that did not exist and lost it on refresh.
+        // `useCalendarEventsStore.addEvent` already did the right thing; this
+        // now matches it.
         notifyOptimisticIdResolved(task.id, null);
+        set((state) => {
+          if (!state.tasks.some((t) => t.id === task.id)) return state;
+          const next = state.tasks.filter((t) => t.id !== task.id);
+          saveTasks(next, state.userId);
+          return { tasks: next };
+        });
+        notify(`Couldn't save "${task.title}" — please try again.`);
         return;
       }
       if (dbId === task.id) {
@@ -481,8 +495,20 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
     const planStore = useDailyPlanStore.getState();
     idsToRemove.forEach(tid => planStore.removeAllByTaskId(tid));
 
-    // Fire-and-forget DB persistence — CASCADE handles children
-    tasksPersistence.deleteOne(id);
+    // P1-17: `deleteOne` never read `res.ok`, so a failed delete looked
+    // identical to a successful one and the task reappeared on reload with no
+    // explanation. Restore the removed subtree instead.
+    const removedSubtree = allTasks.filter((t) => idsToRemove.has(t.id));
+    void tasksPersistence.deleteOne(id).then((deleted) => {
+      if (deleted) return;
+      set((state) => {
+        const present = new Set(state.tasks.map((t) => t.id));
+        const restored = [...state.tasks, ...removedSubtree.filter((t) => !present.has(t.id))];
+        saveTasks(restored, state.userId);
+        return { tasks: restored };
+      });
+      notify(`Couldn't delete "${task?.title ?? 'task'}" — please try again.`);
+    });
 
     // Clean up linked calendar events for task + descendants
     const tasksWithEvents = allTasks.filter(t => idsToRemove.has(t.id) && t.linkedEventId);
@@ -612,6 +638,10 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   },
 
   moveTask: (id, toStatus, toIndex) => {
+    // Captured before the mutation: `sourceStatus` inside the `set` callback is
+    // scoped to it, and the persistence below needs to renumber BOTH columns.
+    const priorStatus = get().tasks.find(t => t.id === id)?.status;
+
     set((state) => {
       const task = state.tasks.find(t => t.id === id);
       if (!task) return state;
@@ -661,9 +691,21 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       saveTasks(finalTasks, state.userId);
       return { tasks: finalTasks };
     });
-    // Fire-and-forget DB persistence for the moved task — commit-time only
-    const movedTask = get().tasks.find(t => t.id === id);
-    if (movedTask) tasksPersistence.updateOne(id, { status: toStatus, order: movedTask.order });
+    // The moved task's STATUS is its own update; every sibling in the
+    // destination (and source) column also shifted position, so those go in one
+    // batched reorder rather than N independent PATCHes.
+    const after = get().tasks;
+    const movedTask = after.find(t => t.id === id);
+    if (movedTask) {
+      void tasksPersistence.updateOne(id, { status: toStatus, order: movedTask.order })
+        .then((okResult) => {
+          if (!okResult) notify(`Couldn't move "${movedTask.title}" — please try again.`);
+        });
+      const touched = after
+        .filter(t => t.status === toStatus || t.status === priorStatus)
+        .map(t => ({ id: t.id, order: t.order }));
+      void tasksPersistence.reorderMany(touched);
+    }
   },
 
   reorderColumn: (status, orderedIds) => {
@@ -682,9 +724,17 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       saveTasks(next, state.userId);
       return { tasks: next };
     });
-    // Fire-and-forget DB persistence for reordered tasks — commit-time only
-    const updated = get().tasks.filter(t => t.status === status);
-    updated.forEach(t => tasksPersistence.updateOne(t.id, { order: t.order }));
+    // P1-17: this was `updated.forEach(t => updateOne(t.id, { order: t.order }))`
+    // — an N-request fan-out where any subset could fail, leaving the board's
+    // order divergent from the database with no signal. (In practice every one
+    // of those requests was a no-op, because `order` was not a column and the
+    // PATCH handler ignored it.) One request now applies the whole reorder.
+    const updated = get().tasks
+      .filter(t => t.status === status)
+      .map(t => ({ id: t.id, order: t.order }));
+    void tasksPersistence.reorderMany(updated).then((okResult) => {
+      if (!okResult) notify("Couldn't save the new order — please try again.");
+    });
   },
 
   // ── Schedule task as calendar event (atomic endpoint) ─────────────────────

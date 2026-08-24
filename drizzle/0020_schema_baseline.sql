@@ -371,6 +371,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"goal_id" uuid,
 	"parent_task_id" uuid,
 	"depth" integer DEFAULT 0 NOT NULL,
+	"position" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tasks_estimated_minutes_check" CHECK ("tasks"."estimated_minutes" > 0)
@@ -718,6 +719,10 @@ CREATE INDEX IF NOT EXISTS "verifications_identifier_idx" ON "verifications" USI
 CREATE INDEX IF NOT EXISTS "tasks_user_id_idx" ON "tasks" USING btree ("user_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "tasks_status_idx" ON "tasks" USING btree ("status");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_user_status_position_idx" ON "tasks" USING btree ("user_id","status","position");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_user_due_idx" ON "tasks" USING btree ("user_id","due_date");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "tasks_linked_event_id_idx" ON "tasks" USING btree ("linked_event_id");
 --> statement-breakpoint

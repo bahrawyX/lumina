@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   goal_id uuid,
   parent_task_id uuid,
   depth integer NOT NULL DEFAULT 0,
+  position integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

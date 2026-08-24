@@ -108,6 +108,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     else if (typeof body.goalId === 'string' && body.goalId.trim()) {
       patch.goalId = body.goalId;
     }
+    // The handler used to ignore `order` entirely, so every reorder request was
+    // a no-op. `order` is the client-side name for `tasks.position`.
+    if (typeof body.order === 'number' && Number.isInteger(body.order)) {
+      patch.position = Math.max(0, Math.min(100_000, body.order));
+    }
 
     // C2: capture the prior status so the completion award fires only on a real
     // not-done → done transition — re-completing (done→todo→done) must not re-award.

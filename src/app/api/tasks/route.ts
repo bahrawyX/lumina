@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks, events, docs, goals } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 function normalizeTimeString(value: unknown): string | null {
@@ -36,7 +36,9 @@ export async function GET(req: NextRequest) {
       .select()
       .from(tasks)
       .where(eq(tasks.userId, userId))
-      .orderBy(tasks.createdAt);
+      // `position` first so a manual reorder actually survives a reload;
+      // `createdAt` breaks ties for rows that have never been dragged.
+      .orderBy(tasks.position, tasks.createdAt);
 
     // Map DB rows to the client-side Task shape
     const mapped = rows.map((row, index) => ({
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
       scheduledStart: row.scheduledStart ?? null,
       scheduledEnd: row.scheduledEnd ?? null,
       remainingFocusTime: row.remainingFocusTime ?? null,
-      order: index,
+      order: row.position,
       context: null,
       linkedEventId: row.linkedEventId ?? null,
       parentTaskId: row.parentTaskId ?? null,
@@ -169,6 +171,13 @@ export async function POST(req: NextRequest) {
         parentTaskId: resolvedParentTaskId,
         depth: resolvedDepth,
         goalId: typeof goalId === 'string' && goalId.trim() ? goalId : null,
+        // Land a new task at the end of its column rather than sharing
+        // position 0 with everything else. Computed in SQL so two concurrent
+        // creates cannot read the same max.
+        position: sql`coalesce((
+          select max(t2.position) + 1 from ${tasks} t2
+          where t2.user_id = ${userId} and t2.status = ${normalizeTaskStatusForDb(status)}
+        ), 0)`,
       })
       .returning({ id: tasks.id });
 
