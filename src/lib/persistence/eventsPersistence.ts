@@ -5,6 +5,7 @@
  */
 
 import type { CalendarEvent } from '@/types';
+import { apiFetch, apiGetList, type FetchResult } from './apiClient';
 
 type CanonicalProvider = 'local' | 'google' | 'outlook' | 'microsoft';
 type CanonicalSource = 'manual' | 'google' | 'microsoft' | 'scheduler' | 'lumina' | 'outlook' | 'local';
@@ -73,29 +74,14 @@ function mapUiToCanonicalSource(
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function apiBase() {
-  if (typeof window !== 'undefined') return '';
-  return process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-}
-
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  return res;
-}
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/** Fetch all events for the currently authenticated user. */
-export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
-  try {
-    const res = await apiFetch('/api/events');
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    const mapped = data.map((event: ApiEvent) => ({
+/**
+ * Fetch all events for the currently authenticated user.
+ *
+ * See `tasksPersistence.fetchAllForCurrentUser` — a failure must not read as an
+ * empty calendar.
+ */
+export async function fetchAllForCurrentUser(): Promise<FetchResult<CalendarEvent[]>> {
+  return apiGetList<ApiEvent, CalendarEvent>('/api/events', (event) => ({
       id: event.id,
       title: event.title,
       description: event.description ?? '',
@@ -113,11 +99,7 @@ export async function fetchAllForCurrentUser(): Promise<CalendarEvent[]> {
       outlookId: event.externalEventId,
       linkedTaskId: event.linkedTaskId ?? null,
       createdViaNL: event.createdViaNL === true,
-    }));
-    return mapped;
-  } catch {
-    return [];
-  }
+  }) as CalendarEvent);
 }
 
 /**

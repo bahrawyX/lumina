@@ -6,30 +6,18 @@ import { useCoinsStore } from '@/store/useCoinsStore';
 import { useCelebrationStore } from '@/store/useCelebrationStore';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { toast } from 'sonner';
+import { apiFetch, apiGetList, type FetchResult } from './apiClient';
 
 const isDev = process.env.NODE_ENV === 'development';
 
-function apiBase(): string {
-  return typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_APP_URL ?? '');
-}
-
-async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  });
-}
-
-export async function fetchAllForCurrentUser(): Promise<Goal[]> {
-  try {
-    const res = await apiFetch('/api/goals');
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    if (isDev) console.error('[goalsPersistence.fetchAll] failed');
-    return [];
-  }
+/**
+ * Fetch all goals for the currently authenticated user.
+ *
+ * See `tasksPersistence.fetchAllForCurrentUser` — a failure must not read as a
+ * user with zero goals.
+ */
+export async function fetchAllForCurrentUser(): Promise<FetchResult<Goal[]>> {
+  return apiGetList<Goal>('/api/goals');
 }
 
 export async function createOne(

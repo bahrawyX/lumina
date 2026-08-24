@@ -10,20 +10,9 @@
 
 import type { PlannedTaskItem } from '@/store/useDailyPlanStore';
 import { useCoinsStore } from '@/store/useCoinsStore';
+import { apiFetch, apiGetList, type FetchResult } from './apiClient';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function apiBase() {
-  if (typeof window !== 'undefined') return '';
-  return process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-}
-
-async function apiFetch(path: string, init?: RequestInit) {
-  return fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-}
 
 /**
  * Convert a PlannedTaskItem (planDate YYYY-MM-DD + HH:mm times) to ISO
@@ -67,17 +56,14 @@ function fromApiRow(row: ApiPlannerItem): PlannedTaskItem {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Fetch all planner items for the currently authenticated user. */
-export async function fetchAllForCurrentUser(): Promise<PlannedTaskItem[]> {
-  try {
-    const res = await apiFetch('/api/planner-items');
-    if (!res.ok) return [];
-    const data: unknown = await res.json();
-    if (!Array.isArray(data)) return [];
-    return data.map((row: ApiPlannerItem) => fromApiRow(row));
-  } catch {
-    return [];
-  }
+/**
+ * Fetch all planner items for the currently authenticated user.
+ *
+ * See `tasksPersistence.fetchAllForCurrentUser` — a failure must not read as an
+ * empty day plan.
+ */
+export async function fetchAllForCurrentUser(): Promise<FetchResult<PlannedTaskItem[]>> {
+  return apiGetList<ApiPlannerItem, PlannedTaskItem>('/api/planner-items', fromApiRow);
 }
 
 /** Persist a new planner item to the DB. Throws on failure so caller can rollback. */

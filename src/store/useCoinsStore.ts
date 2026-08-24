@@ -133,7 +133,12 @@ export const useCoinsStore = create<CoinsState>((set, get) => ({
 
   refetchBalance: async () => {
     try {
-      const data = await coinsPersistence.fetchCoinsData();
+      const result = await coinsPersistence.fetchCoinsData();
+      // Keep prior state on failure. Previously `fetchCoinsData` resolved with
+      // `defaultCoinsData()` on any error, so a transient 500 during a refetch
+      // silently zeroed the visible balance and emptied the inventory.
+      if (result.kind === 'error') return;
+      const data = result.data;
       set({
         balance: data.balance,
         transactions: data.transactions,

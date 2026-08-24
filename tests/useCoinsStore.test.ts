@@ -185,11 +185,14 @@ describe('useCoinsStore — invalidateBalance', () => {
 
   it('debounces multiple invalidate calls into a single fetch', async () => {
     vi.mocked(coinsPersistence.fetchCoinsData).mockResolvedValue({
-      balance: 777,
-      transactions: [],
-      consumables: { ...DEFAULT_CONSUMABLES },
-      ownedItems: [],
-      activeCosmetics: {},
+      kind: 'ok',
+      data: {
+        balance: 777,
+        transactions: [],
+        consumables: { ...DEFAULT_CONSUMABLES },
+        ownedItems: [],
+        activeCosmetics: {},
+      },
     });
 
     const store = useCoinsStore.getState();

@@ -5,6 +5,7 @@
  */
 
 import type { Task } from '@/types/task';
+import { apiFetch, apiGetList, type FetchResult } from './apiClient';
 import { useCoinsStore } from '@/store/useCoinsStore';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { triggerConfetti } from '@/components/ui/ConfettiEffect';
@@ -21,38 +22,21 @@ function mapUiStatusToDb(status: Task['status'] | undefined): 'todo' | 'doing' |
   return status;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────────
 
-function apiBase() {
-  if (typeof window !== 'undefined') return '';
-  return process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-}
-
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  return res;
-}
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/** Fetch all tasks for the currently authenticated user. */
-export async function fetchAllForCurrentUser(): Promise<Task[]> {
-  try {
-    const res = await apiFetch('/api/tasks');
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    return data
-      .map((task: Task & { status?: ApiTaskStatus }) => ({
-      ...task,
-      status: mapApiStatusToUi((task.status ?? 'todo') as ApiTaskStatus),
-    }));
-  } catch {
-    return [];
-  }
+/**
+ * Fetch all tasks for the currently authenticated user.
+ *
+ * Returns a `FetchResult` rather than `Task[]`: a 500, an expired session and a
+ * dropped connection used to be indistinguishable from "this user has no
+ * tasks", so a transient failure rendered as an empty board with no error and
+ * no retry. The caller must now decide which it is.
+ */
+export async function fetchAllForCurrentUser(): Promise<FetchResult<Task[]>> {
+  return apiGetList<Task & { status?: ApiTaskStatus }, Task>('/api/tasks', (task) => ({
+    ...task,
+    status: mapApiStatusToUi((task.status ?? 'todo') as ApiTaskStatus),
+  }));
 }
 
 /** Persist a new task to the DB. Returns the DB-assigned UUID, or null on failure. */

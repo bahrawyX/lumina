@@ -3,23 +3,26 @@
 /**
  * PersistenceBootstrap
  *
- * Runs once on mount inside the authenticated app shell.
- * Fetches canonical records from the DB and hydrates the relevant Zustand
- * stores.
+ * Runs once on mount inside the authenticated app shell. Fetches canonical
+ * records from the DB and hydrates the relevant Zustand stores.
  *
- * Safe-mode rules:
- * - DB is the ONLY source of truth — stores always start empty.
- * - hydrateFromDb is always called (even with empty array) so dbHydrated
- *   is set to true regardless of whether the user has data yet.
- * - On fetch failure in development only, hydrateFromDbFailed is called
- *   as a fallback to localStorage (namespaced by userId).
- * - localStorage writes remain active for debugging; reads are disabled
- *   except as the dev fallback path above.
+ * Rules:
+ * - The DB is the ONLY source of truth — stores always start empty.
+ * - `hydrateFromDb` is always called (even with an empty array) so `dbHydrated`
+ *   flips to true regardless of whether the user has data yet.
+ * - Every fetch returns a `FetchResult`, so "the request failed" and "there is
+ *   no data" are distinguishable. On failure we call the store's
+ *   `hydrateFromDbFailed()` AND record the failure in `useHydrationStatusStore`,
+ *   which drives the retry banner in `AppShell`.
+ * - Hydrates once per `retryNonce` (guarded by a ref + each store's `dbHydrated`
+ *   flag). Bumping the nonce via `useHydrationStatusStore.retry()` re-runs the
+ *   whole bootstrap in place, so the retry affordance does not lose UI state.
+ * - Runs in parallel — no sequential blocking. No polling, no refetch loops.
  *
- * Other rules enforced:
- * - Hydrates only once (guarded by useRef + store.dbHydrated flag)
- * - Runs in parallel — no sequential blocking
- * - No polling, no refetch loops, no hot-path interference
+ * Historical note: the `hydrate*Failed()` callbacks below were wired up long
+ * before this change and could never fire, because every `fetchAll*` swallowed
+ * errors and resolved with `[]`. The entire failure-handling API existed, read
+ * correctly in review, and did nothing at runtime. It is live now.
  */
 
 import { useEffect, useRef } from 'react';
@@ -40,6 +43,11 @@ import { useOnboardingStore } from '@/store/useOnboardingStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { authClient } from '@/lib/auth-client';
 import { useGuestStore } from '@/store/useGuestStore';
+import {
+  useHydrationStatusStore,
+  type HydrationDomain,
+} from '@/store/useHydrationStatusStore';
+import { apiGetList, type FetchResult } from '@/lib/persistence/apiClient';
 import * as eventsPersistence from '@/lib/persistence/eventsPersistence';
 import * as tasksPersistence from '@/lib/persistence/tasksPersistence';
 import * as focusPersistence from '@/lib/persistence/focusPersistence';
@@ -55,6 +63,41 @@ export { migrateMany as migratePlannerMany } from '@/lib/persistence/plannerPers
 export { migrateMany as migrateFocusMany } from '@/lib/persistence/focusPersistence';
 
 const isDev = process.env.NODE_ENV === 'development';
+
+/**
+ * Route one bootstrap fetch to the right store call.
+ *
+ * On success: hydrate and clear any recorded failure for that domain (so a
+ * successful retry removes it from the banner).
+ * On failure: flip `dbHydrated` via `onFailure` — which unblocks the shell's
+ * loading overlay — and record *why*, so the UI can distinguish "you have no
+ * tasks" from "we could not load your tasks".
+ */
+async function hydrateDomain<T>(
+  domain: HydrationDomain,
+  fetcher: () => Promise<FetchResult<T>>,
+  onSuccess: (data: T) => void,
+  onFailure: () => void,
+): Promise<void> {
+  const { markFailed, markLoaded } = useHydrationStatusStore.getState();
+  let result: FetchResult<T>;
+  try {
+    result = await fetcher();
+  } catch {
+    // A fetcher should not throw — they all return FetchResult now — but a
+    // mapper bug must not take down the other eleven hydrations.
+    onFailure();
+    markFailed(domain, 'parse');
+    return;
+  }
+  if (result.kind === 'error') {
+    onFailure();
+    markFailed(domain, result.status);
+    return;
+  }
+  onSuccess(result.data);
+  markLoaded(domain);
+}
 
 export default function PersistenceBootstrap() {
   const hasRun = useRef(false);
@@ -170,10 +213,17 @@ export default function PersistenceBootstrap() {
     window.location.reload();
   }, [session?.user?.id]);
 
+  // Bumped by the retry banner. Re-running the whole bootstrap in place is
+  // better than a page reload: it keeps unsaved UI state and open dialogs.
+  const retryNonce = useHydrationStatusStore((s) => s.retryNonce);
+  const lastRunNonce = useRef(-1);
+
   useEffect(() => {
-    if (hasRun.current) return;
-    if (eventsHydrated && tasksHydrated && focusHydrated && plannerHydrated) return;
+    const isRetry = retryNonce !== lastRunNonce.current && lastRunNonce.current !== -1;
+    if (hasRun.current && !isRetry) return;
+    if (!isRetry && eventsHydrated && tasksHydrated && focusHydrated && plannerHydrated) return;
     hasRun.current = true;
+    lastRunNonce.current = retryNonce;
 
     const userId = session?.user?.id ?? null;
     if (userId) {
@@ -185,7 +235,7 @@ export default function PersistenceBootstrap() {
     void Promise.allSettled([
       // User preferences — expands to include timezone, notification prefs,
       // work hours, pomodoro settings, and ambient track
-      preferencesHydrated
+      preferencesHydrated && !isRetry
         ? Promise.resolve()
         : fetch('/api/users/preferences')
             .then(async (res) => {
@@ -236,67 +286,58 @@ export default function PersistenceBootstrap() {
               // Keep local persisted settings if DB prefs are unavailable.
             }),
 
-      // ── Hydration catches: ALWAYS flip dbHydrated to true on failure ──
-      // The previous `if (isDev)` guards left the global hydration overlay
-      // (AppShell.tsx z-[9999] flex items-center justify-center bg-background)
-      // stuck forever in production whenever any of the three required fetches
-      // (events, tasks, focus) failed silently — the user couldn't even see
-      // the page underneath. dbHydrated reaching `true` after a failed fetch
-      // is correct: it means "we tried, it didn't work, render with empty
-      // state instead of blocking forever".
-      eventsHydrated
+      // ── Domain hydration ───────────────────────────────────────
+      // Each call flips `dbHydrated` to true whether it succeeded or failed —
+      // that unblocks the shell's z-[9999] overlay, which previously hung
+      // forever in production when a required fetch failed. The difference is
+      // that a failure is now RECORDED, so the shell renders a retry banner
+      // instead of presenting an empty workspace as fact.
+      eventsHydrated && !isRetry
         ? Promise.resolve()
-        : eventsPersistence.fetchAllForCurrentUser()
-            .then((events) => hydrateEvents(events as any))
-            .catch(() => hydrateEventsFailed()),
+        : hydrateDomain(
+            'events',
+            eventsPersistence.fetchAllForCurrentUser,
+            (events) => hydrateEvents(events as never),
+            hydrateEventsFailed,
+          ),
 
-      tasksHydrated
+      tasksHydrated && !isRetry
         ? Promise.resolve()
-        : tasksPersistence.fetchAllForCurrentUser()
-            .then((tasks) => hydrateTasks(tasks))
-            .catch(() => hydrateTasksFailed()),
+        : hydrateDomain('tasks', tasksPersistence.fetchAllForCurrentUser, hydrateTasks, hydrateTasksFailed),
 
-      focusHydrated
+      focusHydrated && !isRetry
         ? Promise.resolve()
-        : focusPersistence.fetchAllForCurrentUser()
-            .then((sessions) => hydrateFocus(sessions))
-            .catch(() => hydrateFocusFailed()),
+        : hydrateDomain('focus', focusPersistence.fetchAllForCurrentUser, hydrateFocus, hydrateFocusFailed),
 
-      plannerHydrated
+      plannerHydrated && !isRetry
         ? Promise.resolve()
-        : plannerPersistence.fetchAllForCurrentUser()
-            .then((items) => hydratePlanner(items))
-            .catch(() => {
-              hydratePlannerFailed();
-            }),
+        : hydrateDomain(
+            'planner',
+            plannerPersistence.fetchAllForCurrentUser,
+            hydratePlanner,
+            hydratePlannerFailed,
+          ),
 
-      docsHydrated
+      docsHydrated && !isRetry
         ? Promise.resolve()
-        : docsPersistence.fetchAll()
-            .then((docs) => hydrateDocs(docs))
-            .catch(() => hydrateDocsFailed()),
+        : hydrateDomain('docs', docsPersistence.fetchAll, hydrateDocs, hydrateDocsFailed),
 
-      goalsHydrated
+      goalsHydrated && !isRetry
         ? Promise.resolve()
-        : goalsPersistence.fetchAllForCurrentUser()
-            .then((goals) => hydrateGoals(goals))
-            .catch(() => hydrateGoalsFailed()),
+        : hydrateDomain('goals', goalsPersistence.fetchAllForCurrentUser, hydrateGoals, hydrateGoalsFailed),
 
-      coinsHydrated
+      coinsHydrated && !isRetry
         ? Promise.resolve()
-        : coinsPersistence.fetchCoinsData()
-            .then((data) => hydrateCoins(data))
-            .catch(() => hydrateCoinsFailed()),
+        : hydrateDomain('coins', coinsPersistence.fetchCoinsData, hydrateCoins, hydrateCoinsFailed),
 
-      achievementsHydrated
+      achievementsHydrated && !isRetry
         ? Promise.resolve()
-        : fetch('/api/achievements')
-            .then(async (res) => {
-              if (!res.ok) throw new Error(`Achievements fetch failed (${res.status})`);
-              return res.json();
-            })
-            .then((data) => hydrateAchievements(Array.isArray(data) ? data : []))
-            .catch(() => hydrateAchievementsFailed()),
+        : hydrateDomain(
+            'achievements',
+            () => apiGetList<unknown>('/api/achievements'),
+            (data) => hydrateAchievements(data as never),
+            hydrateAchievementsFailed,
+          ),
 
       useStreakStore.getState().hydrateFromAPI().catch(() => {}),
 
@@ -327,6 +368,7 @@ export default function PersistenceBootstrap() {
         })
         .catch(() => {}),
     ]).then((results) => {
+      useHydrationStatusStore.getState().retryFinished();
       if (isDev) {
         const rejected = results.filter((r) => r.status === 'rejected');
         if (rejected.length > 0) {
@@ -335,7 +377,7 @@ export default function PersistenceBootstrap() {
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [retryNonce]);
 
   return null;
 }

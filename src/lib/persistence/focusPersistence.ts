@@ -8,34 +8,18 @@
 
 import type { FocusSession } from '@/store/useFocusStore';
 import type { FocusSessionResult } from '@/types';
+import { apiFetch, apiGetList, type FetchResult } from './apiClient';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function apiBase() {
-  if (typeof window !== 'undefined') return '';
-  return process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-}
-
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  return res;
-}
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/** Fetch focus session history for the currently authenticated user. */
-export async function fetchAllForCurrentUser(): Promise<FocusSession[]> {
-  try {
-    const res = await apiFetch('/api/focus-sessions');
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
+/**
+ * Fetch focus session history for the currently authenticated user.
+ *
+ * See `tasksPersistence.fetchAllForCurrentUser` — a failure must not read as a
+ * user who has never run a focus session.
+ */
+export async function fetchAllForCurrentUser(): Promise<FetchResult<FocusSession[]>> {
+  return apiGetList<FocusSession>('/api/focus-sessions');
 }
 
 /**

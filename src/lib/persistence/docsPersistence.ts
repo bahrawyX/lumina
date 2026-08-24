@@ -10,22 +10,9 @@
 
 import type { DocTreeNode, DocContent, DocPatch, DocSearchResult } from '@/types/doc';
 import { useCoinsStore } from '@/store/useCoinsStore';
+import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function apiBase() {
-  if (typeof window !== 'undefined') return '';
-  return process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-}
-
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${apiBase()}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  return res;
-}
 
 // ── Guest mode (localStorage-backed) ───────────────────────────────────────────
 
@@ -79,19 +66,17 @@ function stripContent(doc: DocContent): DocTreeNode {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-/** Fetch all docs for the sidebar tree (no content field). */
-export async function fetchAll(): Promise<DocTreeNode[]> {
+/**
+ * Fetch all docs for the sidebar tree (no content field).
+ *
+ * See `tasksPersistence.fetchAllForCurrentUser` — a failure must not read as a
+ * user with no documents. Guest mode reads localStorage and cannot fail.
+ */
+export async function fetchAll(): Promise<FetchResult<DocTreeNode[]>> {
   if (isGuestUser()) {
-    return Object.values(readGuestDocs()).map(stripContent);
+    return ok(Object.values(readGuestDocs()).map(stripContent));
   }
-  try {
-    const res = await apiFetch('/api/docs');
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
+  return apiGetList<DocTreeNode>('/api/docs');
 }
 
 /** Fetch a single doc with full content. */

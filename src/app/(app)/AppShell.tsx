@@ -31,6 +31,7 @@ import { useLinkStore } from "@/store/useLinkStore";
 import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
 import { QuickCapture } from "@/components/quick-capture/QuickCapture";
 import { useQuickCaptureStore } from "@/store/useQuickCaptureStore";
+import { HydrationFailureBanner } from '@/components/system/HydrationFailureBanner';
 
 // Genuinely gated — QuickSwitcher only mounts once Cmd+K fires. The
 // other global surfaces (EventModal, TutorialOverlay, AmbientSoundDrawer,
@@ -427,13 +428,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
                 />
               </div>
+              {/* This was an empty <motion.p>, so at any duration the user
+                  stared at an unlabelled spinner. */}
               <motion.p
                 className="text-xs text-muted-foreground font-medium tracking-wide"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.3 }}
               >
-
+                Loading your workspace…
               </motion.p>
             </div>
           </motion.div>
@@ -502,6 +505,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="font-logo text-base font-semibold text-foreground tracking-tight">Lumina</span>
           </div>
 
+          {/* Surfaces a bootstrap fetch that failed. Without it, a 500 or a
+              dropped connection renders as a clean empty workspace and the user
+              concludes their data is gone. */}
+          <HydrationFailureBanner />
           <GuestBanner />
           <div className="w-full max-w-[1024px] min-[1800px]:max-w-[1280px] min-[1800px]:mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:px-8 lg:py-1.5 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 lg:pb-1.5 relative">
             <PageTransition>{children}</PageTransition>

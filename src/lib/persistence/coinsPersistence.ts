@@ -3,6 +3,7 @@
  */
 import type { CoinsData } from '@/types/coins';
 import { DEFAULT_CONSUMABLES } from '@/types/coins';
+import { apiGetJson, type FetchResult } from './apiClient';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -10,17 +11,16 @@ function apiBase(): string {
   return typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_APP_URL ?? '');
 }
 
-export async function fetchCoinsData(): Promise<CoinsData> {
-  try {
-    const res = await fetch(`${apiBase()}/api/coins`, {
-      headers: { 'Content-Type': 'application/json' },
-    });
-    if (!res.ok) return defaultCoinsData();
-    return await res.json();
-  } catch {
-    if (isDev) console.error('[coinsPersistence.fetchCoinsData] failed');
-    return defaultCoinsData();
-  }
+/**
+ * Fetch the user's wallet, ledger and inventory.
+ *
+ * See `tasksPersistence.fetchAllForCurrentUser` — a failure previously returned
+ * `defaultCoinsData()`, i.e. a zero balance and an empty inventory, which for an
+ * economy screen is worse than an error: it tells the user they lost everything
+ * they earned.
+ */
+export async function fetchCoinsData(): Promise<FetchResult<CoinsData>> {
+  return apiGetJson<CoinsData>('/api/coins');
 }
 
 export async function purchaseItem(itemId: string): Promise<{ success: boolean; newBalance?: number; error?: string }> {
