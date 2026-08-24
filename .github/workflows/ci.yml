@@ -76,8 +76,8 @@ jobs:
             const r = require('./eslint-report.json');
             const errors = r.reduce((n, f) => n + f.errorCount, 0);
             const warnings = r.reduce((n, f) => n + f.warningCount, 0);
-            const MAX_ERRORS = 62;
-            const MAX_WARNINGS = 125;
+            const MAX_ERRORS = 58;
+            const MAX_WARNINGS = 120;
             console.log('eslint: ' + errors + ' errors, ' + warnings + ' warnings');
             console.log('budget: ' + MAX_ERRORS + ' errors, ' + MAX_WARNINGS + ' warnings');
             if (errors > MAX_ERRORS || warnings > MAX_WARNINGS) {

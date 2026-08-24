@@ -137,11 +137,13 @@
 }
 
 /* ─── Custom fonts ────────────────────────────────────────────────────────── */
+/* P3-8: 2.8 MB of vendor font kits shipped to serve two files. The `.woff`
+   and `.ttf` fallbacks below were the reason the whole kit had to stay — woff2
+   has been universal since 2018 (every browser this app's CSP and APIs already
+   require supports it), so they only added weight and a second failure mode. */
 @font-face {
   font-family: 'ClashGrotesk-Variable';
-  src: url('/ClashGrotesk_Complete/Fonts/WEB/fonts/ClashGrotesk-Variable.woff2') format('woff2'),
-       url('/ClashGrotesk_Complete/Fonts/WEB/fonts/ClashGrotesk-Variable.woff') format('woff'),
-       url('/ClashGrotesk_Complete/Fonts/WEB/fonts/ClashGrotesk-Variable.ttf') format('truetype');
+  src: url('/ClashGrotesk_Complete/Fonts/WEB/fonts/ClashGrotesk-Variable.woff2') format('woff2');
   font-weight: 200 700;
   font-display: swap;
   font-style: normal;
@@ -149,9 +151,7 @@
 
 @font-face {
   font-family: 'ClashDisplay-Variable';
-  src: url('/ClashDisplay_Complete/Fonts/WEB/fonts/ClashDisplay-Variable.woff2') format('woff2'),
-       url('/ClashDisplay_Complete/Fonts/WEB/fonts/ClashDisplay-Variable.woff') format('woff'),
-       url('/ClashDisplay_Complete/Fonts/WEB/fonts/ClashDisplay-Variable.ttf') format('truetype');
+  src: url('/ClashDisplay_Complete/Fonts/WEB/fonts/ClashDisplay-Variable.woff2') format('woff2');
   font-weight: 200 700;
   font-display: swap;
   font-style: normal;
@@ -367,9 +367,12 @@ html.transitioning-theme *::after {
   word-break: break-word;
 }
 
-/* Headings — Clash Display for H1/H2 (matches Lumina design system) */
+/* Headings — Clash Display for H1/H2 (matches Lumina design system).
+   These named 'Clash Display' / 'Clash Grotesk' — families NO `@font-face`
+   in this file declares — so both rules fell straight through to sans-serif
+   and the editor's headings never used the display face at all. */
 .lumina-editor .ProseMirror h1 {
-  font-family: 'Clash Display', 'Clash Grotesk', sans-serif;
+  font-family: 'ClashDisplay-Variable', 'ClashGrotesk-Variable', sans-serif;
   font-size: 2rem;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -378,7 +381,7 @@ html.transitioning-theme *::after {
   color: hsl(var(--foreground));
 }
 .lumina-editor .ProseMirror h2 {
-  font-family: 'Clash Display', 'Clash Grotesk', sans-serif;
+  font-family: 'ClashDisplay-Variable', 'ClashGrotesk-Variable', sans-serif;
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.025em;

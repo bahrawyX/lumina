@@ -49,3 +49,13 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# P3-8: generated logs were committed at the repo root. The rules above only
+# cover the package-manager debug logs; a `> tsc.log` or a Playwright run
+# produced files nothing ignored.
+*.log
+
+# Claude Code scratch worktrees — full checkouts (~2.9 GB), each its own git
+# repo. Committing them would nest repositories inside this one, and they were
+# already polluting `eslint .` with 53,743 problems before the eslint ignore.
+.claude/worktrees/

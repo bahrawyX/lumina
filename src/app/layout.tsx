@@ -133,6 +133,25 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* Route-specific Lottie preloads are declared in the pages that use them
             (FocusPage, PerformancePage, PomodoroView) to avoid wasted bandwidth on
             unrelated routes such as /tasks. */}
+        {/* P3-8: both faces are `font-display: swap`, so without a preload the
+            browser only discovers them after the stylesheet parses and the
+            first paint uses the fallback — a visible reflow on every cold load.
+            `crossOrigin` is required on font preloads even for same-origin
+            files; without it the browser fetches the font twice. */}
+        <link
+          rel="preload"
+          as="font"
+          type="font/woff2"
+          href="/ClashGrotesk_Complete/Fonts/WEB/fonts/ClashGrotesk-Variable.woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          as="font"
+          type="font/woff2"
+          href="/ClashDisplay_Complete/Fonts/WEB/fonts/ClashDisplay-Variable.woff2"
+          crossOrigin="anonymous"
+        />
         {/* PWA: Apple touch icon */}
         <link rel="apple-touch-icon" href="/icons/pwa-192.png" />
         {/* Scroll-reveal elements start hidden and are revealed by framer-motion.
