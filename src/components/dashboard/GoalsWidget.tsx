@@ -7,7 +7,7 @@ import { useGoalsStore } from '@/store/useGoalsStore';
 import { computeGoalProgress } from '@/types/goal';
 import { differenceInDays, isPast } from 'date-fns';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 
 // ── Icons — 14px outline set matching TodaySummaryWidget ──────────────────────
 

@@ -9,7 +9,7 @@ import { useStreakStore } from '@/store/useStreakStore';
 import { useDailyBriefStore } from '@/store/useDailyBriefStore';
 import { useCalendarStore } from '@/store/useCalendarStore';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 

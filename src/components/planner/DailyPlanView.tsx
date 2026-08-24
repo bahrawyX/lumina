@@ -45,7 +45,7 @@ import { PlanningModal } from './PlanningModal';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 
 const POOL_ROW_ESTIMATE_PX = 78;
 

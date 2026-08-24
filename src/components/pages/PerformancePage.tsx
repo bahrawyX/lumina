@@ -20,7 +20,7 @@ import { timeToMinutes } from '@/utils/time/timeUtils';
 import { computeBestDay } from '@/utils/performance/bestDay';
 import ContributionHeatmap from '@/components/performance/contributions/ContributionHeatmap';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LottieAnimation, STREAK_FIRE_LAYER_MAP } from '@/components/ui/LottieAnimation';
 import { FireIcon, LightningIcon, TrophyIcon, CoinIcon, GemIcon } from '@/components/ui/AnimatedIcons';

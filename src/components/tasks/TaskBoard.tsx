@@ -54,7 +54,7 @@ import { useFocusStore } from '../../store/useFocusStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { Button } from '../ui/button';
 import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 import { TaskFilterBar } from './TaskFilterBar';
 import { filterTasks, hasActiveFilters } from '../../utils/taskFilters';
 
@@ -118,14 +118,6 @@ export const TaskBoard: React.FC = () => {
   const isMobile = useIsMobile();
   const viewMode = isMobile ? 'list' : storedViewMode;
 
-  // Detect `npx boneyard-js build` — when true, we render BOTH the kanban
-  // and list branches (list offscreen) so the CLI can snapshot both Skeletons.
-  const [isBoneyardBuild, setIsBoneyardBuild] = useState(false);
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as unknown as { __BONEYARD_BUILD?: boolean }).__BONEYARD_BUILD) {
-      setIsBoneyardBuild(true);
-    }
-  }, []);
 
   // ── Focus time map (taskId → total seconds) ────────────────────────────────
   const focusSessions = useFocusStore(s => s.sessionHistory);
@@ -965,31 +957,6 @@ export const TaskBoard: React.FC = () => {
         </motion.div>
       )}
       </AnimatePresence>
-
-      {/* Offscreen renderer for the INACTIVE view during `npx boneyard-js build`.
-          The CLI visits /tasks with default viewMode='kanban' and can't flip
-          localStorage, so without this the tasks.TaskBoard.list Skeleton never
-          mounts for snapshot. Hidden from screen readers + users. */}
-      {isBoneyardBuild && viewMode === 'kanban' && mounted && (
-        <div aria-hidden style={{ position: 'absolute', left: -99999, top: -99999, width: 1280, height: 720, pointerEvents: 'none' }}>
-          <Skeleton
-            name="tasks.TaskBoard.list"
-            loading={false}
-            fallback={null}
-          >
-            <TaskListView
-              tasks={tasks}
-              subtaskMap={subtaskMap}
-              linkedEvents={linkedEvents}
-              focusTimeMap={focusTimeMap}
-              onEdit={openEditDialog}
-              onDelete={handleDelete}
-              onStatusChange={handleStatusChange}
-              onAddTask={openCreateDialog}
-            />
-          </Skeleton>
-        </div>
-      )}
 
       {/* Task dialog (create / edit) — lazy, only mount when open */}
       <React.Suspense fallback={null}>

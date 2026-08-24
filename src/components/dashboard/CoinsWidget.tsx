@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useCoinsStore } from '@/store/useCoinsStore';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 import { isToday } from 'date-fns';
 
 // ── Icons — matching TodaySummaryWidget set ───────────────────────────────────

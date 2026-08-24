@@ -569,7 +569,7 @@ export default function GoalsPage() {
 
       {/* Grid */}
       {/*
-        We bypass boneyard-js's <Skeleton> wrapper here on purpose. If the
+        We bypass the <Skeleton> wrapper here on purpose. If the
         user has even one goal in memory we render it immediately — the
         skeleton previously gated children on its `loading` prop, and at
         least one prod-only edge case had it leaving the children hidden

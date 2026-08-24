@@ -281,12 +281,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // for a single frame even when onboarding was already done.
     if (!onboardingHydrated) return;
 
-    // Skip onboarding redirect during `npx boneyard-js build` so the CLI can
-    // snapshot Skeleton layouts on every route without an auth / onboarding wall.
-    if (typeof window !== "undefined" && (window as unknown as { __BONEYARD_BUILD?: boolean }).__BONEYARD_BUILD) {
-      return;
-    }
-
     if (!onboardingCompleted && pathname !== "/onboarding") {
       router.replace("/onboarding");
     } else if (onboardingCompleted && pathname === "/onboarding") {

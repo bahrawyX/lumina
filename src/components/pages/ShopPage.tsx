@@ -5,7 +5,7 @@ import { useCoinsStore, selectCoinBalance, selectOwnedItems, selectActiveCosmeti
 import { SHOP_ITEMS, type ShopItem, ACCENT_COLORS } from '@/config/shopItems';
 import { Button } from '@/components/ui/button';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
-import { Skeleton } from 'boneyard-js/react';
+import { Skeleton } from '@/components/ui/LoadingBoundary';
 import { toast } from 'sonner';
 import { ShopItemIcon } from '@/components/shop/ShopItemIcon';
 import { CoinsBadge } from '@/components/coins/CoinsBadge';
