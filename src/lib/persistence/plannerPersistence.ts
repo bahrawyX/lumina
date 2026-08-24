@@ -10,7 +10,13 @@
 
 import type { PlannedTaskItem } from '@/store/useDailyPlanStore';
 import { useCoinsStore } from '@/store/useCoinsStore';
-import { apiFetch, apiGetList, type FetchResult } from './apiClient';
+import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
+import {
+  GUEST_COLLECTIONS,
+  isGuestUser,
+  readGuest,
+  writeGuest,
+} from './guestStorage';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -63,11 +69,30 @@ function fromApiRow(row: ApiPlannerItem): PlannedTaskItem {
  * empty day plan.
  */
 export async function fetchAllForCurrentUser(): Promise<FetchResult<PlannedTaskItem[]>> {
+  // See tasksPersistence — a guest's day plan was in-memory only.
+  if (isGuestUser()) return ok(readGuestPlanner());
+
   return apiGetList<ApiPlannerItem, PlannedTaskItem>('/api/planner-items', fromApiRow);
+}
+
+// ── Guest mode ──────────────────────────────────────────────────────────────
+
+export function readGuestPlanner(): PlannedTaskItem[] {
+  return readGuest<PlannedTaskItem[]>(GUEST_COLLECTIONS.planner, []);
+}
+
+function writeGuestPlanner(items: PlannedTaskItem[]): void {
+  writeGuest(GUEST_COLLECTIONS.planner, items);
 }
 
 /** Persist a new planner item to the DB. Throws on failure so caller can rollback. */
 export async function createOne(item: PlannedTaskItem): Promise<string> {
+  if (isGuestUser()) {
+    const items = readGuestPlanner();
+    items.push(item);
+    writeGuestPlanner(items);
+    return item.id;
+  }
   const { startTime, endTime } = toISOTimestamps(item);
   const res = await apiFetch('/api/planner-items', {
     method: 'POST',
@@ -92,6 +117,16 @@ export async function updateOne(
   /** Current item for computing full ISO timestamps when only one time field changes */
   current: PlannedTaskItem,
 ): Promise<void> {
+  if (isGuestUser()) {
+    const items = readGuestPlanner();
+    const index = items.findIndex((i) => i.id === id);
+    if (index >= 0) {
+      items[index] = { ...items[index], ...patch };
+      writeGuestPlanner(items);
+    }
+    return;
+  }
+
   const merged: PlannedTaskItem = { ...current, ...patch };
   const body: Record<string, string> = {};
   if (patch.startTime || patch.planDate) {
@@ -113,6 +148,10 @@ export async function updateOne(
 
 /** Delete a planner item from the DB. Throws on failure. */
 export async function deleteOne(id: string): Promise<void> {
+  if (isGuestUser()) {
+    writeGuestPlanner(readGuestPlanner().filter((i) => i.id !== id));
+    return;
+  }
   const res = await apiFetch(`/api/planner-items/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     throw new Error(`deleteOne failed (${res.status})`);

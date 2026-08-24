@@ -43,6 +43,8 @@ import { useOnboardingStore } from '@/store/useOnboardingStore';
 import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { authClient } from '@/lib/auth-client';
 import { useGuestStore } from '@/store/useGuestStore';
+import { migrateGuestData } from '@/lib/persistence/guestMigration';
+import notify from '@/utils/notify';
 import {
   useHydrationStatusStore,
   type HydrationDomain,
@@ -159,7 +161,28 @@ export default function PersistenceBootstrap() {
     if (sessionPending) return;
     if (!session?.user?.id) return;
     const { isGuest, clearGuestSession } = useGuestStore.getState();
-    if (isGuest) clearGuestSession();
+    if (!isGuest) return;
+
+    // The guest just became a real account. `GuestUpgradeModal` promises their
+    // data "can be imported" — before this, nothing imported it and the guest
+    // records were orphaned in localStorage until sign-out hard-deleted them.
+    void migrateGuestData()
+      .then((result) => {
+        if (result.migrated > 0) {
+          notify(
+            result.failed > 0
+              ? `Imported ${result.migrated} items. ${result.failed} couldn't be saved and are still on this device.`
+              : `Imported ${result.migrated} items from your guest session.`,
+          );
+        }
+      })
+      .catch(() => {
+        // Never block sign-in on the import. The guest data stays put and the
+        // next authenticated mount retries.
+      })
+      .finally(() => {
+        clearGuestSession();
+      });
   }, [session?.user?.id, sessionPending]);
 
   // Sync the auth user's real name + email into the calendar profile so the

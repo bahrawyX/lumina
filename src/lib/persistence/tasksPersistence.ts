@@ -5,7 +5,13 @@
  */
 
 import type { Task } from '@/types/task';
-import { apiFetch, apiGetList, type FetchResult } from './apiClient';
+import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
+import {
+  GUEST_COLLECTIONS,
+  isGuestUser,
+  readGuest,
+  writeGuest,
+} from './guestStorage';
 import { useCoinsStore } from '@/store/useCoinsStore';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { triggerConfetti } from '@/components/ui/ConfettiEffect';
@@ -33,14 +39,38 @@ function mapUiStatusToDb(status: Task['status'] | undefined): 'todo' | 'doing' |
  * no retry. The caller must now decide which it is.
  */
 export async function fetchAllForCurrentUser(): Promise<FetchResult<Task[]>> {
+  // Guest mode reads localStorage and cannot fail. Before this existed, a
+  // guest's tasks went to /api/tasks, got 401, and were swallowed into an
+  // empty board — in-memory only, destroyed by any reload, with no error shown.
+  if (isGuestUser()) return ok(readGuestTasks());
+
   return apiGetList<Task & { status?: ApiTaskStatus }, Task>('/api/tasks', (task) => ({
     ...task,
     status: mapApiStatusToUi((task.status ?? 'todo') as ApiTaskStatus),
   }));
 }
 
+// ── Guest mode ───────────────────────────────────────────────────
+
+export function readGuestTasks(): Task[] {
+  return readGuest<Task[]>(GUEST_COLLECTIONS.tasks, []);
+}
+
+function writeGuestTasks(tasks: Task[]): void {
+  writeGuest(GUEST_COLLECTIONS.tasks, tasks);
+}
+
 /** Persist a new task to the DB. Returns the DB-assigned UUID, or null on failure. */
 export async function createOne(task: Task): Promise<string | null> {
+  if (isGuestUser()) {
+    const tasks = readGuestTasks();
+    tasks.push(task);
+    writeGuestTasks(tasks);
+    // The client-generated id IS the id in guest mode, so subsequent PATCHes
+    // against it resolve locally instead of 404ing against a server that never
+    // saw this row.
+    return task.id;
+  }
   try {
     const payload = {
       ...task,
@@ -63,6 +93,16 @@ export async function createOne(task: Task): Promise<string | null> {
 
 /** Update an existing task in the DB. Fire-and-forget safe. */
 export async function updateOne(id: string, patch: Partial<Task>): Promise<void> {
+  if (isGuestUser()) {
+    const tasks = readGuestTasks();
+    const index = tasks.findIndex((t) => t.id === id);
+    if (index >= 0) {
+      tasks[index] = { ...tasks[index], ...patch };
+      writeGuestTasks(tasks);
+    }
+    // No coin award: the economy is account-only and runs server-side.
+    return;
+  }
   try {
     const payload = {
       ...patch,
@@ -109,6 +149,10 @@ export async function updateOne(id: string, patch: Partial<Task>): Promise<void>
 
 /** Delete a task from the DB. Fire-and-forget safe. */
 export async function deleteOne(id: string): Promise<void> {
+  if (isGuestUser()) {
+    writeGuestTasks(readGuestTasks().filter((t) => t.id !== id));
+    return;
+  }
   try {
     await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
   } catch (err) {

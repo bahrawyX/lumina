@@ -48,7 +48,9 @@ export const GuestBanner: React.FC = () => {
             {/* Message */}
             <p className="text-xs text-amber-900 dark:text-amber-200 flex-1 leading-snug">
               <span className="font-semibold">Guest mode — </span>
-              data is stored in this browser only and will be lost on sign-out or device change.{' '}
+              your tasks, events, plan and documents are saved in this browser only.
+              They stay here across reloads, but are lost if you sign out, clear
+              site data, or switch device or browser.{' '}
               <Link
                 href="/auth/signin"
                 className="font-semibold underline underline-offset-2 hover:opacity-70 transition-opacity"

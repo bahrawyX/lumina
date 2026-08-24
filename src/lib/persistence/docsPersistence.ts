@@ -11,44 +11,35 @@
 import type { DocTreeNode, DocContent, DocPatch, DocSearchResult } from '@/types/doc';
 import { useCoinsStore } from '@/store/useCoinsStore';
 import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
+import {
+  GUEST_COLLECTIONS,
+  isGuestUser,
+  readGuest,
+  writeGuest,
+} from './guestStorage';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 // ── Guest mode (localStorage-backed) ───────────────────────────────────────────
 
-const GUEST_DOCS_KEY = 'lumina-guest-docs';
-
-function isGuestUser(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const raw = localStorage.getItem('lumina-guest');
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as { state?: { isGuest?: boolean } };
-    return parsed?.state?.isGuest === true;
-  } catch {
-    return false;
-  }
-}
-
-function readGuestDocs(): Record<string, DocContent> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(GUEST_DOCS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, DocContent>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
+/**
+ * Guest docs are namespaced per guest session.
+ *
+ * They used to live under one flat key, `lumina-guest-docs`, shared by every
+ * guest on the device: guest A wrote a document and walked away, guest B opened
+ * /docs on the same browser and read A's full text via `fetchAll()` / `search()`.
+ * Guests have no user id, so the `lumina-user-id` cross-user guard could not
+ * help — and since an expired session used to silently make you a "guest", this
+ * was not limited to deliberate guest use.
+ *
+ * `guestStorage` suffixes every key with a per-browser-session guest id.
+ */
+export function readGuestDocs(): Record<string, DocContent> {
+  return readGuest<Record<string, DocContent>>(GUEST_COLLECTIONS.docs, {});
 }
 
 function writeGuestDocs(map: Record<string, DocContent>): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(GUEST_DOCS_KEY, JSON.stringify(map));
-  } catch {
-    // ignore quota errors
-  }
+  writeGuest(GUEST_COLLECTIONS.docs, map);
 }
 
 function newGuestId(): string {

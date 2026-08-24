@@ -57,7 +57,10 @@ const PRESERVE_ON_CLEAR = new Set<string>([
   'lumina-theme',         // next-themes
   'lumina_theme',
   'lumina-pwa-installed', // PWA install banner
-  'lumina-pwa-snooze',
+  // The key actually written by InstallPrompt is 'lumina-pwa-snoozed'. The
+  // singular spelling here matched nothing, so the snooze was cleared on every
+  // sign-out and the install prompt re-nagged. (F7.5)
+  'lumina-pwa-snoozed',
 ]);
 
 /**

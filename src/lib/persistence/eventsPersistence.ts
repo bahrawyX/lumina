@@ -5,7 +5,13 @@
  */
 
 import type { CalendarEvent } from '@/types';
-import { apiFetch, apiGetList, type FetchResult } from './apiClient';
+import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
+import {
+  GUEST_COLLECTIONS,
+  isGuestUser,
+  readGuest,
+  writeGuest,
+} from './guestStorage';
 
 type CanonicalProvider = 'local' | 'google' | 'outlook' | 'microsoft';
 type CanonicalSource = 'manual' | 'google' | 'microsoft' | 'scheduler' | 'lumina' | 'outlook' | 'local';
@@ -81,6 +87,10 @@ function mapUiToCanonicalSource(
  * empty calendar.
  */
 export async function fetchAllForCurrentUser(): Promise<FetchResult<CalendarEvent[]>> {
+  // See tasksPersistence — guest events were in-memory only and vanished on
+  // reload, while the banner promised they survived until sign-out.
+  if (isGuestUser()) return ok(readGuestEvents());
+
   return apiGetList<ApiEvent, CalendarEvent>('/api/events', (event) => ({
       id: event.id,
       title: event.title,
@@ -108,7 +118,21 @@ export async function fetchAllForCurrentUser(): Promise<FetchResult<CalendarEven
  * to roll back an optimistic mutation can await this and branch on the result.
  * Fire-and-forget callers can still ignore the return value.
  */
+export function readGuestEvents(): CalendarEvent[] {
+  return readGuest<CalendarEvent[]>(GUEST_COLLECTIONS.events, []);
+}
+
+function writeGuestEvents(events: CalendarEvent[]): void {
+  writeGuest(GUEST_COLLECTIONS.events, events);
+}
+
 export async function createOne(event: CalendarEvent): Promise<boolean> {
+  if (isGuestUser()) {
+    const events = readGuestEvents();
+    events.push(event);
+    writeGuestEvents(events);
+    return true;
+  }
   try {
     const provider = mapUiToCanonicalProvider(event);
     const res = await apiFetch('/api/events', {
@@ -131,6 +155,15 @@ export async function createOne(event: CalendarEvent): Promise<boolean> {
 
 /** Update an existing event in the DB. Fire-and-forget safe. */
 export async function updateOne(id: string, patch: Partial<CalendarEvent>): Promise<void> {
+  if (isGuestUser()) {
+    const events = readGuestEvents();
+    const index = events.findIndex((e) => e.id === id);
+    if (index >= 0) {
+      events[index] = { ...events[index], ...patch };
+      writeGuestEvents(events);
+    }
+    return;
+  }
   try {
     const provider = patch.provider === 'microsoft' || patch.provider === 'outlook'
       ? 'outlook'
@@ -172,6 +205,10 @@ export async function updateOne(id: string, patch: Partial<CalendarEvent>): Prom
 
 /** Delete an event from the DB. Fire-and-forget safe. */
 export async function deleteOne(id: string, queryString?: string): Promise<void> {
+  if (isGuestUser()) {
+    writeGuestEvents(readGuestEvents().filter((e) => e.id !== id));
+    return;
+  }
   try {
     await apiFetch(`/api/events/${id}${queryString ?? ''}`, { method: 'DELETE' });
   } catch (err) {

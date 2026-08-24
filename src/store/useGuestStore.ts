@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { beginGuestSession, clearGuestData } from '@/lib/persistence/guestStorage';
 
 /**
  * Guest mode — **only** ever entered deliberately.
@@ -40,10 +41,15 @@ interface GuestState {
    */
   enterGuestMode: () => void;
   /**
-   * Leave guest mode. Call on sign-in, sign-up and sign-out so a returning
-   * authenticated user never inherits a stale guest flag.
+   * Leave guest mode, KEEPING the local data. Called after sign-in/sign-up so
+   * the migration can still find anything it could not import.
    */
   clearGuestSession: () => void;
+  /**
+   * Leave guest mode and delete the local data. For an explicit "discard my
+   * guest work" action; never called implicitly.
+   */
+  abandonGuestData: () => void;
   dismissBanner: () => void;
 }
 
@@ -53,8 +59,17 @@ export const useGuestStore = create<GuestState>()(
       isGuest: false,
       bannerDismissed: false,
 
-      enterGuestMode: () => set({ isGuest: true, bannerDismissed: false }),
+      enterGuestMode: () => {
+        // Mint a fresh namespace so this guest never sees the previous guest's
+        // tasks, events or documents on a shared device.
+        beginGuestSession();
+        set({ isGuest: true, bannerDismissed: false });
+      },
       clearGuestSession: () => set({ isGuest: false, bannerDismissed: false }),
+      abandonGuestData: () => {
+        clearGuestData();
+        set({ isGuest: false, bannerDismissed: false });
+      },
       dismissBanner: () => set({ bannerDismissed: true }),
     }),
     {

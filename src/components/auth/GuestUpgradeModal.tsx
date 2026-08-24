@@ -62,7 +62,8 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                   {featureName
                     ? <><span className="font-medium text-foreground">{featureName}</span> requires a Lumina account.</>
                     : 'This feature requires a Lumina account.'}
-                  {' '}Sign up for free — your current guest data can be imported.
+                  {' '}Sign up free — the tasks, events and documents from this
+                  guest session are imported into your new account.
                 </p>
               </div>
 
