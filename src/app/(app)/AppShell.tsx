@@ -32,6 +32,8 @@ import { TaskCompletionPrompt } from "@/components/tasks/TaskCompletionPrompt";
 import { QuickCapture } from "@/components/quick-capture/QuickCapture";
 import { useQuickCaptureStore } from "@/store/useQuickCaptureStore";
 import { HydrationFailureBanner } from '@/components/system/HydrationFailureBanner';
+import { SessionExpiredDialog } from '@/components/system/SessionExpiredDialog';
+import { SessionExpiryWatcher } from '@/components/system/SessionExpiryWatcher';
 
 // Genuinely gated — QuickSwitcher only mounts once Cmd+K fires. The
 // other global surfaces (EventModal, TutorialOverlay, AmbientSoundDrawer,
@@ -449,6 +451,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Global goal/task completion trophy — triggered from the goals/tasks
             persistence layers on a real award (coinsEarned > 0). */}
         <CelebrationOverlay />
+        {/* Session loss is otherwise invisible: useSession() never re-polls, so
+            a session that dies with the tab open leaves the cached user in
+            place while every write is silently discarded. */}
+        <SessionExpiryWatcher />
+        <SessionExpiredDialog />
         <div className="hidden lg:flex lg:h-full">
           <Sidebar />
         </div>

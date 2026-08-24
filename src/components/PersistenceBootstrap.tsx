@@ -142,22 +142,24 @@ export default function PersistenceBootstrap() {
 
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
-  // Keep guest mode in step with the real session.
+  // Signing in clears a stale guest flag — that direction is always correct.
   //
-  // Signing in clears a stale guest flag. Being signed out *sets* it: without
-  // that, a user who never explicitly chose "continue as guest" sits in a
-  // third state where docsPersistence skips localStorage, calls /api/docs and
-  // gets a 401 — the "Couldn't create document" error — while tasks and
-  // events carry on working locally. Wait for the session to resolve first,
-  // otherwise the initial undefined would flag every user as a guest.
+  // The reverse is NOT done here any more. This effect used to call
+  // `setGuest(true)` whenever the session resolved with no user, which meant an
+  // expired cookie, a cleared cookie, a third-party-cookie block or a transient
+  // `/api/auth/get-session` failure all silently made you a "guest". That
+  // rerouted every doc write into `localStorage['lumina-guest-docs']` while the
+  // UI still looked like a signed-in account, and armed the `beforeunload`
+  // guard during what the user believed was an ordinary session.
+  //
+  // Guest mode is now entered only from the deliberate two-step confirm
+  // (`enterGuestMode`). "The session went away" is a different state, handled by
+  // `SessionExpiryWatcher` -> `SessionExpiredDialog`.
   useEffect(() => {
     if (sessionPending) return;
-    const { isGuest, setGuest, clearGuestSession } = useGuestStore.getState();
-    if (session?.user?.id) {
-      if (isGuest) clearGuestSession();
-    } else if (!isGuest) {
-      setGuest(true);
-    }
+    if (!session?.user?.id) return;
+    const { isGuest, clearGuestSession } = useGuestStore.getState();
+    if (isGuest) clearGuestSession();
   }, [session?.user?.id, sessionPending]);
 
   // Sync the auth user's real name + email into the calendar profile so the

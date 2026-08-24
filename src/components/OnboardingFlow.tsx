@@ -1003,7 +1003,7 @@ const OnboardingFlow: React.FC = () => {
   const plannerStore = usePlannerStore();
   const authClient = useLuminaAuthClient();
   const isGuest = useGuestStore((s) => s.isGuest);
-  const setGuest = useGuestStore((s) => s.setGuest);
+  const enterGuestMode = useGuestStore((s) => s.enterGuestMode);
   const {
     data: authData,
     isPending: authSessionPending,
@@ -1542,10 +1542,10 @@ const OnboardingFlow: React.FC = () => {
   ]);
 
   const handleContinueAsGuest = useCallback(() => {
-    setGuest(true);
+    enterGuestMode();
     setDirection(1);
     setStep(step + 1);
-  }, [setGuest, setStep, step]);
+  }, [enterGuestMode, setStep, step]);
 
   const canContinue = useCallback((): boolean => {
     if (step === 1) return authStatus === 'logged in' || isGuest;

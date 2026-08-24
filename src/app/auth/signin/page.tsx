@@ -212,7 +212,7 @@ function SignInPageInner() {
         callbackURL: destination,
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign up failed.'); return; }
-      useGuestStore.getState().setGuest(false);
+      useGuestStore.getState().clearGuestSession();
       router.replace(destination);
     } finally {
       setBusy(null);
@@ -233,7 +233,7 @@ function SignInPageInner() {
         callbackURL: destination,
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
-      useGuestStore.getState().setGuest(false);
+      useGuestStore.getState().clearGuestSession();
       router.replace(destination);
     } finally {
       setBusy(null);
@@ -246,7 +246,7 @@ function SignInPageInner() {
     try {
       const completed = await startOAuth('google');
       if (!completed) { setMessage('Google sign-in was cancelled.'); return; }
-      useGuestStore.getState().setGuest(false);
+      useGuestStore.getState().clearGuestSession();
       router.replace(destination);
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
