@@ -23,6 +23,8 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
+import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
+import { useOnboardingStore } from '../store/useOnboardingStore';
 import { authClient } from '../lib/auth-client';
 import type { CalendarEvent, EventCategory, EventProvider } from '../types';
 import { getCached, setCache } from '../lib/calendar/externalEventsCache';
@@ -172,11 +174,49 @@ export function useOutlookSync() {
   const googleConnected  = usePlannerStore((s) => s.googleConnected);
   const outlookConnected = usePlannerStore((s) => s.outlookConnected);
 
-  // Seed context demo events on first mount — visible immediately, no DB/timing dependency.
+  // Seed context demo events ONLY for a genuinely empty, brand-new calendar.
+  //
+  // This used to run unconditionally on every mount of the app shell, with no
+  // gate on whether the user had real data. Six events titled "Critical - demo
+  // event", "Focus - demo event", ... were merged into month, week and day
+  // views on days -1 through +4 — and they are `readOnly: true`, so the user
+  // could not delete them. Confirmed rendering in production for real accounts.
+  //
+  // The gate is: onboarding not yet completed AND the user has no events of
+  // their own from any source. `dbHydrated` matters — without it the check runs
+  // against an empty store before hydration finishes and seeds every user.
+  const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
+  const ownEventCount = useCalendarEventsStore((s) => s.events.length);
+  const onboardingCompleted = useOnboardingStore((s) => s.completed);
+  const externalEventCount = usePlannerStore(
+    (st) => st.googleEvents.length + st.outlookEvents.length,
+  );
+  const demoSeeded = useRef(false);
+
   useEffect(() => {
+    if (demoSeeded.current) return;
+    if (!eventsHydrated) return;
+    if (onboardingCompleted) return;
+    if (ownEventCount > 0) return;
+    if (externalEventCount > 0) return;
+
+    demoSeeded.current = true;
     setDemoLocalEvents(createContextDemoEvents());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    eventsHydrated,
+    onboardingCompleted,
+    ownEventCount,
+    externalEventCount,
+    setDemoLocalEvents,
+  ]);
+
+  // Clear the demos the moment the user has anything of their own, so the
+  // examples don't sit alongside real work.
+  useEffect(() => {
+    if (!demoSeeded.current) return;
+    if (ownEventCount === 0 && !onboardingCompleted) return;
+    setDemoLocalEvents([]);
+  }, [ownEventCount, onboardingCompleted, setDemoLocalEvents]);
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;
