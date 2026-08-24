@@ -1,4 +1,5 @@
 import 'server-only';
+import { providerErrorFromResponse, withProviderRetry } from '../providerError';
 import { getMicrosoftAccessToken } from './token';
 
 export const GRAPH_API = 'https://graph.microsoft.com/v1.0';
@@ -23,22 +24,25 @@ export async function graphFetch<T = unknown>(
     }
   }
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-    },
-    cache: 'no-store',
+  // See google/client.ts — bounded timeout, classified errors, retry only the
+  // transient kinds.
+  return withProviderRetry(async () => {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw providerErrorFromResponse('microsoft', res, body, path);
+    }
+
+    return res.json() as Promise<T>;
   });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(
-      `[microsoft/client] Graph API ${res.status} at ${path}: ${body}`,
-    );
-  }
-
-  return res.json() as Promise<T>;
 }
 
 /**

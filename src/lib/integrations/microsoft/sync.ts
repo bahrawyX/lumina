@@ -1,4 +1,5 @@
 import 'server-only';
+import { isFatalProviderError } from '../providerError';
 import {
   importMicrosoftCalendars,
   getMicrosoftCalendarsFromDb,
@@ -74,8 +75,19 @@ export async function runFullMicrosoftSync(
       calendarResults,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await markMicrosoftIntegrationError(userId, message);
+    // P1-12: this used to mark the integration `error` for ANY thrown error,
+    // including a rate limit or a transient 503. Once `status !== 'active'`,
+    // `get*AccessToken` throws "not active" for every subsequent call — live
+    // event fetch included — so ONE Google rate-limit blip silently killed the
+    // user's calendar until they noticed and reconnected by hand.
+    //
+    // Only a credential failure is fatal now. Transient failures leave the
+    // integration active and propagate so the caller can retry or report a
+    // partial sync.
+    if (isFatalProviderError(err)) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markMicrosoftIntegrationError(userId, message);
+    }
     throw err;
   }
 }
@@ -121,8 +133,19 @@ export async function runMicrosoftEventsSync(
       calendarResults,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await markMicrosoftIntegrationError(userId, message);
+    // P1-12: this used to mark the integration `error` for ANY thrown error,
+    // including a rate limit or a transient 503. Once `status !== 'active'`,
+    // `get*AccessToken` throws "not active" for every subsequent call — live
+    // event fetch included — so ONE Google rate-limit blip silently killed the
+    // user's calendar until they noticed and reconnected by hand.
+    //
+    // Only a credential failure is fatal now. Transient failures leave the
+    // integration active and propagate so the caller can retry or report a
+    // partial sync.
+    if (isFatalProviderError(err)) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markMicrosoftIntegrationError(userId, message);
+    }
     throw err;
   }
 }

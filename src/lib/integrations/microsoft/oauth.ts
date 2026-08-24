@@ -150,7 +150,16 @@ export async function handleMicrosoftCallback(req: NextRequest) {
           ),
         )
         .limit(1);
-      refreshToken = existing?.refreshToken ?? '';
+      // NOT `?? ''`. That wrote an empty string into a NOT NULL column while
+      // the row was marked `status: 'active'` — a connection that reports
+      // healthy and breaks an hour later, when the access token expires and the
+      // refresh has nothing to present. Google's callback correctly bails to
+      // the error redirect in this case; this now matches.
+      refreshToken = existing?.refreshToken ?? undefined;
+    }
+
+    if (!refreshToken) {
+      return NextResponse.redirect(errorRedirect);
     }
 
     await db

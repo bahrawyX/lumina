@@ -28,6 +28,8 @@ const SERVER_ONLY_TESTS = [
   // stays — unlike the logger's, which was removed because it guarded nothing.
   'tests/password-recovery.test.ts',
   'tests/auth-config.test.ts',
+  // P1-12/P1-13: imports the provider-error classifier, which is server-only.
+  'tests/provider-error.test.ts',
 ];
 
 const baseTest = {

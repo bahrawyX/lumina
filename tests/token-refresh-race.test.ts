@@ -31,14 +31,21 @@ import { getMicrosoftAccessToken } from '@/lib/integrations/microsoft/token';
 let client: IntegrationsTestDb['client'];
 
 /** A fetch stub that returns a fresh token and counts how many times it ran. */
-function makeTokenFetch(accessToken: string) {
+function makeTokenFetch(accessToken: string, rotatedRefreshToken?: string) {
   const state = { calls: 0 };
   const fn = vi.fn(async () => {
     state.calls++;
     return {
       ok: true,
       status: 200,
-      json: async () => ({ access_token: accessToken, expires_in: 3600 }),
+      json: async () => ({
+        access_token: accessToken,
+        expires_in: 3600,
+        // Microsoft ROTATES refresh tokens. The stub never returned one, which
+        // is why P1-11 — the rotated token being fetched and discarded — could
+        // not be observed by this suite.
+        ...(rotatedRefreshToken ? { refresh_token: rotatedRefreshToken } : {}),
+      }),
       text: async () => '',
     } as unknown as Response;
   });
@@ -132,6 +139,47 @@ describe('M3 — Microsoft: rotating refresh token is not burned twice', () => {
     expect(state.calls).toBe(1);
     expect(a).toBe('new-ms-access');
     expect(b).toBe('new-ms-access');
+  });
+
+  it('P1-11 — the rotated refresh token is PERSISTED, not discarded', async () => {
+    const expired = new Date(Date.now() - 60_000);
+    const userId = await seedIntegration(client, {
+      provider: 'microsoft',
+      accessToken: 'old-access',
+      refreshToken: 'r0',
+      expiresAt: expired,
+    });
+    const { fn } = makeTokenFetch('new-ms-access', 'r1-rotated');
+    vi.stubGlobal('fetch', fn);
+
+    await getMicrosoftAccessToken(userId);
+
+    const row = await getIntegration(client, userId, 'microsoft');
+    // This assertion previously read `toBe('r0')` — it asserted the OLD value
+    // was unchanged, locking the bug in. Because the stored token never slid
+    // forward, every Outlook integration silently died at the original token's
+    // absolute expiry (~90 days) and the user had to reconnect with no
+    // explanation.
+    expect(row.refresh_token).toBe('r1-rotated');
+  });
+
+  it('keeps the existing refresh token when the response omits one', async () => {
+    // Some Entra configurations do not rotate. Overwriting with null there
+    // would break the integration immediately.
+    const expired = new Date(Date.now() - 60_000);
+    const userId = await seedIntegration(client, {
+      provider: 'microsoft',
+      accessToken: 'old-access',
+      refreshToken: 'keep-me',
+      expiresAt: expired,
+    });
+    const { fn } = makeTokenFetch('new-ms-access');
+    vi.stubGlobal('fetch', fn);
+
+    await getMicrosoftAccessToken(userId);
+
+    const row = await getIntegration(client, userId, 'microsoft');
+    expect(row.refresh_token).toBe('keep-me');
   });
 });
 

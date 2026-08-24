@@ -16,7 +16,7 @@ const providerClause = or(
 
 async function refreshMicrosoftToken(
   refreshToken: string,
-): Promise<{ accessToken: string; expiresAt: Date }> {
+): Promise<{ accessToken: string; expiresAt: Date; refreshToken: string | null }> {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
 
@@ -59,10 +59,20 @@ async function refreshMicrosoftToken(
   const data = (await res.json()) as {
     access_token: string;
     expires_in?: number;
+    refresh_token?: string;
   };
   return {
     accessToken: data.access_token,
     expiresAt: new Date(Date.now() + (data.expires_in ?? 3600) * 1000),
+    // P1-11: this field was FETCHED AND THROWN AWAY. The comment a few lines up
+    // says "Microsoft ROTATES refresh tokens", and the response was then
+    // destructured as `{ access_token, expires_in }` only.
+    //
+    // Because the stored refresh token never slid forward, EVERY Outlook
+    // integration died at the original token's absolute expiry (~90 days) and
+    // the user had to reconnect with no explanation. Google does not rotate, so
+    // the identically-shaped Google path is benign.
+    refreshToken: data.refresh_token ?? null,
   };
 }
 
@@ -133,13 +143,27 @@ export async function getMicrosoftAccessToken(userId: string): Promise<string> {
     // its previous (expired-but-intact) token, so a retry starts clean. The
     // UPDATE below runs only after a full, valid token is returned, so an aborted
     // refresh can never write a partial or empty token.
-    const { accessToken, expiresAt } = await refreshMicrosoftToken(
-      integration.refreshToken,
-    );
+    const { accessToken, expiresAt, refreshToken: rotatedRefreshToken } =
+      await refreshMicrosoftToken(integration.refreshToken);
 
     await tx
       .update(integrations)
-      .set({ accessToken, expiresAt, status: 'active', updatedAt: new Date() })
+      .set({
+        accessToken,
+        expiresAt,
+        // P1-11: persist the ROTATED refresh token. This UPDATE previously set
+        // accessToken/expiresAt/status/updatedAt and never refreshToken, so the
+        // stored token never advanced and the integration expired for good at
+        // the original token's absolute lifetime.
+        //
+        // `?? integration.refreshToken` covers a response that omits it — some
+        // Entra configurations do not rotate — where keeping the existing token
+        // is correct and overwriting with null would break the integration
+        // immediately.
+        refreshToken: rotatedRefreshToken ?? integration.refreshToken,
+        status: 'active',
+        updatedAt: new Date(),
+      })
       .where(and(eq(integrations.userId, userId), providerClause!));
 
     return accessToken;
