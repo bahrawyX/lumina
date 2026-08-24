@@ -117,6 +117,16 @@ export async function apiGetJson<T>(path: string, init?: RequestInit): Promise<F
     return fail('network');
   }
   if (!res.ok) return fail(res.status);
+  // P2-7: the list endpoints cap how many rows they will return. The cap is
+  // deliberately high enough that no ordinary account reaches it, but a cut
+  // nobody can see is worse than no cut at all — so when the server says it
+  // truncated, say so somewhere a developer will find it.
+  if (res.headers.get('X-Result-Truncated') === 'true') {
+    console.warn(
+      `[apiClient] ${path} was truncated at ${res.headers.get('X-Result-Limit')} rows. ` +
+        'Narrow the request with ?from/?to or ?limit.',
+    );
+  }
   try {
     return ok((await res.json()) as T);
   } catch {

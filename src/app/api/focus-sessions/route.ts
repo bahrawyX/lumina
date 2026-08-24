@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { focusSessions, users, achievements, tasks, goals } from '@/db/schema';
@@ -16,6 +16,8 @@ import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
 import { logger } from '@/lib/logger';
 import { getUserTimeZone } from '@/lib/time/eventTimeZone';
+import { parseRange } from '@/lib/dateRange';
+import { listHeaders, parseLimit } from '@/lib/listLimits';
 
 /** GET /api/focus-sessions — return session history for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -25,13 +27,54 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
 
+  // P2-7: this returned every session ever recorded, ascending, unpaginated —
+  // the fastest-growing of the three lists (a daily user adds several rows a
+  // day, forever).
+  const { searchParams } = new URL(req.url);
+  const limitResult = parseLimit(searchParams.get('limit'));
+  if (limitResult.kind === 'error') {
+    return NextResponse.json({ error: limitResult.message }, { status: 400 });
+  }
+  const { limit } = limitResult;
+
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
+  let window: { start: Date; end: Date } | null = null;
+  if (fromParam || toParam) {
+    const range = parseRange(fromParam, toParam, {
+      defaultStart: new Date(0),
+      defaultEnd: new Date('2100-01-01T00:00:00.000Z'),
+    });
+    if (range.kind === 'error') {
+      return NextResponse.json({ error: range.message }, { status: 400 });
+    }
+    window = { start: range.start, end: range.end };
+  }
+
   try {
     const db = getDatabase();
-    const rows = await db
+    // Selected DESC so the ceiling keeps the MOST RECENT sessions — a LIMIT on
+    // the ascending order would have returned the user's oldest history and
+    // hidden everything they actually did this year — then reversed, because
+    // the client's history view expects ascending.
+    const recent = await db
       .select()
       .from(focusSessions)
-      .where(eq(focusSessions.userId, userId))
-      .orderBy(focusSessions.startTime);
+      .where(
+        and(
+          eq(focusSessions.userId, userId),
+          window ? gte(focusSessions.startTime, window.start) : undefined,
+          window ? lt(focusSessions.startTime, window.end) : undefined,
+        ),
+      )
+      .orderBy(desc(focusSessions.startTime))
+      .limit(limit);
+
+    if (recent.length >= limit) {
+      logger.warn('list truncated', { route: 'GET /api/focus-sessions', userId, limit });
+    }
+
+    const rows = recent.reverse();
 
     const mapped = rows.map((row) => ({
       id: row.id,
@@ -43,7 +86,7 @@ export async function GET(req: NextRequest) {
       completed: true,
     }));
 
-    return NextResponse.json(mapped);
+    return NextResponse.json(mapped, { headers: listHeaders(rows.length, limit) });
   } catch (err) {
     logger.error('unhandled', { route: 'GET /api/focus-sessions' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

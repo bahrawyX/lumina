@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { tasks, events, docs, goals } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { listHeaders, parseLimit } from '@/lib/listLimits';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -15,6 +16,10 @@ function normalizeRemainingFocusTime(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return Math.max(0, Math.round(value));
 }
+
+/** Mirrors `taskStatusEnum`; a bad `?status` is a 400, not a silent full scan. */
+const TASK_STATUSES = ['todo', 'doing', 'done'] as const;
+type TaskStatus = (typeof TASK_STATUSES)[number];
 
 function normalizeTaskStatusForDb(status: unknown): 'todo' | 'doing' | 'done' {
   if (status === 'doing' || status === 'done') return status;
@@ -28,17 +33,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const userId = session.user.id;
-  void req;
+
+  // P2-7: this returned every task the user has ever created, unpaginated.
+  // `?status` narrows to one board column; `?limit` caps the rest.
+  const { searchParams } = new URL(req.url);
+  const limitResult = parseLimit(searchParams.get('limit'));
+  if (limitResult.kind === 'error') {
+    return NextResponse.json({ error: limitResult.message }, { status: 400 });
+  }
+  const { limit } = limitResult;
+
+  const statusParam = searchParams.get('status');
+  if (statusParam !== null && !TASK_STATUSES.includes(statusParam as TaskStatus)) {
+    return NextResponse.json(
+      { error: `status must be one of: ${TASK_STATUSES.join(', ')}` },
+      { status: 400 },
+    );
+  }
 
   try {
     const db = getDatabase();
     const rows = await db
       .select()
       .from(tasks)
-      .where(eq(tasks.userId, userId))
+      .where(
+        and(
+          eq(tasks.userId, userId),
+          statusParam ? eq(tasks.status, statusParam as TaskStatus) : undefined,
+        ),
+      )
       // `position` first so a manual reorder actually survives a reload;
       // `createdAt` breaks ties for rows that have never been dragged.
-      .orderBy(tasks.position, tasks.createdAt);
+      // Matches `tasks_user_status_position_idx`.
+      .orderBy(tasks.position, tasks.createdAt)
+      .limit(limit);
+
+    if (rows.length >= limit) {
+      logger.warn('list truncated', { route: 'GET /api/tasks', userId, limit });
+    }
 
     // Map DB rows to the client-side Task shape
     const mapped = rows.map((row, index) => ({
@@ -64,7 +96,7 @@ export async function GET(req: NextRequest) {
       updatedAt: row.updatedAt.toISOString(),
     }));
 
-    return NextResponse.json(mapped);
+    return NextResponse.json(mapped, { headers: listHeaders(rows.length, limit) });
   } catch (err) {
     logger.error('unhandled', { route: 'GET /api/tasks' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

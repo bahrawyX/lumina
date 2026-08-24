@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, lt } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
@@ -12,6 +12,8 @@ import {
 } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 import { resolvePrimaryLocalCalendarId } from '@/lib/calendars/primaryLocal';
+import { parseRange } from '@/lib/dateRange';
+import { listHeaders, parseLimit } from '@/lib/listLimits';
 
 type EventProvider = 'local' | 'google' | 'outlook';
 type ApiEventProvider = 'local' | 'google' | 'microsoft';
@@ -122,6 +124,32 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
 
+  // P2-7: this returned EVERY event the user has ever created, unpaginated and
+  // unfiltered, on every page load — and nothing in the product deletes them,
+  // so the cost only grows. `?from`/`?to` narrows it; `?limit` caps it.
+  const { searchParams } = new URL(req.url);
+  const limitResult = parseLimit(searchParams.get('limit'));
+  if (limitResult.kind === 'error') {
+    return NextResponse.json({ error: limitResult.message }, { status: 400 });
+  }
+  const { limit } = limitResult;
+
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
+  let window: { start: Date; end: Date } | null = null;
+  if (fromParam || toParam) {
+    // Rejects an over-wide window rather than truncating it — the same choice
+    // `/api/events/expand` and `parseRange` already make.
+    const range = parseRange(fromParam, toParam, {
+      defaultStart: new Date(0),
+      defaultEnd: new Date('2100-01-01T00:00:00.000Z'),
+    });
+    if (range.kind === 'error') {
+      return NextResponse.json({ error: range.message }, { status: 400 });
+    }
+    window = { start: range.start, end: range.end };
+  }
+
   try {
     const db = getDatabase();
     const rows = await db
@@ -134,11 +162,27 @@ export async function GET(req: NextRequest) {
       // External provider events are no longer stored in the DB.
       // Only local (Lumina-owned) events live here; Google/Microsoft events
       // are fetched on demand and cached in the browser via /api/external-events/*.
-      .where(and(eq(events.userId, userId), eq(events.provider, 'local')))
-      .orderBy(events.startTime);
+      .where(
+        and(
+          eq(events.userId, userId),
+          eq(events.provider, 'local'),
+          // An event that ENDS after the window starts and STARTS before it
+          // ends overlaps it — a multi-day event straddling the boundary has to
+          // come back, so this is not a plain `start_time BETWEEN`.
+          window ? gte(events.endTime, window.start) : undefined,
+          window ? lt(events.startTime, window.end) : undefined,
+        ),
+      )
+      .orderBy(events.startTime)
+      .limit(limit);
+
+    if (rows.length >= limit) {
+      logger.warn('list truncated', { route: 'GET /api/events', userId, limit });
+    }
 
     return NextResponse.json(
       rows.map((row) => mapRowToApiEvent(row.event, row.calendarProvider ?? undefined)),
+      { headers: listHeaders(rows.length, limit) },
     );
   } catch (err) {
     logger.error('unhandled', { route: 'GET /api/events' }, err);
