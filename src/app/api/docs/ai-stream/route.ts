@@ -17,6 +17,46 @@ const perDayLimiter = createRateLimiter('aiStreamDaily', {
   max: 200,
 });
 
+const GEMINI_MODEL = 'gemini-2.0-flash';
+
+/** Hard ceiling on the response. Previously there was no `config` at all. */
+const MAX_OUTPUT_TOKENS = 1024;
+
+/** Wall-clock ceiling on one generation, independent of the client. */
+const GENERATION_TIMEOUT_MS = 60_000;
+
+/** Longest prompt we will forward. */
+const MAX_PROMPT_CHARS = 2_000;
+
+/**
+ * Longest slice of the document we will forward as context.
+ *
+ * `DocEditor` sends `editor.getText()` — the ENTIRE document — and the server
+ * used to concatenate it with no truncation. A 2 MB doc is roughly 500k input
+ * tokens per keystroke-assist, billed to our key.
+ */
+const MAX_CONTEXT_CHARS = 8_000;
+
+/** Reject oversized bodies outright rather than parsing them. */
+const MAX_BODY_BYTES = 64 * 1024;
+
+/**
+ * The endpoint's actual job, stated to the model.
+ *
+ * Without this the prompt was 100% caller-supplied with only a 3-character
+ * minimum — which does not make this a document-editing endpoint, it makes it a
+ * general-purpose LLM API for anyone who can register an account, billed to
+ * `GEMINI_API_KEY`.
+ *
+ * A system instruction is not an access control and is not claimed to be; the
+ * durable per-user quotas above are what bound the cost. This bounds the
+ * *shape* of the output and stops the endpoint reading as an open chat proxy.
+ */
+const SYSTEM_INSTRUCTION = `You are a writing assistant embedded in the Lumina document editor.
+You help the user draft, rewrite, summarise, expand, and edit the text of the document they are working on.
+Respond with the document text only — no preamble, no explanation, no markdown code fences.
+If a request is not about writing or editing the user's document, reply with a single short sentence saying you can only help with the document.`;
+
 /** POST /api/docs/ai-stream — Gemini streaming proxy for doc AI features. */
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -37,6 +77,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Cheap pre-parse rejection: refusing a 5 MB body is much cheaper than
+  // parsing it. Next route handlers have no default body cap.
+  const declaredLength = Number(req.headers.get('content-length') ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: 'Request body too large' }, { status: 413 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -49,50 +96,123 @@ export async function POST(req: NextRequest) {
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 3) {
     return NextResponse.json({ error: 'prompt is required (min 3 chars)' }, { status: 400 });
   }
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    return NextResponse.json(
+      { error: `prompt must be under ${MAX_PROMPT_CHARS} characters` },
+      { status: 400 },
+    );
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
   }
 
-  // Award coins for using AI in docs — once per UTC day, idempotent via the
-  // ledger key `ai_docs:<utc-date>` (M2, no check-then-award race).
-  void awardCoins(userId, [scopeAward(aiInDocsAward(), { utcDate: utcDateKey(new Date()) })])
-    .catch((e) => console.error('[ai-docs coin award]', e));
+  // Truncate server-side. A client-side cap is a suggestion; this is the limit.
+  const trimmedContext =
+    typeof context === 'string' && context.length > 0
+      ? context.slice(0, MAX_CONTEXT_CHARS)
+      : '';
+
+  const userContent = trimmedContext
+    ? `Document so far:\n${trimmedContext}\n\nUser request:\n${prompt.trim()}`
+    : prompt.trim();
 
   try {
     const ai = new GoogleGenAI({ apiKey });
 
-    const fullPrompt = context
-      ? `Context:\n${context}\n\nUser request:\n${prompt.trim()}`
-      : prompt.trim();
+    /**
+     * One controller for every reason this generation should stop: the client
+     * navigating away, our own wall-clock ceiling, or the stream being
+     * cancelled.
+     *
+     * Previously the `ReadableStream` defined only `start` — no `cancel` — and
+     * `req.signal` was never wired in. When the user navigated away the
+     * `for await` loop kept pulling from Gemini until generation completed,
+     * fully billed, on a function still holding compute. With no
+     * `maxOutputTokens` that could run a long time.
+     */
+    const ac = new AbortController();
+    const abort = () => ac.abort();
+    req.signal.addEventListener('abort', abort);
+    const timeout = setTimeout(abort, GENERATION_TIMEOUT_MS);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      req.signal.removeEventListener('abort', abort);
+    };
 
     const stream = new ReadableStream({
       async start(controller) {
+        let sawFirstChunk = false;
         try {
           const response = await ai.models.generateContentStream({
-            model: 'gemini-2.0-flash',
-            contents: fullPrompt,
+            model: GEMINI_MODEL,
+            contents: [{ role: 'user', parts: [{ text: userContent }] }],
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              maxOutputTokens: MAX_OUTPUT_TOKENS,
+              temperature: 0.7,
+              abortSignal: ac.signal,
+            },
           });
 
           for await (const chunk of response) {
+            if (ac.signal.aborted) break;
             const text = chunk.text;
-            if (text) {
-              controller.enqueue(new TextEncoder().encode(text));
+            if (!text) continue;
+
+            if (!sawFirstChunk) {
+              sawFirstChunk = true;
+              // Award AFTER the first real chunk, not before the call. The
+              // award used to run ahead of the request, so a 503 from Gemini
+              // still paid out the daily `ai_docs` coin.
+              //
+              // Still `void` rather than awaited: blocking the first token of a
+              // streaming response on a coin write would be a visible latency
+              // regression, and the ledger key `ai_docs:<utc-date>` makes the
+              // award idempotent, so a lost one is recoverable and a duplicate
+              // is impossible.
+              void awardCoins(userId, [
+                scopeAward(aiInDocsAward(), { utcDate: utcDateKey(new Date()) }),
+              ]).catch((e) => console.error('[ai-docs coin award]', e));
             }
+
+            controller.enqueue(new TextEncoder().encode(text));
           }
           controller.close();
         } catch (err) {
+          // An abort is the expected end of a cancelled stream, not an error.
+          if (ac.signal.aborted) {
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
           console.error('[AI stream error]', err);
           controller.error(err);
+        } finally {
+          cleanup();
         }
+      },
+
+      /**
+       * Fired when the consumer goes away — a client disconnect, or the
+       * platform tearing the response down. This is the hook that actually
+       * stops us paying for tokens nobody will read.
+       */
+      cancel() {
+        abort();
+        cleanup();
       },
     });
 
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'private, no-store, max-age=0',
         Connection: 'keep-alive',
       },
     });

@@ -51,6 +51,13 @@ import DocLinkPicker, { type DocSearchResult } from './DocLinkPicker';
 // re-instantiate every language parser on every render.
 const lowlight = createLowlight(common);
 
+/**
+ * Trailing slice of the document sent as AI context. Mirrors
+ * MAX_CONTEXT_CHARS in /api/docs/ai-stream, which truncates server-side
+ * regardless - this is the polite half of the same limit.
+ */
+const AI_CONTEXT_CHARS = 8_000;
+
 const AI_PLACEHOLDER = '✨ Generating…';
 
 export interface DocEditorProps {
@@ -425,7 +432,11 @@ export default function DocEditor({
           credentials: 'include',
           body: JSON.stringify({
             prompt,
-            context: editor.getText(),
+            // The whole document used to be sent on every assist. A long doc
+            // is hundreds of thousands of input tokens per keystroke-assist,
+            // billed to our Gemini key. The server truncates too - this just
+            // avoids pushing the bytes over the wire in the first place.
+            context: editor.getText().slice(-AI_CONTEXT_CHARS),
           }),
         });
       } catch {
@@ -436,7 +447,21 @@ export default function DocEditor({
 
       if (res.status === 429) {
         removePlaceholder();
-        toast.error('AI assist limit reached. Try again in a minute.');
+        // The server distinguishes the per-minute cap from the daily one; show
+        // whichever it actually sent rather than always blaming the minute.
+        let message = 'AI assist limit reached. Try again in a minute.';
+        try {
+          const payload = (await res.json()) as { message?: string };
+          if (payload?.message) message = payload.message;
+        } catch {
+          /* keep the default */
+        }
+        toast.error(message);
+        return;
+      }
+      if (res.status === 413) {
+        removePlaceholder();
+        toast.error('That request was too large.');
         return;
       }
       if (!res.ok || !res.body) {
