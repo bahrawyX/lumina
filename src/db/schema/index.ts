@@ -43,6 +43,7 @@ export * from './goalTargets';
 export * from './coinTransactions';
 export * from './dailyRewardCaps';
 export * from './rateLimits';
+export * from './notificationSends';
 
 export const usersRelations = relations(users, ({ many }) => ({
 	accounts: many(accounts),

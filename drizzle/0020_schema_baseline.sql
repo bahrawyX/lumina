@@ -432,6 +432,14 @@ CREATE TABLE IF NOT EXISTS "rate_limits" (
 	"expires_at" timestamp with time zone DEFAULT now() + interval '1 day' NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "notification_sends" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"kind" varchar(64) NOT NULL,
+	"local_date" varchar(10) NOT NULL,
+	"sent_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 DO $$ BEGIN
   ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
@@ -642,6 +650,13 @@ EXCEPTION
   WHEN duplicate_table THEN NULL;
 END $$;
 --> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "notification_sends" ADD CONSTRAINT "notification_sends_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+END $$;
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "accounts_user_id_idx" ON "accounts" USING btree ("user_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "accounts_provider_id_idx" ON "accounts" USING btree ("provider_id");
@@ -745,3 +760,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_push_subscriptions_user_endpoint" ON "pus
 CREATE UNIQUE INDEX IF NOT EXISTS "rate_limits_key_uniq" ON "rate_limits" USING btree ("key");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "rate_limits_expires_at_idx" ON "rate_limits" USING btree ("expires_at");
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "notification_sends_user_kind_date_uniq" ON "notification_sends" USING btree ("user_id","kind","local_date");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "notification_sends_sent_at_idx" ON "notification_sends" USING btree ("sent_at");

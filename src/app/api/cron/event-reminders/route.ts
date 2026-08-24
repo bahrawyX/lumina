@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq, gte, lte, isNull, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { events, users } from '@/db/schema';
@@ -8,8 +8,20 @@ import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-// NOTE: Vercel Hobby plan — runs once per day (9 AM UTC)
-// Upgrade to Pro for per-minute precision (10-min-before reminders)
+/** P1-2: no cron route declared this; Vercel's default is 10s. */
+export const maxDuration = 60;
+
+/**
+ * Ceiling on reminders claimed per run.
+ *
+ * The claiming UPDATE has no `user_id` predicate and every `events` index is
+ * `(user_id, …)`-leading, so it was a **full sequential scan of the entire
+ * events table, taking row locks as it went**. `events_reminder_due_idx`
+ * (migration 0023) is a partial index on `(start_time) WHERE reminder_sent_at
+ * IS NULL AND is_all_day = false` — exactly this query — and the LIMIT bounds
+ * the lock set even if the plan ever changes.
+ */
+const MAX_REMINDERS_PER_RUN = 500;
 
 /**
  * Formats a Date into a human-readable local time string for the user.
@@ -36,9 +48,17 @@ export async function GET(req: Request) {
   const db = getDatabase();
   const now = new Date();
 
-  // Query events starting in the next 1–24 hours that haven't been reminded
-  const in1Hour = new Date(now.getTime() + 1 * 60 * 60 * 1000);
-  const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  // P1-2: the window was [now+1h, now+24h] while the cron fired ONCE daily at
+  // 09:00 UTC — so an event starting between 09:00 and 10:00 UTC fell outside
+  // yesterday's window and outside today's, and was **never** reminded. That is
+  // a permanent one-hour blind spot, every day.
+  //
+  // The window now starts at `now` and extends past 24h, and the cron runs
+  // hourly, so consecutive runs overlap rather than leaving a gap. The atomic
+  // claim below makes overlap free: a reminder already claimed is simply not
+  // re-selected.
+  const windowStart = now;
+  const windowEnd = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
   // ATOMIC CLAIM (M4): mark every due, unsent reminder in a single UPDATE and take
   // only the rows THIS run actually claimed (reminder_sent_at was NULL). Because
@@ -50,12 +70,18 @@ export async function GET(req: Request) {
     .update(events)
     .set({ reminderSentAt: now })
     .where(
-      and(
-        gte(events.startTime, in1Hour),
-        lte(events.startTime, in24Hours),
-        isNull(events.reminderSentAt),
-        sql`${events.isAllDay} = false`,
-      ),
+      // The predicate is expressed as a bounded sub-select rather than inline,
+      // because Drizzle's `update()` has no `.limit()` and an unbounded claim
+      // locks every matching row in one statement.
+      sql`${events.id} in (
+        select e.id from ${events} e
+        where e.start_time >= ${windowStart}
+          and e.start_time <= ${windowEnd}
+          and e.reminder_sent_at is null
+          and e.is_all_day = false
+        order by e.start_time
+        limit ${MAX_REMINDERS_PER_RUN}
+      )`,
     )
     .returning({
       id: events.id,
@@ -64,6 +90,10 @@ export async function GET(req: Request) {
       userId: events.userId,
       startTime: events.startTime,
     });
+
+  // Reported so a run that hits the ceiling is visible rather than silently
+  // partial — the failure mode the audit called out for all three crons.
+  const truncated = claimed.length >= MAX_REMINDERS_PER_RUN;
 
   if (claimed.length === 0) {
     return NextResponse.json({ sent: 0, reason: 'no upcoming events' });
@@ -127,5 +157,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ sent: sentCount });
+  return NextResponse.json({ sent: sentCount, claimed: claimed.length, truncated });
 }

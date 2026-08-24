@@ -1,22 +1,31 @@
 import { NextResponse } from 'next/server';
-import { and, gt, sql } from 'drizzle-orm';
+import { eq, gt } from 'drizzle-orm';
 import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { users, pushSubscriptions } from '@/db/schema';
 import { sendPushToUser } from '@/lib/push/sendPushNotification';
+import { mapWithConcurrency } from '@/lib/integrations/mapWithConcurrency';
+import { claimNotification, isLocalHour, releaseClaim } from '@/lib/notifications/claim';
+import { zonedToday } from '@/lib/time/zonedTime';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-// NOTE: Vercel Hobby plan — runs once per day (8 PM UTC)
-// Upgrade to Pro for per-minute precision
+/** See daily-brief: Vercel's default is 10s and this loops every subscriber. */
+export const maxDuration = 60;
 
 /**
- * Returns today's date string (YYYY-MM-DD) in UTC.
+ * The local hour at which the "your streak is at risk" nudge fires.
+ *
+ * P1-2: this ran at `0 20 * * *` UTC — described as "before midnight", which it
+ * is only for users near UTC. In Tokyo that lands at **05:00 the next day**,
+ * after the streak is already lost. The cron now runs hourly and each user is
+ * picked up at 20:00 *their* time, which is what the schedule always meant.
  */
-function getTodayUTC(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const REMINDER_LOCAL_HOUR = 20;
+
+const SEND_CONCURRENCY = 8;
+const MAX_USERS_PER_RUN = 500;
 
 export async function GET(req: Request) {
   if (!verifyCronSecret(req)) {
@@ -24,49 +33,57 @@ export async function GET(req: Request) {
   }
 
   const db = getDatabase();
-  const todayStr = getTodayUTC();
+  const now = new Date();
 
-  const eligibleUsers = await db
+  // One joined query. This was "select distinct subscribers" followed by a
+  // separate SELECT per user inside a sequential loop.
+  const candidates = await db
     .selectDistinct({
-      userId: pushSubscriptions.userId,
+      id: users.id,
+      timezone: users.timezone,
+      dailyStreak: users.dailyStreak,
+      lastFocusDate: users.lastFocusDate,
+      notificationPreferences: users.notificationPreferences,
     })
-    .from(pushSubscriptions);
+    .from(users)
+    .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
+    .where(gt(users.dailyStreak, 0))
+    .limit(MAX_USERS_PER_RUN);
 
-  if (eligibleUsers.length === 0) {
-    return NextResponse.json({ sent: 0, reason: 'no subscribers' });
+  const dueNow = candidates.filter((u) => {
+    const prefs = u.notificationPreferences as { streakReminder?: boolean } | null;
+    if (!prefs?.streakReminder) return false;
+
+    const tz = u.timezone || 'UTC';
+    if (!isLocalHour(tz, REMINDER_LOCAL_HOUR, now)) return false;
+
+    // Already focused today, in the user's own timezone — nothing at risk.
+    // Previously compared against a UTC date string, so a user west of
+    // Greenwich who focused in their evening was told their streak was at risk.
+    const lastFocus = u.lastFocusDate?.toString().slice(0, 10);
+    return lastFocus !== zonedToday(tz, now);
+  });
+
+  if (dueNow.length === 0) {
+    return NextResponse.json({ sent: 0, considered: candidates.length });
   }
 
   let sentCount = 0;
+  let skippedAlreadySent = 0;
 
-  for (const { userId } of eligibleUsers) {
+  await mapWithConcurrency(dueNow, SEND_CONCURRENCY, async (user) => {
+    const tz = user.timezone || 'UTC';
+
+    // P1-2: claim before sending. Without it, a retry re-nudged everyone.
+    if (!(await claimNotification(user.id, 'streak_reminder', tz, now))) {
+      skippedAlreadySent++;
+      return;
+    }
+
     try {
-      const [user] = await db
-        .select({
-          dailyStreak: users.dailyStreak,
-          lastFocusDate: users.lastFocusDate,
-          notificationPreferences: users.notificationPreferences,
-        })
-        .from(users)
-        .where(
-          and(
-            sql`${users.id} = ${userId}`,
-            gt(users.dailyStreak, 0),
-          ),
-        )
-        .limit(1);
-
-      if (!user) continue;
-
-      const prefs = user.notificationPreferences as { streakReminder?: boolean } | null;
-      if (!prefs?.streakReminder) continue;
-
-      // Skip if user already focused today
-      const lastFocusStr = user.lastFocusDate?.toString().slice(0, 10);
-      if (lastFocusStr === todayStr) continue;
-
-      await sendPushToUser(userId, {
+      await sendPushToUser(user.id, {
         title: 'Your streak is at risk',
-        body: `${user.dailyStreak}-day streak \u00b7 Log a focus session before midnight`,
+        body: `${user.dailyStreak}-day streak · Log a focus session before midnight`,
         tag: 'streak-risk',
         url: '/focus',
         notificationType: 'streak_risk',
@@ -76,12 +93,21 @@ export async function GET(req: Request) {
           { action: 'dismiss', title: 'Later' },
         ],
       });
-
       sentCount++;
     } catch (err) {
-      logger.error('Error for user ${userId}', { route: `Cron:streak-reminder` }, err);
+      await releaseClaim(user.id, 'streak_reminder', tz, now).catch(() => {});
+      logger.error('streak reminder failed for user', {
+        route: 'GET /api/cron/streak-reminder',
+        userId: user.id,
+      }, err);
     }
-  }
+  });
 
-  return NextResponse.json({ sent: sentCount });
+  return NextResponse.json({
+    sent: sentCount,
+    considered: candidates.length,
+    dueNow: dueNow.length,
+    skippedAlreadySent,
+    truncated: candidates.length >= MAX_USERS_PER_RUN,
+  });
 }

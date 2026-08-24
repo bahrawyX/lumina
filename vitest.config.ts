@@ -33,6 +33,8 @@ const SERVER_ONLY_TESTS = [
   // P1-4: imports the tasks PATCH handler, whose tree includes `@/lib/ownership`
   // (server-only — it queries the database).
   'tests/task-award-response.test.ts',
+  // P1-2: imports the notification claim helper, which is server-only.
+  'tests/notification-claim.test.ts',
 ];
 
 const baseTest = {

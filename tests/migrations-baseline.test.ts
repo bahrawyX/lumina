@@ -41,6 +41,7 @@ const EXPECTED_TABLES = [
   'goals',
   'integrations',
   'mood_logs',
+  'notification_sends',
   'planner_items',
   'push_subscriptions',
   'rate_limits',
