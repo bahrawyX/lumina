@@ -16,6 +16,7 @@ import { useLuminaAuthClient } from './AuthProvider';
 import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
 import { useGuestStore } from '../store/useGuestStore';
 import { signOutEverywhere } from '@/lib/auth/signOut';
+import { oauthFailureMessage, useOAuthPopup } from '@/hooks/useOAuthPopup';
 import {
   MIN_PASSWORD_LENGTH,
   getFieldError,
@@ -1096,95 +1097,51 @@ const OnboardingFlow: React.FC = () => {
     }
   }, [step, authStatus]);
 
-  const startSocialSignInPopup = useCallback(async (provider: 'google' | 'microsoft'): Promise<boolean> => {
-    const socialSignIn = (authClient.signIn as any)?.social;
-    if (typeof socialSignIn !== 'function') {
-      const label = provider === 'google' ? 'Google' : 'Microsoft';
-      throw new Error(`${label} sign-in is unavailable in the current auth client.`);
-    }
+  /**
+   * F4.1-F4.8: this was a byte-for-byte fourth copy of the popup promise. It
+   * returned a bare boolean, threw a string when the popup was blocked, opened
+   * the window AFTER awaiting the sign-in call (so iOS Safari blocked it), had
+   * a 3-minute timeout that killed 2FA flows, never verified that a session was
+   * actually created, and leaked its listener and interval on unmount.
+   */
+  const openOAuthPopup = useOAuthPopup();
 
-    const result = await socialSignIn({
-      provider,
-      callbackURL: `/auth/popup-complete?provider=${provider}`,
-      disableRedirect: true,
-    });
-
-    if (result?.error) {
-      throw new Error(result.error.message ?? `${provider} sign-in failed.`);
-    }
-
-    const popupUrl = result?.data?.url ?? result?.url;
-    if (!popupUrl || typeof popupUrl !== 'string') {
-      throw new Error('Could not start OAuth sign-in.');
-    }
-
-    const width = 520;
-    const height = 700;
-    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-
-    const popup = window.open(
-      popupUrl,
-      `lumina-oauth-${provider}`,
-      `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`
-    );
-
-    if (!popup) {
-      throw new Error('Popup blocked. Please allow popups and try again.');
-    }
-
-    popup.focus();
-
-    return await new Promise<boolean>((resolve) => {
-      let settled = false;
-
-      const cleanup = () => {
-        window.removeEventListener('message', onMessage);
-        window.clearInterval(pollId);
-        window.clearTimeout(timeoutId);
-      };
-
-      const onMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        const data = event.data;
-        if (!data || typeof data !== 'object') return;
-        if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
-        if ((data as { provider?: string }).provider !== provider) return;
-        if ((data as { success?: boolean }).success === false) {
-          settled = true;
-          cleanup();
-          resolve(false);
-          return;
-        }
-
-        settled = true;
-        cleanup();
-        resolve(true);
-      };
-
-      const pollId = window.setInterval(() => {
-        if (!settled && popup.closed) {
-          settled = true;
-          cleanup();
-          resolve(false);
-        }
-      }, 350);
-
-      const timeoutId = window.setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        try {
-          popup.close();
-        } catch {
-          // noop
-        }
-        resolve(false);
-      }, 3 * 60 * 1000);
-
-      window.addEventListener('message', onMessage);
-    });
-  }, [authClient]);
+  const startSocialSignInPopup = useCallback(
+    (provider: 'google' | 'microsoft') =>
+      openOAuthPopup({
+        provider,
+        resolveUrl: async () => {
+          const socialSignIn = (authClient.signIn as unknown as {
+            social?: (args: Record<string, unknown>) => Promise<{
+              error?: { message?: string };
+              data?: { url?: string };
+              url?: string;
+            }>;
+          })?.social;
+          const label = provider === 'google' ? 'Google' : 'Microsoft';
+          if (typeof socialSignIn !== 'function') {
+            throw new Error(`${label} sign-in is unavailable right now.`);
+          }
+          const started = await socialSignIn({
+            provider,
+            callbackURL: `/auth/popup-complete?provider=${provider}`,
+            disableRedirect: true,
+          });
+          if (started?.error) throw new Error(started.error.message ?? `${label} sign-in failed.`);
+          const url = started?.data?.url ?? started?.url;
+          if (!url || typeof url !== 'string') {
+            throw new Error(`${label} sign-in is unavailable right now.`);
+          }
+          return url;
+        },
+        // F4.2: never treat a message as proof of authentication.
+        onPoll: async () => {
+          const session = await authClient.getSession();
+          return Boolean(session?.data?.user);
+        },
+      }),
+    [openOAuthPopup, authClient],
+  );
 
   const handleAuthSignUp = useCallback(async () => {
     clearAuthMessage();
@@ -1284,9 +1241,10 @@ const OnboardingFlow: React.FC = () => {
     clearAuthMessage();
     setAuthBusy('google');
     try {
-      const completed = await startSocialSignInPopup('google');
-      if (!completed) {
-        setAuthMessage('Google sign-in was cancelled.');
+      const result = await startSocialSignInPopup('google');
+      if (result.kind === 'error') {
+        // F4.1: every outcome used to read "Google sign-in was cancelled."
+        setAuthMessage(oauthFailureMessage(result, 'Google'));
         return;
       }
 

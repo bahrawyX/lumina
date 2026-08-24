@@ -8,6 +8,7 @@ import { GoogleProviderIcon } from '@/components/icons';
 import { useGuestStore } from '@/store/useGuestStore';
 import { cn } from '@/lib/utils';
 import { resolveNextDestination } from '@/lib/auth/nextDestination';
+import { oauthFailureMessage, useOAuthPopup } from '@/hooks/useOAuthPopup';
 import {
   MIN_PASSWORD_LENGTH,
   getFieldError,
@@ -49,94 +50,6 @@ const AuthField: React.FC<{
   </div>
 );
 
-/* ── OAuth popup helper ─────────────────────────────────────── */
-function useOAuthPopup(authClient: ReturnType<typeof useLuminaAuthClient>) {
-  return useCallback(async (provider: 'google' | 'microsoft'): Promise<boolean> => {
-    const socialSignIn = (authClient.signIn as any)?.social;
-    if (typeof socialSignIn !== 'function') {
-      throw new Error(`${provider === 'google' ? 'Google' : 'Microsoft'} sign-in is unavailable.`);
-    }
-
-    const result = await socialSignIn({
-      provider,
-      callbackURL: `/auth/popup-complete?provider=${provider}`,
-      disableRedirect: true,
-    });
-
-    if (result?.error) {
-      throw new Error(result.error.message ?? `${provider} sign-in failed.`);
-    }
-
-    const popupUrl = result?.data?.url ?? result?.url;
-    if (!popupUrl || typeof popupUrl !== 'string') {
-      throw new Error('Could not start OAuth sign-in.');
-    }
-
-    const width = 520;
-    const height = 700;
-    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-
-    const popup = window.open(
-      popupUrl,
-      `lumina-oauth-${provider}`,
-      `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`,
-    );
-
-    if (!popup) {
-      throw new Error('Popup blocked. Please allow popups and try again.');
-    }
-
-    popup.focus();
-
-    return await new Promise<boolean>((resolve) => {
-      let settled = false;
-
-      const cleanup = () => {
-        window.removeEventListener('message', onMessage);
-        window.clearInterval(pollId);
-        window.clearTimeout(timeoutId);
-      };
-
-      const onMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        const data = event.data;
-        if (!data || typeof data !== 'object') return;
-        if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
-        if ((data as { provider?: string }).provider !== provider) return;
-        if ((data as { success?: boolean }).success === false) {
-          settled = true;
-          cleanup();
-          resolve(false);
-          return;
-        }
-        settled = true;
-        cleanup();
-        resolve(true);
-      };
-
-      const pollId = window.setInterval(() => {
-        if (!settled && popup.closed) {
-          settled = true;
-          cleanup();
-          resolve(false);
-        }
-      }, 350);
-
-      const timeoutId = window.setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        try { popup.close(); } catch { /* noop */ }
-        resolve(false);
-      }, 3 * 60 * 1000);
-
-      window.addEventListener('message', onMessage);
-    });
-  }, [authClient]);
-}
-
-
 /* ═══════════════════════════════════════════════════════════════
    SIGN IN / SIGN UP PAGE
    ═══════════════════════════════════════════════════════════════ */
@@ -144,7 +57,7 @@ function SignInPageInner() {
   const router = useRouter();
   const authClient = useLuminaAuthClient();
   const { data: session, isPending: sessionLoading } = authClient.useSession();
-  const startOAuth = useOAuthPopup(authClient);
+  const openOAuthPopup = useOAuthPopup();
 
   // Where to go once authenticated. The route guard in `src/proxy.ts` sets
   // `?next=` when it bounces an unauthenticated request off an app route, and
@@ -269,16 +182,75 @@ function SignInPageInner() {
     clearMessage();
     setBusy('google');
     try {
-      const completed = await startOAuth('google');
-      if (!completed) { setMessage('Google sign-in was cancelled.'); return; }
+      const result = await openOAuthPopup({
+        provider: 'google',
+        // Resolved AFTER the window opens, so the user gesture is not consumed
+        // first — that ordering is why iOS Safari blocked this almost always.
+        resolveUrl: async () => {
+          const socialSignIn = (authClient.signIn as unknown as {
+            social?: (args: Record<string, unknown>) => Promise<{
+              error?: { message?: string };
+              data?: { url?: string };
+              url?: string;
+            }>;
+          })?.social;
+          if (typeof socialSignIn !== 'function') {
+            throw new Error('Google sign-in is unavailable right now.');
+          }
+          const started = await socialSignIn({
+            provider: 'google',
+            callbackURL: '/auth/popup-complete?provider=google',
+            disableRedirect: true,
+          });
+          if (started?.error) {
+            throw new Error(started.error.message ?? 'Google sign-in failed.');
+          }
+          const url = started?.data?.url ?? started?.url;
+          if (!url || typeof url !== 'string') {
+            throw new Error('Google sign-in is unavailable right now.');
+          }
+          return url;
+        },
+        // F4.2 / F4.3: a `postMessage` with `success !== false` was treated as
+        // PROOF of authentication. If the callback set no cookie for any
+        // reason, the user was bounced onward, saw the signed-out form again,
+        // and had no idea why. The integration flow already refused to make
+        // that assumption; this now matches — and the same probe rescues the
+        // case where no message ever arrives.
+        onPoll: async () => {
+          const session = await authClient.getSession();
+          return Boolean(session?.data?.user);
+        },
+      });
+
+      if (result.kind === 'error') {
+        if (result.reason === 'popup-blocked') {
+          // Falling back to a full-page redirect is the only actionable
+          // response on iOS, where "allow popups" is buried in Settings.
+          setMessage(oauthFailureMessage(result, 'Google'));
+          window.location.href = `/api/auth/sign-in/social?provider=google&callbackURL=${encodeURIComponent(destination)}`;
+          return;
+        }
+        setMessage(oauthFailureMessage(result, 'Google'));
+        return;
+      }
+
+      // Verified above by `onPoll`, but re-check: `ok` can also arrive from the
+      // message alone.
+      const session = await authClient.getSession();
+      if (!session?.data?.user) {
+        setMessage("Google signed you in, but we couldn't start your session. Please try again.");
+        return;
+      }
+
       useGuestStore.getState().clearGuestSession();
       router.replace(destination);
-    } catch (err: unknown) {
-      setMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
+    } catch {
+      setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
       setBusy(null);
     }
-  }, [startOAuth, router, destination]);
+  }, [openOAuthPopup, authClient, router, destination]);
 
   const handleSubmit = () => {
     if (!validate()) return;
