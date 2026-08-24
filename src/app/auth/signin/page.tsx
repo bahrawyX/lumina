@@ -9,6 +9,7 @@ import { useGuestStore } from '@/store/useGuestStore';
 import { cn } from '@/lib/utils';
 import { resolveNextDestination } from '@/lib/auth/nextDestination';
 import {
+  MIN_PASSWORD_LENGTH,
   getFieldError,
   nameSchema,
   emailSchema,
@@ -18,7 +19,6 @@ import {
 
 /* ── Constants ──────────────────────────────────────────────── */
 type AuthMode = 'signin' | 'signup';
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* ── Helpers ────────────────────────────────────────────────── */
 const AuthField: React.FC<{
@@ -196,12 +196,14 @@ function SignInPageInner() {
   /* ── Auth handlers ─────────────────────────────────────── */
   const handleSignUp = useCallback(async () => {
     clearMessage();
+    // No imperative re-validation here. `validate()` (zod, run by handleSubmit)
+    // is the single source of truth. This block used to re-check with DIFFERENT
+    // rules — `length < 2` for the name and `length < 6` for the password. The
+    // password check was unreachable dead code because zod already enforced a
+    // longer minimum; the name check was NOT, and produced a page-level error
+    // that wasn't attached to the field it was about.
     const normalizedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
-
-    if (normalizedName.length < 2) { setMessage('Please enter your full name.'); return; }
-    if (!EMAIL_REGEX.test(normalizedEmail)) { setMessage('Please enter a valid email.'); return; }
-    if (password.length < 6) { setMessage('Password must be at least 6 characters.'); return; }
 
     setBusy('signup');
     try {
@@ -212,6 +214,30 @@ function SignInPageInner() {
         callbackURL: destination,
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign up failed.'); return; }
+
+      // `emailAndPassword.autoSignIn` is now `false` server-side. That is what
+      // closes the sign-up enumeration oracle (F3.2): BetterAuth only returns
+      // the generic synthetic-user response for an existing address when
+      // auto-sign-in is off, and only that branch hashes the password, which is
+      // what equalises the timing.
+      //
+      // The cost is that sign-up no longer establishes a session, so we do it
+      // explicitly. If the address was already taken, the server returned the
+      // generic success and THIS call fails with the same uniform 401 that any
+      // wrong password produces — so the attacker still learns nothing, while a
+      // genuine new user's flow is unchanged.
+      const signedIn = await authClient.signIn.email({
+        email: normalizedEmail,
+        password,
+        callbackURL: destination,
+      });
+      if (signedIn.error) {
+        setMessage(
+          'That email may already be registered. Try signing in instead, or use a different address.',
+        );
+        return;
+      }
+
       useGuestStore.getState().clearGuestSession();
       router.replace(destination);
     } finally {
@@ -221,9 +247,8 @@ function SignInPageInner() {
 
   const handleSignIn = useCallback(async () => {
     clearMessage();
+    // Same as above — `validate()` already ran zod over both fields.
     const normalizedEmail = email.trim().toLowerCase();
-    if (!EMAIL_REGEX.test(normalizedEmail)) { setMessage('Please enter a valid email.'); return; }
-    if (!password) { setMessage('Please enter your password.'); return; }
 
     setBusy('signin');
     try {
@@ -372,7 +397,7 @@ function SignInPageInner() {
                 type="password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); clearErr('password'); }}
-                placeholder={authMode === 'signup' ? 'Min. 8 characters' : '••••••••'}
+                placeholder={authMode === 'signup' ? `Min. ${MIN_PASSWORD_LENGTH} characters` : '••••••••'}
                 // SECURITY: always "new-password" — even in sign-in mode.
                 // Browsers treat "current-password" as an invitation to autofill
                 // saved credentials, which means anyone returning to /auth/signin

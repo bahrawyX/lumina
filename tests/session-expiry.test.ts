@@ -31,7 +31,7 @@ afterEach(() => {
 
 describe('F6.5 — guest mode is only ever entered deliberately', () => {
   it('exposes no API for entering guest mode from a session check', () => {
-    const store = useGuestStore.getState() as Record<string, unknown>;
+    const store = useGuestStore.getState() as unknown as Record<string, unknown>;
     // `setGuest` was the boolean setter that a session check called with
     // `true`. Its removal is the fix: there is now no way to express
     // "session unavailable" as "the user chose guest mode".

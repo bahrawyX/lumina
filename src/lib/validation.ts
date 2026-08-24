@@ -2,10 +2,17 @@ import { z } from 'zod';
 
 /* ── Field schemas ────────────────────────────────────────────────────────── */
 
+/**
+ * `.min(2)`, not `.min(1)`. A single character passed this schema and was then
+ * rejected further downstream by an imperative `normalizedName.length < 2`
+ * check whose message landed at page level rather than on the field — so the
+ * user saw a form with no field error and a floating "Please enter your full
+ * name." This schema is now the single source of truth.
+ */
 export const nameSchema = z
   .string()
   .trim()
-  .min(1, 'Name is required')
+  .min(2, 'Please enter your full name')
   .max(100, 'Name must be under 100 characters');
 
 export const emailSchema = z
@@ -14,11 +21,24 @@ export const emailSchema = z
   .min(1, 'Email is required')
   .email('Enter a valid email address');
 
-/** Use for sign-up (stricter). */
+/**
+ * Sign-up password rules. MUST stay in step with
+ * `emailAndPassword.minPasswordLength` / `maxPasswordLength` in `lib/auth.ts` —
+ * a client minimum below the server's produces a rejection the form cannot
+ * explain, and one above it is dead code.
+ *
+ * 12 rather than BetterAuth's default 8: the previous effective policy accepted
+ * `password1`, with no strength check and no breach check anywhere in the
+ * codebase. The breach check now lives server-side (`haveIBeenPwned`).
+ */
+export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_PASSWORD_LENGTH = 128;
+
 export const passwordCreateSchema = z
   .string()
   .min(1, 'Password is required')
-  .min(8, 'Password must be at least 8 characters');
+  .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  .max(MAX_PASSWORD_LENGTH, `Password must be under ${MAX_PASSWORD_LENGTH} characters`);
 
 /** Use for sign-in (just non-empty). */
 export const passwordSchema = z

@@ -42,7 +42,13 @@ const securityHeaders = [
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "connect-src 'self' https:",
+      // P1-5 — `connect-src 'self' https:` permitted exfiltration to ANY host
+      // on the internet, which is what turns a readable session token into a
+      // full account takeover. The only genuine cross-origin fetches are the
+      // marketing page's Lottie assets and the dotLottie WASM renderer, so the
+      // allowlist is those hosts and nothing else. (Self-hosting those assets
+      // would let this collapse to a bare 'self' — see the landing-page work.)
+      "connect-src 'self' https://lottie.host https://assets-v2.lottiefiles.com https://cdn.jsdelivr.net https://unpkg.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "object-src 'none'",

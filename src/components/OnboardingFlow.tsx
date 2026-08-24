@@ -17,6 +17,7 @@ import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
 import { useGuestStore } from '../store/useGuestStore';
 import { clearLuminaStorage } from '../lib/storage';
 import {
+  MIN_PASSWORD_LENGTH,
   getFieldError,
   nameSchema,
   emailSchema,
@@ -26,7 +27,6 @@ import {
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 const TOTAL_STEPS = 7; // 0..6
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SLIDE_VARIANTS = {
   enter: (dir: number) => ({
@@ -471,7 +471,7 @@ const StepAuth = memo<{
               name="onboarding-auth-password"
               value={authPassword}
               onChange={(e) => { onAuthPasswordChange(e.target.value); clearErr('password'); }}
-              placeholder={authMode === 'signup' ? 'Min. 8 characters' : '••••••••'}
+              placeholder={authMode === 'signup' ? `Min. ${MIN_PASSWORD_LENGTH} characters` : '••••••••'}
               autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
               disabled={Boolean(authBusy)}
               className={inputCls('password')}
@@ -1176,23 +1176,13 @@ const OnboardingFlow: React.FC = () => {
   const handleAuthSignUp = useCallback(async () => {
     clearAuthMessage();
 
+    // No imperative re-validation here. The zod pass in `StepAuth.validate()`
+    // is the single source of truth. This block used to re-check with DIFFERENT
+    // rules than the schemas it duplicated — a 6-character password minimum
+    // that zod already exceeded (dead code), and a name check that produced a
+    // page-level error rather than a field-level one.
     const normalizedName = authName.trim();
     const normalizedEmail = authEmail.trim().toLowerCase();
-
-    if (normalizedName.length < 2) {
-      setAuthMessage('Please enter your full name (at least 2 characters).');
-      return;
-    }
-
-    if (!EMAIL_REGEX.test(normalizedEmail)) {
-      setAuthMessage('Please enter a valid email address.');
-      return;
-    }
-
-    if (authPassword.length < 6) {
-      setAuthMessage('Password must be at least 6 characters.');
-      return;
-    }
 
     setAuthBusy('signup');
     try {
@@ -1206,6 +1196,24 @@ const OnboardingFlow: React.FC = () => {
         setAuthMessage(result.error.message ?? 'Sign up failed.');
         return;
       }
+
+      // `emailAndPassword.autoSignIn` is `false` server-side — that is what
+      // closes the sign-up enumeration oracle (F3.2). Sign-up therefore no
+      // longer establishes a session, so do it explicitly. An address that was
+      // already registered got the generic success above and fails HERE with
+      // the same uniform 401 any wrong password produces, so nothing leaks.
+      const signedIn = await authClient.signIn.email({
+        email: normalizedEmail,
+        password: authPassword,
+        callbackURL: '/onboarding',
+      });
+      if (signedIn.error) {
+        setAuthMessage(
+          'That email may already be registered. Try signing in instead, or use a different address.',
+        );
+        return;
+      }
+
       await refetchAuthSession();
       await hydrateNameFromSession();
       if (!onboardingUserName.trim()) {
@@ -1230,16 +1238,8 @@ const OnboardingFlow: React.FC = () => {
 
   const handleAuthSignIn = useCallback(async () => {
     clearAuthMessage();
+    // Same as sign-up: `StepAuth.validate()` already ran zod over both fields.
     const normalizedEmail = authEmail.trim().toLowerCase();
-    if (!EMAIL_REGEX.test(normalizedEmail)) {
-      setAuthMessage('Please enter a valid email address.');
-      return;
-    }
-
-    if (!authPassword) {
-      setAuthMessage('Please enter your password.');
-      return;
-    }
 
     setAuthBusy('signin');
     try {
