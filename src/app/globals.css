@@ -58,18 +58,33 @@
     @apply border-border;
   }
 
-  /* Kill all focus outlines / rings globally — the app is pointer-first.
-     Keyboard users still get the browser's native :focus-visible outline
-     if they explicitly navigate via Tab, but the Tailwind ring system
-     (focus-visible:ring-*) is wiped so nothing glows purple on click. */
+  /* ── Focus indicators ───────────────────────────────────────────────────
+     The app is pointer-first, so we suppress the *click* focus ring: `:focus`
+     matches on mouse-down and the Tailwind ring system made buttons glow
+     purple after every click.
+
+     `:focus-visible` is deliberately NOT suppressed. It is the selector the
+     browser fires for keyboard navigation and withholds for mouse clicks —
+     which is the entire reason it exists. The previous rule wiped it too, with
+     `!important`, directly under a comment claiming keyboard users kept their
+     outline. They did not: every button, link, input, dialog close button and
+     calendar cell in the application had zero visible focus indicator, an
+     app-wide WCAG 2.1 AA 2.4.7 (Focus Visible) failure. */
   *:focus {
     outline: none !important;
     box-shadow: none !important;
   }
   *:focus-visible {
-    outline: none !important;
-    box-shadow: none !important;
-    ring: 0 !important;
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: inherit;
+  }
+  /* Inputs and textareas carry their own border; an offset outline reads as a
+     detached double-border there, so sit it flush instead. */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline-offset: 0;
   }
   /* ── No-JS safety net for the marketing page ────────────────────────────
      Scroll-reveal elements (`data-reveal`, plus `BlurText`'s per-word spans)
