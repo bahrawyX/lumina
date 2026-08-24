@@ -125,6 +125,44 @@ export const auth = betterAuth({
   },
 
   /**
+   * F3.1 - the brute-force limiter looked like it worked and did not.
+   *
+   * BetterAuth's limiter IS enabled by default in production, with a built-in
+   * rule of 3 requests / 10s on any path starting /sign-in, /sign-up,
+   * /change-password or /change-email. Fired SEQUENTIALLY against production it
+   * behaved perfectly - 401, 401, 401, then 429s with x-retry-after. It would
+   * pass any manual test.
+   *
+   * Fired CONCURRENTLY, 16 attempts against the same account produced:
+   *
+   *     401 x15, 429 x1     -- fifteen of sixteen passwords were processed
+   *
+   * because the default storage is `memory`: a module-scope Map, one per lambda.
+   * Every concurrent request got a fresh instance with its own counter, and a
+   * cold start reset it. The effective ceiling was 3 per 10s PER INSTANCE, and
+   * it scaled with the attacker's concurrency. Combined with an 8-character
+   * minimum, no breach check and a working enumeration oracle to build the
+   * target list, that was a viable credential-stuffing path.
+   *
+   * `storage: 'database'` moves the counter to the one place every instance
+   * shares. The table is `rate_limits` (src/db/schema/rateLimits.ts) - BetterAuth
+   * will NOT create it, which is why it is modelled in Drizzle and shipped in
+   * the migration baseline.
+   */
+  rateLimit: {
+    enabled: true,
+    storage: 'database',
+    customRules: {
+      '/sign-in/email': { window: 60, max: 5 },
+      '/sign-up/email': { window: 3600, max: 3 },
+      '/request-password-reset': { window: 3600, max: 3 },
+      '/reset-password': { window: 3600, max: 5 },
+      '/change-password': { window: 3600, max: 5 },
+      '/change-email': { window: 3600, max: 3 },
+    },
+  },
+
+  /**
    * `/list-sessions` hands the caller EVERY active session for their account,
    * each including its raw `token`, from a same-origin endpoint readable by
    * JavaScript. Nothing in this app calls it, so it is turned off entirely

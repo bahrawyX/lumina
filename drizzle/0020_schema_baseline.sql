@@ -421,6 +421,14 @@ CREATE TABLE IF NOT EXISTS "push_subscriptions" (
 	"last_used_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "rate_limits" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"key" text NOT NULL,
+	"count" integer DEFAULT 0 NOT NULL,
+	"last_request" bigint NOT NULL,
+	"expires_at" timestamp with time zone DEFAULT now() + interval '1 day' NOT NULL
+);
+--> statement-breakpoint
 DO $$ BEGIN
   ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
@@ -726,3 +734,7 @@ CREATE INDEX IF NOT EXISTS "mood_logs_user_id_idx" ON "mood_logs" USING btree ("
 CREATE INDEX IF NOT EXISTS "idx_push_subscriptions_user_id" ON "push_subscriptions" USING btree ("user_id");
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_push_subscriptions_user_endpoint" ON "push_subscriptions" USING btree ("user_id","endpoint");
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "rate_limits_key_uniq" ON "rate_limits" USING btree ("key");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "rate_limits_expires_at_idx" ON "rate_limits" USING btree ("expires_at");

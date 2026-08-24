@@ -43,6 +43,7 @@ const EXPECTED_TABLES = [
   'mood_logs',
   'planner_items',
   'push_subscriptions',
+  'rate_limits',
   'sessions',
   'tasks',
   'users',

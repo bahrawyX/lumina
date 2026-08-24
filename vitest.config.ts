@@ -20,6 +20,9 @@ const SERVER_ONLY_TESTS = [
   // Batch 8 #4: imports the real google/microsoft token modules, which carry the
   // `server-only` guard directly. @/lib/db is vi.mock'd to an ephemeral PGlite.
   'tests/token-refresh-race.test.ts',
+  // P1-9: imports the real rate limiter, which carries the `server-only` guard
+  // directly. @/lib/db is vi.mock'd to an ephemeral PGlite.
+  'tests/rate-limit-durable.test.ts',
 ];
 
 const baseTest = {

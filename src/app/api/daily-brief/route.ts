@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
 
   // Gate the expensive cache-bypass path only.
   if (forceRefresh) {
-    const limit = briefRefreshLimiter.check(userId);
+    const limit = await briefRefreshLimiter.check(userId);
     if (limit.limited) {
       return rateLimitedResponse(limit.retryAfterMs);
     }

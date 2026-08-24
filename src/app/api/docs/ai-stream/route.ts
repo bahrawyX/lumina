@@ -4,21 +4,18 @@ import { GoogleGenAI } from '@google/genai';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { aiInDocsAward } from '@/lib/coins/earnRules';
+import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 
-// Simple in-memory rate limiter: userId → timestamp[]
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 10;
+// Durable, cross-instance. The previous hand-rolled `Map` was per-lambda
+// memory, so the effective ceiling was 10 x (warm instances) rather than 10.
+const perMinuteLimiter = createRateLimiter('aiStream', { windowMs: 60_000, max: 10 });
 
-function isRateLimited(userId: string): boolean {
-  const now = Date.now();
-  const timestamps = rateLimitMap.get(userId) ?? [];
-  const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  rateLimitMap.set(userId, recent);
-  if (recent.length >= RATE_LIMIT_MAX) return true;
-  recent.push(now);
-  return false;
-}
+// A hard daily ceiling on top of the per-minute one. Without it, a caller
+// staying just under 10/min still costs ~14,400 Gemini generations a day.
+const perDayLimiter = createRateLimiter('aiStreamDaily', {
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 200,
+});
 
 /** POST /api/docs/ai-stream — Gemini streaming proxy for doc AI features. */
 export async function POST(req: NextRequest) {
@@ -28,10 +25,15 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  if (isRateLimited(userId)) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded. Max 10 requests per minute.' },
-      { status: 429 }
+  const perMinute = await perMinuteLimiter.check(userId);
+  if (perMinute.limited) {
+    return rateLimitedResponse(perMinute.retryAfterMs, 'Max 10 AI requests per minute.');
+  }
+  const perDay = await perDayLimiter.check(userId);
+  if (perDay.limited) {
+    return rateLimitedResponse(
+      perDay.retryAfterMs,
+      "You've used your AI assistance for today. It resets tomorrow.",
     );
   }
 

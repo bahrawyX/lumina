@@ -16,6 +16,7 @@ import { getDatabase } from '@/lib/db';
 import { goals, tasks } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { GoogleGenAI, Type } from '@google/genai';
+import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 
 const apiKey = process.env.GEMINI_API_KEY ?? '';
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
@@ -25,22 +26,21 @@ interface RouteContext {
 }
 
 const DAILY_LIMIT = 5;
-type RateBucket = { day: string; count: number };
-const rateMap = new Map<string, RateBucket>();
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-function checkAndIncrement(userId: string): boolean {
-  const today = todayUtc();
-  const cur = rateMap.get(userId);
-  if (!cur || cur.day !== today) {
-    rateMap.set(userId, { day: today, count: 1 });
-    return true;
-  }
-  if (cur.count >= DAILY_LIMIT) return false;
-  cur.count += 1;
-  return true;
-}
+
+/** Durable, so the daily cap is actually daily rather than daily-per-lambda. */
+const suggestLimiter = createRateLimiter('goalSuggestTasks', {
+  windowMs: 24 * 60 * 60 * 1000,
+  max: DAILY_LIMIT,
+});
+
+/**
+ * The bulk-insert path writes up to 10 task rows and used to run BEFORE any
+ * limiter (it returned early, above the check), so it had no limit at all.
+ */
+const bulkInsertLimiter = createRateLimiter('goalBulkTaskInsert', {
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+});
 
 export async function POST(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
@@ -79,8 +79,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
     }
 
-    // User-curated insert path — short-circuit Gemini + the rate limiter.
+    // User-curated insert path — short-circuits Gemini, but NOT the limiter.
+    // It previously returned before the check below, so this branch — which
+    // bulk-inserts up to 10 task rows — was completely unlimited.
     if (clientTitles && clientTitles.length > 0) {
+      const bulk = await bulkInsertLimiter.check(userId);
+      if (bulk.limited) {
+        return rateLimitedResponse(bulk.retryAfterMs, 'Too many task imports. Try again shortly.');
+      }
       const inserted = await db
         .insert(tasks)
         .values(
@@ -104,10 +110,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
         { status: 503 },
       );
     }
-    if (!checkAndIncrement(userId)) {
-      return NextResponse.json(
-        { error: 'rate_limit', message: "You've used your AI task suggestions for today. Try again tomorrow." },
-        { status: 429 },
+    const suggest = await suggestLimiter.check(userId);
+    if (suggest.limited) {
+      return rateLimitedResponse(
+        suggest.retryAfterMs,
+        "You've used your AI task suggestions for today. Try again tomorrow.",
       );
     }
 

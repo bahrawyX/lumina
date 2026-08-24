@@ -3,9 +3,25 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { contactSubmissions } from '@/db/schema';
 import { contactTypeSchema, contactSubjectSchema, contactMessageSchema } from '@/lib/validation';
+import { clientIp, createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 
-// Simple in-memory rate limiting (per userId, 60s cooldown)
-const lastSubmission = new Map<string, number>();
+/**
+ * `/api/contact` is the only unauthenticated write endpoint in the app, so it
+ * gets two ceilings.
+ *
+ * The previous limiter was a `Map` keyed on the raw `x-forwarded-for` header:
+ * a client-supplied string. Rotating it per request removed the 60s cooldown
+ * entirely, while each spoofed value added a permanent Map entry — an
+ * attacker-controlled memory leak. `clientIp()` now reads only headers the
+ * platform sets and cannot be spoofed past.
+ */
+const perSubmitterLimiter = createRateLimiter('contact', { windowMs: 60_000, max: 1 });
+
+/**
+ * A global hourly ceiling, because a per-IP limit alone does nothing against a
+ * distributed flood, and every accepted submission is a row in the database.
+ */
+const globalLimiter = createRateLimiter('contactGlobal', { windowMs: 60 * 60 * 1000, max: 200 });
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -36,14 +52,20 @@ export async function POST(req: NextRequest) {
 
   const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null;
 
-  // Rate limit
-  const rateLimitKey = userId ?? req.headers.get('x-forwarded-for') ?? 'anon';
-  const lastTime = lastSubmission.get(rateLimitKey);
-  if (lastTime && Date.now() - lastTime < 60_000) {
-    return NextResponse.json(
-      { error: 'Please wait a minute before submitting again' },
-      { status: 429 },
+  // Rate limit BEFORE the insert. The timestamp used to be recorded *after* a
+  // successful insert, so N concurrent requests all passed the check before any
+  // of them wrote.
+  const subject = userId ?? clientIp(req.headers);
+  const perSubmitter = await perSubmitterLimiter.check(subject);
+  if (perSubmitter.limited) {
+    return rateLimitedResponse(
+      perSubmitter.retryAfterMs,
+      'Please wait a minute before submitting again.',
     );
+  }
+  const global = await globalLimiter.check('all');
+  if (global.limited) {
+    return rateLimitedResponse(global.retryAfterMs, 'Too many submissions right now.');
   }
 
   try {
@@ -55,8 +77,6 @@ export async function POST(req: NextRequest) {
       message: messageResult.data,
       email,
     });
-
-    lastSubmission.set(rateLimitKey, Date.now());
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const limit = parseEventLimiter.check(session.user.id);
+  const limit = await parseEventLimiter.check(session.user.id);
   if (limit.limited) {
     return rateLimitedResponse(limit.retryAfterMs);
   }
