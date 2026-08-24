@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useGoalsStore } from '@/store/useGoalsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
@@ -247,6 +247,13 @@ export const GoalDetailSheet: React.FC<{
             <div className="flex items-center gap-2">
               {liveGoal.emoji && <span className="text-2xl">{liveGoal.emoji}</span>}
               <SheetTitle className="font-display text-lg">{liveGoal.title}</SheetTitle>
+              {/* P2-16: the one remaining Radix surface without a description.
+                  The a11y pass covered Dialogs but not Sheets, so Radix logged
+                  its missing-description warning and screen readers announced
+                  the sheet with a title and nothing else. */}
+              <SheetDescription className="sr-only">
+                Goal details, targets and progress. Press Escape to close.
+              </SheetDescription>
             </div>
             <div className="flex items-center gap-1">
               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${

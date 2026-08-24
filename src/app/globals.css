@@ -260,6 +260,35 @@ html.transitioning-theme *::after {
   }
 }
 
+/* ─── P2-15: reduced motion, everywhere ──────────────────────────────────────
+ *
+ * The rule above was the ONLY `prefers-reduced-motion` rule in the app, and it
+ * covered exactly one utility class. Everything else — CSS keyframe animations,
+ * Tailwind transitions, the infinite-rotation hydration spinner — ran at full
+ * strength whatever the OS setting said.
+ *
+ * Framer Motion is handled separately by `<MotionConfig reducedMotion="user">`
+ * in AppShell; this covers the CSS half.
+ *
+ * `.01ms` rather than `0`: a zero-duration animation never fires `animationend`
+ * or `transitionend`, so any component waiting on one to unmount or advance
+ * hangs forever. An imperceptible duration still completes and still fires.
+ *
+ * `!important` is deliberate here — this must beat utility classes and inline
+ * styles, and a user who has asked their OS to stop animations has made a
+ * request the page does not get to override.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ─── iOS/Android safe-area helpers ─────────────────────────────────────── */
 .pt-safe { padding-top: env(safe-area-inset-top); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }

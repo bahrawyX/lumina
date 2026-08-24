@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, memo, useCallback, useState } from 'react';
+import React, { useMemo, memo, useCallback, useState, useRef, useEffect } from 'react';
 import { CalendarEvent, EventInstance } from '../types';
 import { getDaysInMonth, isSameDay, formatDateISO } from '../utils/dateUtils';
 import { DAYS } from '../constants';
@@ -44,6 +44,14 @@ interface MonthDayCellProps {
   onEventClick: (id: string) => void;
   onDrop: (eventId: string, dateStr: string) => void;
   isLaptop: boolean;
+  /** 1-based column, for `aria-colindex`. */
+  colIndex: number;
+  /**
+   * P2-16: every in-month cell was `tabIndex={0}`, so tabbing through a month
+   * cost up to 42 stops before reaching anything else. Exactly one cell is
+   * tabbable now; the arrow keys move between them.
+   */
+  isActive: boolean;
 }
 
 const MONTHS = [
@@ -140,7 +148,7 @@ const OverflowPopover = memo<{
 ));
 OverflowPopover.displayName = 'OverflowPopover';
 
-const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop, isLaptop }) => {
+const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEventClick, onDrop, isLaptop, colIndex, isActive }) => {
   const { date, dateStr, isCurrentMonth, isToday, eventsCount } = day;
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -150,6 +158,7 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
         className="h-full flex flex-col p-1 sm:p-1.5 rounded-xl bg-muted/30 border border-border/30"
         style={{ opacity: 0.45, pointerEvents: 'none' }}
         role="gridcell"
+        aria-colindex={colIndex}
         aria-disabled="true"
       >
         <div className="px-1 mb-1 flex-shrink-0">
@@ -174,7 +183,12 @@ const MonthDayCell = memo<MonthDayCellProps>(({ day, dayEvents, onDayClick, onEv
         if (eventId) onDrop(eventId, dateStr);
       }}
       role="gridcell"
-      tabIndex={0}
+      aria-colindex={colIndex}
+      // The grid's roving tab stop. `data-date` is how the container's key
+      // handler finds which cell a keypress came from, and how it focuses the
+      // one the user moved to.
+      data-date={dateStr}
+      tabIndex={isActive ? 0 : -1}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -228,6 +242,7 @@ interface MonthViewProps {
 const MonthView: React.FC<MonthViewProps> = ({ events }) => {
   const currentDate = useCalendarStore(s => s.currentDate);
   const openModal   = useCalendarStore(s => s.openModal);
+  const setCurrentDate = useCalendarStore(s => s.setCurrentDate);
   const moveEvent   = useCalendarEventsStore(s => s.moveEvent);
   const isLaptop    = useIsLaptopWidth();
   const today = new Date();
@@ -294,21 +309,122 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
     [moveEvent]
   );
 
+  /** The 42 cells chunked into the six weeks the ARIA rows describe. */
+  const weekRows = useMemo(() => {
+    const rows: MonthGridDay[][] = [];
+    for (let i = 0; i < gridDays.length; i += 7) rows.push(gridDays.slice(i, i + 7));
+    return rows;
+  }, [gridDays]);
+
+  // ── P2-16: roving tabindex + arrow-key navigation ────────────────────────
+  //
+  // The grid had 42 tab stops and an `onKeyDown` that handled only Enter and
+  // Space, so a keyboard user paid up to 42 presses to cross a month and had no
+  // way to move by week at all. Exactly one cell is tabbable now, and the arrow
+  // keys move between them — the standard ARIA grid pattern.
+
+  const [focusedDate, setFocusedDate] = useState<string | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  // Set only by a keyboard move, so mounting the view never steals focus from
+  // wherever the user actually is.
+  const pendingFocus = useRef<string | null>(null);
+
+  /** The single tabbable cell: the last one focused, else today, else the 1st. */
+  const activeDate = useMemo(() => {
+    const isInMonth = (d: string | null) =>
+      d !== null && gridDays.some((g) => g.dateStr === d && g.isCurrentMonth);
+    if (isInMonth(focusedDate)) return focusedDate as string;
+    const todayCell = gridDays.find((g) => g.isToday && g.isCurrentMonth);
+    if (todayCell) return todayCell.dateStr;
+    return gridDays.find((g) => g.isCurrentMonth)?.dateStr ?? '';
+  }, [focusedDate, gridDays]);
+
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+    pendingFocus.current = null;
+    gridRef.current?.querySelector<HTMLElement>(`[data-date="${target}"]`)?.focus();
+  });
+
+  const focusDate = useCallback(
+    (next: Date) => {
+      pendingFocus.current = formatDateISO(next);
+      setFocusedDate(formatDateISO(next));
+      // Stepping off the edge of the month moves the month, so the cell the
+      // user lands on is always a real, in-month, focusable one — rather than
+      // an out-of-month cell that is `pointer-events: none` and inert.
+      if (
+        next.getMonth() !== currentDate.getMonth() ||
+        next.getFullYear() !== currentDate.getFullYear()
+      ) {
+        setCurrentDate(next);
+      }
+    },
+    [currentDate, setCurrentDate],
+  );
+
+  const handleGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const from = (e.target as HTMLElement).closest?.('[data-date]')?.getAttribute('data-date');
+      if (!from) return;
+
+      const [y, m, d] = from.split('-').map(Number);
+      const base = new Date(y, m - 1, d);
+      const shift = (days: number) => {
+        const n = new Date(base);
+        n.setDate(n.getDate() + days);
+        return n;
+      };
+
+      let next: Date | null = null;
+      switch (e.key) {
+        case 'ArrowRight': next = shift(1); break;
+        case 'ArrowLeft': next = shift(-1); break;
+        case 'ArrowDown': next = shift(7); break;
+        case 'ArrowUp': next = shift(-7); break;
+        case 'Home': next = shift(-base.getDay()); break;
+        case 'End': next = shift(6 - base.getDay()); break;
+        // Clamped to 28 so paging from the 31st does not overflow into the
+        // month after next — `new Date(2026, 1, 31)` is 3 March.
+        case 'PageUp': next = new Date(y, m - 2, Math.min(d, 28)); break;
+        case 'PageDown': next = new Date(y, m, Math.min(d, 28)); break;
+        default: return;
+      }
+
+      e.preventDefault();
+      focusDate(next);
+    },
+    [focusDate],
+  );
+
   return (
     // On wide desktops the surface is content-sized; centre it in the
     // available vertical space so there's no raw empty gap at the bottom.
     <div className={isLaptop ? 'h-full' : 'h-full flex flex-col justify-center'}>
-    <CalendarSurface role="grid" className={isLaptop ? '' : '!flex-none !h-auto'}>
+    <CalendarSurface
+      role="grid"
+      aria-label={`${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
+      aria-rowcount={7}
+      aria-colcount={7}
+      className={isLaptop ? '' : '!flex-none !h-auto'}
+    >
       {/* Wrap in a horizontally-scrollable container with a min-width so
           all 7 columns stay readable below ~1100px (laptop with sidebar +
           mobile). The header row sits inside the same scroller so the
           weekday labels stay aligned with their columns when scrolled. */}
       <div className="calendar-scroll-container flex-1 min-h-0 flex flex-col overflow-x-auto">
         <div className="min-w-[700px] flex-1 flex flex-col min-h-0">
-          <div className={`grid grid-cols-7 ${HEADER_CLS}`}>
-            {DAYS.map((day) => (
+          {/* P2-16: the weekday labels were plain divs inside a `role="grid"`.
+              ARIA grid is grid > row > gridcell/columnheader; without the row
+              layer and the header roles a screen reader cannot announce which
+              column a day is in, which is the primary way a non-sighted user
+              reads a month view. */}
+          <div className={`grid grid-cols-7 ${HEADER_CLS}`} role="row" aria-rowindex={1}>
+            {DAYS.map((day, colIdx) => (
               <div
                 key={day}
+                role="columnheader"
+                aria-colindex={colIdx + 1}
                 className={`py-1.5 text-center ${WEEKDAY_LABEL_CLS}`}
               >
                 {day}
@@ -318,6 +434,8 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
 
       <div className="flex-1 min-h-0 h-full overflow-x-auto">
         <div
+          ref={gridRef}
+          onKeyDown={handleGridKeyDown}
           className={`h-full grid grid-cols-7 grid-rows-6 p-1 gap-0.5 ${GRID_CANVAS_CLS}`}
           // Laptop band fills available height (rows ~95–110px naturally).
           // Wide screens use a fixed 110px track so the cell sizes to fit just
@@ -325,16 +443,31 @@ const MonthView: React.FC<MonthViewProps> = ({ events }) => {
           // is wasted vertical space on a 1-event cap.
           style={{ gridTemplateRows: isLaptop ? 'repeat(6, minmax(0, 1fr))' : 'repeat(6, 110px)' }}
         >
-          {gridDays.map((day, idx) => (
-            <MonthDayCell
-              key={idx}
-              day={day}
-              dayEvents={eventsByDate.get(day.dateStr) ?? []}
-              onDayClick={handleDayClick}
-              onEventClick={handleEventClick}
-              onDrop={handleDrop}
-              isLaptop={isLaptop}
-            />
+          {/* One `role="row"` per week. `display: contents` keeps the CSS grid
+              layout exactly as it was — the row element generates no box, so
+              its seven children remain direct grid items — while giving the
+              accessibility tree the row layer ARIA requires. */}
+          {weekRows.map((week, weekIdx) => (
+            <div
+              key={weekIdx}
+              role="row"
+              aria-rowindex={weekIdx + 2}
+              style={{ display: 'contents' }}
+            >
+              {week.map((day, colIdx) => (
+                <MonthDayCell
+                  key={day.dateStr}
+                  day={day}
+                  dayEvents={eventsByDate.get(day.dateStr) ?? []}
+                  onDayClick={handleDayClick}
+                  onEventClick={handleEventClick}
+                  onDrop={handleDrop}
+                  isLaptop={isLaptop}
+                  colIndex={colIdx + 1}
+                  isActive={day.dateStr === activeDate}
+                />
+              ))}
+            </div>
           ))}
         </div>
       </div>

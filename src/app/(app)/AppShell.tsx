@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { PageTransition } from "@/components/ui/PageTransition";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { useCalendarStore } from "@/store/useCalendarStore";
 import { ViewType } from "@/types";
 import { useCalendarEventsStore } from "@/store/useCalendarEventsStore";
@@ -420,7 +420,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!onboardingHydrated) return null;
 
   return (
-    <>
+    /**
+     * P2-15: `prefers-reduced-motion` was honoured on the marketing site and
+     * nowhere inside the app. `useReducedMotion()` appeared only under
+     * `components/landing/**`, while 93 files import framer-motion — including
+     * the infinite-rotation hydration spinner below, every page and dialog
+     * transition, and the celebration overlays.
+     *
+     * `reducedMotion="user"` makes every `motion` component in the tree respect
+     * the OS setting: transform and layout animations are skipped, opacity and
+     * colour still cross-fade (so nothing appears or vanishes abruptly). One
+     * wrapper covers all 93 files, and a component added tomorrow inherits it.
+     *
+     * For users with vestibular disorders this is the difference between usable
+     * and unusable — and the landing page proves the team already knows how.
+     */
+    <MotionConfig reducedMotion="user">
       {/* Hydration loading overlay — plain conditional render. We previously
           wrapped this in <AnimatePresence> with an `exit` opacity tween, but
           in some Framer Motion + React 19 + Strict-Mode combinations the
@@ -671,6 +686,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
         )}
       </AnimatePresence>
-    </>
+    </MotionConfig>
   );
 }

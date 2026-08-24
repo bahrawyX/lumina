@@ -490,21 +490,46 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
   let totalRendered = 0;
 
   return (
-    <CalendarSurface className="relative" role="grid">
+    <CalendarSurface
+      className="relative"
+      role="grid"
+      aria-label="Week view"
+      aria-rowcount={2}
+      aria-colcount={8}
+    >
       {isSheetOpen && (
         <div className="pointer-events-none absolute inset-0 z-30 bg-black/10" />
       )}
 
       {/* Header */}
-      <div className={`flex sticky top-0 z-30 ${HEADER_CLS}`}>
-        <div className="w-20 border-r border-border flex items-center justify-center">
+      {/* P2-16: `role="grid"` wrapped these day headers with no `role="row"`
+          layer and no `columnheader` roles, so a screen reader could not
+          announce which column anything was in. The row wrappers use
+          `display: contents` where they sit inside a CSS grid, so the layout is
+          untouched. */}
+      <div className={`flex sticky top-0 z-30 ${HEADER_CLS}`} role="row" aria-rowindex={1}>
+        <div
+          className="w-20 border-r border-border flex items-center justify-center"
+          role="columnheader"
+          aria-colindex={1}
+        >
           <span className={TIME_LABEL_CLS}>GMT</span>
         </div>
-        <div className="flex-1 grid grid-cols-7">
+        {/* `role="none"` rather than `display: contents` here: this wrapper is
+            the flex child that carries `flex-1` and the 7-column grid, so
+            collapsing its box would leave the seven day headers as unequal
+            flex items. Presentation role re-parents the columnheaders to the
+            row in the accessibility tree without touching the layout. */}
+        <div className="flex-1 grid grid-cols-7" role="none">
           {weekDays.map((date, idx) => {
             const isToday = isSameDay(date, today);
             return (
-              <div key={idx} className="py-4 flex flex-col items-center gap-1 border-r border-border last:border-r-0">
+              <div
+                key={idx}
+                role="columnheader"
+                aria-colindex={idx + 2}
+                className="py-4 flex flex-col items-center gap-1 border-r border-border last:border-r-0"
+              >
                 <span className={WEEKDAY_LABEL_CLS}>
                   {DAYS[date.getDay()]}
                 </span>

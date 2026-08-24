@@ -206,11 +206,35 @@ export function useLottie(options: UseLottieOptions): UseLottieReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedTheme])
 
-  const play = useCallback(() => animRef.current?.play(), [])
+  /**
+   * P2-15: `autoplay` and `loop` already respected the OS setting, but the
+   * IMPERATIVE handles did not — `LottieAnimation`'s `playTrigger` calls
+   * `play()` directly, so a celebration or achievement animation still ran at
+   * full strength for a user who had asked their system to stop animations.
+   *
+   * The reduced-motion path renders the first frame as a static poster, which
+   * is what `DOMLoaded` already does on mount.
+   */
+  const play = useCallback(() => {
+    if (prefersReducedMotion) {
+      animRef.current?.goToAndStop(0, true)
+      return
+    }
+    animRef.current?.play()
+  }, [prefersReducedMotion])
   const pause = useCallback(() => animRef.current?.pause(), [])
   const stop = useCallback(() => animRef.current?.stop(), [])
   const setSpeed = useCallback((s: number) => animRef.current?.setSpeed(s), [])
-  const goToAndPlay = useCallback((frame: number) => animRef.current?.goToAndPlay(frame, true), [])
+  const goToAndPlay = useCallback(
+    (frame: number) => {
+      if (prefersReducedMotion) {
+        animRef.current?.goToAndStop(frame, true)
+        return
+      }
+      animRef.current?.goToAndPlay(frame, true)
+    },
+    [prefersReducedMotion],
+  )
 
   return {
     containerRef,
