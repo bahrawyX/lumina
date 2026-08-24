@@ -71,6 +71,22 @@
     box-shadow: none !important;
     ring: 0 !important;
   }
+  /* ── No-JS safety net for the marketing page ────────────────────────────
+     Scroll-reveal elements (`data-reveal`, plus `BlurText`'s per-word spans)
+     ship with an inline `opacity: 0` and are revealed by framer-motion. When
+     scripting is unavailable — a crawler that doesn't execute JS, a blocked or
+     failed bundle, a strict extension — the marketing copy must still be
+     legible. `layout.tsx` carries a `<noscript>` copy of this rule for engines
+     that don't support the `scripting` media feature. */
+  @media (scripting: none) {
+    [data-reveal],
+    [data-reveal] * {
+      opacity: 1 !important;
+      filter: none !important;
+      transform: none !important;
+    }
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

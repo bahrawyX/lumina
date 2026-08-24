@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { motion, useInView, useReducedMotion, type Variants } from 'framer-motion';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
+import { motion, useReducedMotion, type Variants } from 'framer-motion';
 
 interface BlurTextProps {
   text: string;
@@ -25,25 +24,40 @@ const wordVariants: Variants = {
   }),
 };
 
+/**
+ * Per-word blur-in headline.
+ *
+ * `whileInView` replaces the previous `animate={isInView ? 'visible' : 'hidden'}`:
+ * that form left every word pinned at `hidden` — `opacity: 0` — for the life of
+ * the document if the IntersectionObserver callback never ran, which for the
+ * page's `<h1>` meant the headline simply never appeared.
+ *
+ * `data-reveal` opts the element into the no-JS override in `globals.css`, so
+ * the headline is legible even when the bundle never executes.
+ */
 export function BlurText({ text, className = '', delay = 0, as: Tag = 'h1' }: BlurTextProps) {
   const ref = useRef<HTMLElement>(null);
-  const isInView = useInView(ref, { once: true, margin: '-50px' });
   const prefersReduced = useReducedMotion();
   const words = useMemo(() => text.split(' '), [text]);
 
   if (prefersReduced) {
-    return <Tag ref={ref as any} className={className}>{text}</Tag>;
+    return (
+      <Tag ref={ref as never} className={className}>
+        {text}
+      </Tag>
+    );
   }
 
   return (
-    <Tag ref={ref as any} className={className} aria-label={text}>
+    <Tag ref={ref as never} className={className} aria-label={text} data-reveal>
       {words.map((word, i) => (
         <motion.span
           key={`${word}-${i}`}
           custom={i + delay}
           variants={wordVariants}
           initial="hidden"
-          animate={isInView ? 'visible' : 'hidden'}
+          whileInView="visible"
+          viewport={{ once: true, margin: '-50px' }}
           className="inline-block mr-[0.25em] last:mr-0"
           aria-hidden="true"
         >

@@ -136,6 +136,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             unrelated routes such as /tasks. */}
         {/* PWA: Apple touch icon */}
         <link rel="apple-touch-icon" href="/icons/pwa-192.png" />
+        {/* Scroll-reveal elements start hidden and are revealed by framer-motion.
+            `globals.css` covers this with `@media (scripting: none)`; this is the
+            fallback for engines that don't support that media feature. */}
+        <noscript>
+          <style>{`[data-reveal],[data-reveal] *{opacity:1!important;filter:none!important;transform:none!important}`}</style>
+        </noscript>
       </head>
       <body className="bg-warm-50 dark:bg-neutral-dark text-gray-800 dark:text-gray-100">
         <Providers>{children}</Providers>

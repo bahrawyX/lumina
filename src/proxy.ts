@@ -1,17 +1,23 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * CSRF defence — an Origin/Referer allowlist on state-changing API requests.
+ * Edge proxy — two independent concerns, both of which must run before any
+ * route handler or page is reached.
  *
  * (Next.js 16 "proxy" convention — formerly `middleware.ts`.)
  *
- * The session cookie is `SameSite=None` in production (required by the popup
- * OAuth login/connect flow — see lib/auth.ts), so it rides cross-site requests.
- * Without this check a logged-in victim visiting a hostile page could have
- * POSTs driven on their behalf (a cross-site `text/plain` POST is a "simple
- * request" that doesn't preflight, and route handlers parse the body with
- * `req.json()` regardless of content-type). This lives in the proxy, not
- * per-route helpers, so a newly-added route can't forget it.
+ * ── 1. CSRF defence on `/api/*` ───────────────────────────────────────────
+ * An Origin/Referer allowlist on state-changing API requests. A cross-site
+ * `text/plain` POST is a "simple request" that doesn't preflight, and route
+ * handlers parse the body with `req.json()` regardless of content-type — so
+ * without this check a logged-in victim visiting a hostile page could have
+ * POSTs driven on their behalf. This lives in the proxy, not in per-route
+ * helpers, so a newly-added route can't forget it.
+ *
+ * The session cookie is `SameSite=Lax`, `Secure`, `httpOnly` and `__Secure-`
+ * prefixed. Lax already blocks the cross-site *sub-resource* POST, so this
+ * check is defence-in-depth rather than the only line — but it is the line
+ * that also covers non-browser clients and any future cookie change.
  *
  * Only mutating methods are checked; GET/HEAD/OPTIONS pass untouched — which is
  * why the OAuth callback + connect routes (all GET) are never affected here.
@@ -21,8 +27,13 @@ import { NextResponse, type NextRequest } from 'next/server';
  * a browser Origin:
  *   - /api/auth/*  — BetterAuth enforces its own CSRF via `trustedOrigins`.
  *   - /api/cron/*  — shared-secret (cronAuth); server-to-server, no Origin.
+ *
+ * ── 2. Signed-in redirect off the marketing page ──────────────────────────
+ * `/` used to gate the entire landing page behind a client-side session fetch
+ * purely to bounce signed-in users to /calendar. That made the prerendered
+ * marketing HTML a single wordmark. The bounce now happens here, from the
+ * session cookie, before any HTML is produced.
  */
-
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function isExempt(pathname: string): boolean {
@@ -92,7 +103,46 @@ function block(reason: string): NextResponse {
   );
 }
 
+
+/**
+ * BetterAuth names the session cookie `<prefix>.session_token`, with a
+ * `__Secure-` prefix whenever cookies are secure (i.e. always in production),
+ * and splits it into `.0`/`.1` chunks when it grows past the per-cookie limit.
+ * Matching on the stem covers all four shapes.
+ *
+ * This is a *presence* check, not authentication — the cookie is signed and
+ * only the route handlers verify it. A forged cookie buys an attacker nothing
+ * but a redirect to a page that will 401 every fetch it makes.
+ */
+const SESSION_COOKIE_STEM = 'better-auth.session_token';
+
+function hasSessionCookie(req: NextRequest): boolean {
+  return req.cookies
+    .getAll()
+    .some((c) => c.name.includes(SESSION_COOKIE_STEM) && c.value.length > 0);
+}
+
+/**
+ * `/` with a session → /calendar, unless `?preview=1` was passed (which lets a
+ * signed-in user read the marketing copy without being bounced).
+ */
+function handleLanding(req: NextRequest): NextResponse | null {
+  if (req.nextUrl.pathname !== '/') return null;
+  if (req.nextUrl.searchParams.get('preview') === '1') return null;
+  if (!hasSessionCookie(req)) return null;
+
+  const url = req.nextUrl.clone();
+  url.pathname = '/calendar';
+  url.search = '';
+  return NextResponse.redirect(url, 307);
+}
+
 export function proxy(req: NextRequest): NextResponse {
+  const landing = handleLanding(req);
+  if (landing) return landing;
+
+  if (!req.nextUrl.pathname.startsWith('/api/')) return NextResponse.next();
+
   if (!MUTATING_METHODS.has(req.method)) return NextResponse.next();
   if (isExempt(req.nextUrl.pathname)) return NextResponse.next();
 
@@ -117,5 +167,5 @@ export function proxy(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: '/api/:path*',
+  matcher: ['/', '/api/:path*'],
 };

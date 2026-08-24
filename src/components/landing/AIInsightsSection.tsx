@@ -1,8 +1,7 @@
 'use client';
 
-import { motion, useInView } from 'framer-motion';
-import { useRef } from 'react';
 import { CursorZone } from './CursorZone';
+import { Reveal } from './animations/Reveal';
 
 const INSIGHTS = [
   { label: 'Focus windows', desc: 'Finds the best time slots for deep work based on your calendar.' },
@@ -11,11 +10,8 @@ const INSIGHTS = [
 ];
 
 export function AIInsightsSection() {
-  const ref = useRef<HTMLElement>(null);
-  const isInView = useInView(ref, { once: true, margin: '-60px' });
-
   return (
-    <section ref={ref} className="py-16 md:py-24 px-4 md:px-6 bg-muted/30" aria-label="AI insights">
+    <section className="py-16 md:py-24 px-4 md:px-6 bg-muted/30" aria-label="AI insights">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-10 max-w-3xl">
           <div>
@@ -34,12 +30,12 @@ export function AIInsightsSection() {
         <CursorZone label="Thinking" color="#8b5cf6">
           <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4">
             {INSIGHTS.map((item, i) => (
-              <motion.div
+              <Reveal
                 key={item.label}
                 className="card-lift rounded-xl border border-border bg-card p-5 shadow-card"
-                initial={{ opacity: 0, y: 16 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.5, delay: 0.15 + i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+                y={16}
+                duration={0.5}
+                delay={0.15 + i * 0.1}
               >
                 <h3 className="font-display text-sm font-medium text-foreground tracking-[-0.02em] mb-1.5">
                   {item.label}
@@ -47,7 +43,7 @@ export function AIInsightsSection() {
                 <p className="text-[12px] text-muted-foreground leading-relaxed">
                   {item.desc}
                 </p>
-              </motion.div>
+              </Reveal>
             ))}
           </div>
         </CursorZone>
