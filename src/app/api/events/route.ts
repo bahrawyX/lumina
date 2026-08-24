@@ -5,17 +5,40 @@ import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { logger } from '@/lib/logger';
+import {
+  isValidTimeZone,
+  utcToZonedWallClock,
+  zonedWallClockToUtc,
+} from '@/lib/time/zonedTime';
+import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 
 type EventProvider = 'local' | 'google' | 'outlook';
 type ApiEventProvider = 'local' | 'google' | 'microsoft';
 type EventSyncStatus = 'local_only' | 'synced' | 'pending_update' | 'pending_delete';
 type EventSource = 'manual' | 'google' | 'microsoft' | 'scheduler';
 
-function parseDateAndTime(date: unknown, time: unknown, fallback: string): Date | null {
+/**
+ * Resolve a wall-clock date+time IN THE EVENT'S TIMEZONE to a true instant.
+ *
+ * This used to be:
+ *
+ *     const parsed = new Date(`${date}T${normalizedTime}:00.000Z`);
+ *
+ * -- always `Z`. "3pm" was stored as 15:00Z regardless of where the user was,
+ * and the `events.timezone` column written beside it was read by nothing.
+ * Display was self-consistent so the UI looked right, but every comparison
+ * against a real instant (reminders, conflict detection, external sync) was
+ * wrong by the user's UTC offset.
+ */
+function parseDateAndTime(
+  date: unknown,
+  time: unknown,
+  fallback: string,
+  timeZone: string,
+): Date | null {
   if (typeof date !== 'string') return null;
   const normalizedTime = typeof time === 'string' ? time : fallback;
-  const parsed = new Date(`${date}T${normalizedTime}:00.000Z`);
-  return isNaN(parsed.getTime()) ? null : parsed;
+  return zonedWallClockToUtc(date, normalizedTime, timeZone);
 }
 
 function parseIso(value: unknown): Date | null {
@@ -51,15 +74,21 @@ function mapRowToApiEvent(
   calendarProvider?: string | null,
 ) {
   const provider = mapProviderForApi(row.provider, calendarProvider, row.source);
+  const zone = isValidTimeZone(row.timezone ?? '') ? row.timezone : 'UTC';
+  const start = utcToZonedWallClock(row.startTime, zone);
+  const end = utcToZonedWallClock(row.endTime, zone);
   return {
     id: row.id,
     title: row.title,
-    date: row.startTime.toISOString().slice(0, 10),
+    // Rendered in the EVENT'S timezone, not UTC. These were
+    // `.toISOString().slice(...)`, which reads the UTC fields directly —
+    // correct only while storage was itself floating UTC.
+    date: start.date,
     // The end timestamp carries its own date — an event may span days.
     // Dropping it here is what made End Date always mirror Start Date.
-    endDate: row.endTime.toISOString().slice(0, 10),
-    startTime: row.startTime.toISOString().slice(11, 16),
-    endTime: row.endTime.toISOString().slice(11, 16),
+    endDate: end.date,
+    startTime: start.time,
+    endTime: end.time,
     description: row.description ?? undefined,
     location: row.location ?? undefined,
     isAllDay: row.isAllDay,
@@ -172,8 +201,13 @@ export async function POST(req: NextRequest) {
   // An event may end on a later day than it starts. Fall back to the start
   // date only when no endDate was supplied (single-day event).
   const fallbackEndDate = typeof endDate === 'string' ? endDate : fallbackDate;
-  const startTs = directStartAt ?? parseDateAndTime(fallbackDate, startTime, '00:00');
-  const endTs = directEndAt ?? parseDateAndTime(fallbackEndDate, endTime, '23:59');
+  // The zone the wall-clock fields are expressed in. Falls back to the user's
+  // stored timezone, then UTC — never to the server's, which on Vercel is UTC
+  // and was the source of the original defect.
+  const timezone = await resolveEventTimeZone(getDatabase(), userId, rawTimezone);
+
+  const startTs = directStartAt ?? parseDateAndTime(fallbackDate, startTime, '00:00', timezone);
+  const endTs = directEndAt ?? parseDateAndTime(fallbackEndDate, endTime, '23:59', timezone);
 
   if (!startTs || !endTs) {
     return NextResponse.json({ error: 'Valid start and end timestamps are required' }, { status: 400 });
@@ -183,7 +217,6 @@ export async function POST(req: NextRequest) {
   }
 
   const linkedTaskId = typeof rawLinkedTaskId === 'string' && rawLinkedTaskId.trim() ? rawLinkedTaskId : null;
-  const timezone = typeof rawTimezone === 'string' && rawTimezone.trim() ? rawTimezone : 'UTC';
   const category = typeof rawCategory === 'string' && rawCategory.trim() ? rawCategory.trim() : null;
   const color = typeof rawColor === 'string' && rawColor.trim() ? rawColor.trim() : null;
   const normalizedExternalEventId = typeof externalEventId === 'string' && externalEventId.trim()

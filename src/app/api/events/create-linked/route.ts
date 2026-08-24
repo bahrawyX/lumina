@@ -6,6 +6,8 @@ import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { logger } from '@/lib/logger';
+import { zonedWallClockToUtc } from '@/lib/time/zonedTime';
+import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 
 /**
  * POST /api/events/create-linked
@@ -35,10 +37,14 @@ const createLinkedSchema = z.object({
   taskId: z.string().uuid('taskId must be a valid UUID'),
 });
 
-function parseDateAndTime(date: string, time: string | undefined, fallback: string): Date | null {
-  const normalizedTime = time ?? fallback;
-  const parsed = new Date(`${date}T${normalizedTime}:00.000Z`);
-  return isNaN(parsed.getTime()) ? null : parsed;
+/** See events/route.ts — wall clock resolved in the event's zone, not UTC. */
+function parseDateAndTime(
+  date: string,
+  time: string | undefined,
+  fallback: string,
+  timeZone: string,
+): Date | null {
+  return zonedWallClockToUtc(date, time ?? fallback, timeZone);
 }
 
 export async function POST(req: NextRequest) {
@@ -78,8 +84,9 @@ export async function POST(req: NextRequest) {
     taskId,
   } = parsed.data;
 
-  const startTs = parseDateAndTime(date, startTime, '00:00');
-  const endTs = parseDateAndTime(date, endTime, '23:59');
+  const eventTimeZone = await resolveEventTimeZone(getDatabase(), userId, timezone);
+  const startTs = parseDateAndTime(date, startTime, '00:00', eventTimeZone);
+  const endTs = parseDateAndTime(date, endTime, '23:59', eventTimeZone);
 
   if (!startTs || !endTs) {
     return NextResponse.json({ error: 'Invalid date/time values' }, { status: 400 });
@@ -194,7 +201,7 @@ export async function POST(req: NextRequest) {
           startTime: startTs,
           endTime: endTs,
           isAllDay: isAllDay ?? false,
-          timezone: timezone ?? 'UTC',
+          timezone: eventTimeZone,
           category: category ?? null,
           color: color ?? null,
           completed: false,

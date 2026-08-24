@@ -5,6 +5,7 @@ import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence } from '@/db/schema';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import { logger } from '@/lib/logger';
+import { utcToZonedWallClock } from '@/lib/time/zonedTime';
 
 /**
  * GET /api/events/expand?start=ISO&end=ISO
@@ -83,7 +84,11 @@ export async function GET(req: NextRequest) {
         rangeStart,
         rangeEnd,
         durationMs,
+        // Expand against the event's local clock so a 3pm daily event stays at
+        // 3pm across a DST transition instead of drifting an hour.
+        masterEvent.timezone ?? 'UTC',
       );
+      const masterZone = masterEvent.timezone ?? 'UTC';
 
       // Find exceptions for this master event
       const exceptions = exceptionRows.filter(
@@ -103,9 +108,10 @@ export async function GET(req: NextRequest) {
           masterEventId: masterEvent.id,
           title: masterEvent.title,
           description: masterEvent.description,
-          date: inst.startIso.slice(0, 10),
-          startTime: inst.startIso.slice(11, 16),
-          endTime: inst.endIso.slice(11, 16),
+          // Rendered in the event's zone, not UTC.
+          date: utcToZonedWallClock(new Date(inst.startIso), masterZone).date,
+          startTime: utcToZonedWallClock(new Date(inst.startIso), masterZone).time,
+          endTime: utcToZonedWallClock(new Date(inst.endIso), masterZone).time,
           startIso: inst.startIso,
           endIso: inst.endIso,
           isAllDay: masterEvent.isAllDay,
@@ -134,9 +140,9 @@ export async function GET(req: NextRequest) {
           masterEventId: ex.recurringEventId,
           title: ex.title,
           description: ex.description,
-          date: ex.startTime.toISOString().slice(0, 10),
-          startTime: ex.startTime.toISOString().slice(11, 16),
-          endTime: ex.endTime.toISOString().slice(11, 16),
+          date: utcToZonedWallClock(ex.startTime, ex.timezone ?? 'UTC').date,
+          startTime: utcToZonedWallClock(ex.startTime, ex.timezone ?? 'UTC').time,
+          endTime: utcToZonedWallClock(ex.endTime, ex.timezone ?? 'UTC').time,
           startIso: ex.startTime.toISOString(),
           endIso: ex.endTime.toISOString(),
           isAllDay: ex.isAllDay,

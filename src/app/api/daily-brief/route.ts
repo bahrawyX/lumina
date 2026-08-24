@@ -218,6 +218,7 @@ export async function GET(req: NextRequest) {
         todayStart,
         todayEnd,
         durationMs,
+        rec.timezone ?? 'UTC',
       );
       for (const inst of instances) {
         recurringInstances.push({

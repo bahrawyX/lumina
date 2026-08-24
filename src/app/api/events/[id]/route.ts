@@ -6,6 +6,8 @@ import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { eq, and } from 'drizzle-orm';
 import type { EditScope } from '@/types';
 import { logger } from '@/lib/logger';
+import { utcToZonedWallClock, zonedWallClockToUtc } from '@/lib/time/zonedTime';
+import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -300,28 +302,41 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     const parsedStartAt = typeof startAt === 'string' ? new Date(startAt) : null;
     const parsedEndAt = typeof endAt === 'string' ? new Date(endAt) : null;
-    const dateStr = typeof date === 'string' ? date : existing.startTime.toISOString().slice(0, 10);
+    // The zone this event's wall-clock fields are expressed in. A PATCH may
+    // change it; otherwise the event keeps the zone it was created in, so
+    // editing "3pm" in a different browser timezone does not silently move it.
+    const eventTimeZone = await resolveEventTimeZone(
+      getDatabase(),
+      userId,
+      typeof body.timezone === 'string' ? body.timezone : existing.timezone,
+    );
+    const existingStart = utcToZonedWallClock(existing.startTime, eventTimeZone);
+    const existingEnd = utcToZonedWallClock(existing.endTime, eventTimeZone);
+
+    const dateStr = typeof date === 'string' ? date : existingStart.date;
     // The end timestamp keeps its own date so events can span days. Only when
     // no endDate is supplied does it inherit the (possibly new) start date.
     const endDateStr = typeof endDate === 'string'
       ? endDate
       : typeof date === 'string'
         ? date
-        : existing.endTime.toISOString().slice(0, 10);
-    const startStr = typeof startTime === 'string' ? startTime : existing.startTime.toISOString().slice(11, 16);
-    const endStr = typeof endTime === 'string' ? endTime : existing.endTime.toISOString().slice(11, 16);
+        : existingEnd.date;
+    const startStr = typeof startTime === 'string' ? startTime : existingStart.time;
+    const endStr = typeof endTime === 'string' ? endTime : existingEnd.time;
 
     if (parsedStartAt && !isNaN(parsedStartAt.getTime())) patch.startTime = parsedStartAt;
     if (parsedEndAt && !isNaN(parsedEndAt.getTime())) patch.endTime = parsedEndAt;
 
     if (!patch.startTime && (typeof date === 'string' || typeof startTime === 'string')) {
-      const ts = new Date(`${dateStr}T${startStr}:00.000Z`);
-      if (!isNaN(ts.getTime())) patch.startTime = ts;
+      const ts = zonedWallClockToUtc(dateStr, startStr, eventTimeZone);
+      if (ts) patch.startTime = ts;
     }
     if (!patch.endTime && (typeof date === 'string' || typeof endDate === 'string' || typeof endTime === 'string')) {
-      const ts = new Date(`${endDateStr}T${endStr}:00.000Z`);
-      if (!isNaN(ts.getTime())) patch.endTime = ts;
+      const ts = zonedWallClockToUtc(endDateStr, endStr, eventTimeZone);
+      if (ts) patch.endTime = ts;
     }
+    // Keep the recorded zone in step with the instants derived from it.
+    if (patch.startTime || patch.endTime) patch.timezone = eventTimeZone;
 
     const nextStart = (patch.startTime as Date | undefined) ?? existing.startTime;
     const nextEnd = (patch.endTime as Date | undefined) ?? existing.endTime;

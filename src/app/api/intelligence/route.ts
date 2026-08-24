@@ -208,6 +208,7 @@ export async function GET(req: NextRequest) {
         startDate,
         endDate,
         durationMs,
+        masterEvent.timezone ?? 'UTC',
       );
       for (const inst of expanded) {
         recurringInstances.push({

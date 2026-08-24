@@ -94,6 +94,14 @@ export async function GET(req: Request) {
         continue;
       }
 
+      // `event.startTime` is a true instant, so formatting it in the user's zone
+      // is a single, correct conversion.
+      //
+      // This line used to be a DOUBLE shift: storage held floating wall-clock
+      // coerced to UTC, and this re-converted that already-local value into the
+      // user's timezone on top. A UTC-5 user's 3pm meeting was treated as 10am
+      // and announced at the wrong time. Fixing the storage model (P0-6) is
+      // what makes this correct; the code here did not need to change.
       const userTz = user?.timezone || 'UTC';
       const timeStr = formatEventTime(event.startTime, userTz);
       const locationText = event.location ? ` · ${event.location}` : '';

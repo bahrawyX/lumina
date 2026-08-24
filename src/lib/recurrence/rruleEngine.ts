@@ -1,4 +1,5 @@
 import { RRule, RRuleSet, rrulestr } from 'rrule';
+import { utcToZonedWallClock, zonedWallClockToUtc } from '@/lib/time/zonedTime';
 
 export interface RecurrenceInput {
   /** RFC 5545 RRULE string, e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR" */
@@ -98,7 +99,18 @@ export function expandRecurrence(
   rangeStart: Date,
   rangeEnd: Date,
   durationMs: number,
+  /**
+   * The event's IANA timezone. When given, the rule expands against LOCAL wall
+   * clock so a 3pm daily event stays at 3pm across a DST transition. Omit (or
+   * pass 'UTC') to expand in UTC, which is what every caller did implicitly
+   * before instants were stored correctly.
+   */
+  timeZone?: string,
 ): ExpandedInstance[] {
+  if (timeZone && timeZone !== 'UTC') {
+    return expandRecurrenceZoned(input, rangeStart, rangeEnd, durationMs, timeZone);
+  }
+
   const dtstart = new Date(input.dtstart);
   const rule = parseRRule(input.rrule, dtstart);
 
@@ -129,6 +141,84 @@ export function expandRecurrence(
     endIso: new Date(date.getTime() + durationMs).toISOString(),
     isException: false,
   }));
+}
+
+/**
+ * Expand against the event's LOCAL wall clock, then re-anchor each occurrence
+ * to a real instant.
+ *
+ * `rrule` has no timezone support: it works on `Date` objects and steps in UTC.
+ * Once event times are stored as true instants (P0-6), a daily 3pm New York
+ * event has DTSTART 19:00Z, and a naive UTC expansion emits 19:00Z every day —
+ * which is 3pm in summer and **2pm in winter**. The event drifts an hour every
+ * DST transition.
+ *
+ * The fix is the standard one:
+ *
+ *   1. Project DTSTART and the query window into "floating" local time — the
+ *      wall-clock fields, carried in a Date as if they were UTC.
+ *   2. Let `rrule` step through that floating space, where "every day at 15:00"
+ *      genuinely means 15:00 each day.
+ *   3. Convert each floating occurrence back to an instant in `timeZone`,
+ *      picking up whatever offset applies on that date.
+ *
+ * Duration is applied in real time, so a 1-hour meeting stays 1 hour even when
+ * it straddles a transition.
+ */
+function expandRecurrenceZoned(
+  input: RecurrenceInput,
+  rangeStart: Date,
+  rangeEnd: Date,
+  durationMs: number,
+  timeZone: string,
+): ExpandedInstance[] {
+  const toFloating = (instant: Date): Date => {
+    const { date, time } = utcToZonedWallClock(instant, timeZone);
+    const [y, m, d] = date.split('-').map(Number);
+    const [hh, mm] = time.split(':').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0));
+  };
+
+  const floatingDtstart = toFloating(new Date(input.dtstart));
+  const rule = parseRRule(input.rrule, floatingDtstart);
+
+  const ruleSet = new RRuleSet();
+  ruleSet.rrule(rule);
+  if (input.exdates) {
+    for (const exdate of input.exdates) {
+      ruleSet.exdate(toFloating(new Date(exdate)));
+    }
+  }
+
+  // Widen the floating window by a day at each edge: an occurrence just outside
+  // the floating range can fall inside the real one once the offset is applied.
+  const DAY = 24 * 60 * 60 * 1000;
+  const occurrences = ruleSet.between(
+    new Date(toFloating(rangeStart).getTime() - DAY),
+    new Date(toFloating(rangeEnd).getTime() + DAY),
+    true,
+    (_date, len) => len < MAX_INSTANCES,
+  );
+
+  const instances: ExpandedInstance[] = [];
+  for (const floating of occurrences) {
+    if (instances.length >= MAX_INSTANCES) break;
+
+    const date = `${floating.getUTCFullYear()}-${String(floating.getUTCMonth() + 1).padStart(2, '0')}-${String(floating.getUTCDate()).padStart(2, '0')}`;
+    const time = `${String(floating.getUTCHours()).padStart(2, '0')}:${String(floating.getUTCMinutes()).padStart(2, '0')}`;
+    const start = zonedWallClockToUtc(date, time, timeZone);
+    if (!start) continue;
+
+    // Re-clip against the REAL window, since the floating one was widened.
+    if (start < rangeStart || start > rangeEnd) continue;
+
+    instances.push({
+      startIso: start.toISOString(),
+      endIso: new Date(start.getTime() + durationMs).toISOString(),
+      isException: false,
+    });
+  }
+  return instances;
 }
 
 /**
