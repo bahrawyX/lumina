@@ -8,6 +8,19 @@ export interface RecurrenceInput {
   dtstart: string;
   /** ISO dates to exclude (EXDATE) */
   exdates?: string[];
+  /**
+   * The stored `event_recurrence.recurrence_end`, if any.
+   *
+   * P2-9: this column was written by six call sites and read by ZERO. When the
+   * client sends `recurrence.until` without also embedding `UNTIL=` in the
+   * RRULE string — which the UI does — the end date was persisted and then
+   * completely disregarded, so the series recurred forever in every window the
+   * user scrolled to. The `this_and_following` split path bakes `UNTIL` into
+   * the rule itself, which is why the bug was invisible there.
+   *
+   * Occurrences at or before this instant are kept; anything after is dropped.
+   */
+  until?: string | Date | null;
 }
 
 export interface ExpandedInstance {
@@ -20,6 +33,21 @@ export interface ExpandedInstance {
 }
 
 const MAX_INSTANCES = 500;
+
+/**
+ * Narrow an expansion window to the series' own end date.
+ *
+ * Returns `rangeEnd` unchanged when there is no end date, or when it parses to
+ * an Invalid Date — six call sites wrote this column from an unvalidated
+ * `new Date(body.recurrence.until)`, so junk is reachable in existing rows and
+ * must degrade to "no end", never to "ends at NaN".
+ */
+function clipRangeEnd(rangeEnd: Date, until: string | Date | null | undefined): Date {
+  if (!until) return rangeEnd;
+  const end = until instanceof Date ? until : new Date(until);
+  if (isNaN(end.getTime())) return rangeEnd;
+  return end < rangeEnd ? end : rangeEnd;
+}
 
 /**
  * Validate an RRULE string before it is stored. This is a safety check to
@@ -107,8 +135,14 @@ export function expandRecurrence(
    */
   timeZone?: string,
 ): ExpandedInstance[] {
+  // P2-9: clip the window at the series' stored end date before expanding, so
+  // a rule with no `UNTIL=` in its text still stops where the user said it
+  // should — and costs nothing to expand past it.
+  const effectiveEnd = clipRangeEnd(rangeEnd, input.until);
+  if (effectiveEnd < rangeStart) return [];
+
   if (timeZone && timeZone !== 'UTC') {
-    return expandRecurrenceZoned(input, rangeStart, rangeEnd, durationMs, timeZone);
+    return expandRecurrenceZoned(input, rangeStart, effectiveEnd, durationMs, timeZone);
   }
 
   const dtstart = new Date(input.dtstart);
@@ -131,7 +165,7 @@ export function expandRecurrence(
   // at most MAX_INSTANCES dates. The slice below is a redundant safety net.
   const occurrences = ruleSet.between(
     rangeStart,
-    rangeEnd,
+    effectiveEnd,
     true,
     (_date, len) => len < MAX_INSTANCES,
   );
@@ -245,7 +279,11 @@ export function getNextOccurrences(
   // Use a far-future end date and limit by count. H5: same generation-time hard
   // cap — stop as soon as we have enough, bounded by MAX_INSTANCES even if the
   // caller asks for more, so a far-future window can't blow up CPU.
-  const farFuture = new Date(after.getTime() + 365 * 86_400_000 * 2);
+  const farFuture = clipRangeEnd(
+    new Date(after.getTime() + 365 * 86_400_000 * 2),
+    input.until,
+  );
+  if (farFuture < after) return [];
   const limit = Math.min(count, MAX_INSTANCES);
   const occurrences = ruleSet.between(after, farFuture, true, (_date, len) => len < limit);
 
@@ -346,9 +384,13 @@ export function isOccurrence(
     }
   }
 
+  // A date past the series' end is not an occurrence, whatever the rule says.
+  const seriesEnd = clipRangeEnd(new Date(date.getTime() + 1000), input.until);
+  if (seriesEnd < date) return false;
+
   // Check a small window around the target date
   const windowStart = new Date(date.getTime() - 1000);
-  const windowEnd = new Date(date.getTime() + 1000);
+  const windowEnd = seriesEnd;
   const occurrences = ruleSet.between(windowStart, windowEnd, true);
   return occurrences.length > 0;
 }

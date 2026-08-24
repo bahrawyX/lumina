@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, gte, lt, isNotNull } from 'drizzle-orm';
+import { and, eq, gte, lt, isNotNull, isNull, or } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence } from '@/db/schema';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import { logger } from '@/lib/logger';
 import { utcToZonedWallClock } from '@/lib/time/zonedTime';
+
+/**
+ * Aggregate ceiling on instances in one response.
+ *
+ * 366 days is the widest window the route accepts, and a daily series fills it
+ * with 366 occurrences — so this admits roughly eight full-year daily series,
+ * or far more of anything less frequent, before it starts cutting.
+ */
+const MAX_TOTAL_INSTANCES = 3000;
 
 /**
  * GET /api/events/expand?start=ISO&end=ISO
@@ -54,7 +63,19 @@ export async function GET(req: NextRequest) {
       })
       .from(eventRecurrence)
       .innerJoin(events, eq(eventRecurrence.eventId, events.id))
-      .where(eq(eventRecurrence.userId, userId));
+      .where(
+        and(
+        // P2-9: the query pulled EVERY recurrence row the user owns, including
+        // series that ended years ago, and then expanded each one. Rows whose
+        // stored end date is already behind the window cannot contribute an
+        // occurrence, so they are excluded before any expansion happens.
+          eq(eventRecurrence.userId, userId),
+          or(
+            isNull(eventRecurrence.recurrenceEnd),
+            gte(eventRecurrence.recurrenceEnd, rangeStart),
+          ),
+        ),
+      );
 
     // Also fetch exception instances (modified single occurrences)
     const exceptionRows = await db
@@ -71,8 +92,17 @@ export async function GET(req: NextRequest) {
       );
 
     const instances: Array<Record<string, unknown>> = [];
+    // P2-9: `MAX_INSTANCES = 500` in the engine is PER MASTER EVENT with no
+    // aggregate cap, so 200 daily-recurring events over a 366-day window
+    // materialised ~73,000 objects in one JSON response. The per-event cap
+    // stays (it bounds CPU inside the rrule iterator); this bounds the response.
+    let truncated = false;
 
     for (const { recurrence: rec, event: masterEvent } of recurrenceRows) {
+      if (instances.length >= MAX_TOTAL_INSTANCES) {
+        truncated = true;
+        break;
+      }
       const durationMs = masterEvent.endTime.getTime() - masterEvent.startTime.getTime();
 
       const expanded = expandRecurrence(
@@ -80,6 +110,10 @@ export async function GET(req: NextRequest) {
           rrule: rec.rrule,
           dtstart: masterEvent.startTime.toISOString(),
           exdates: rec.exdates ?? [],
+          // P2-9: written by six call sites, read by none. Without it a rule
+          // whose end date lives in `recurrence_end` rather than in an `UNTIL=`
+          // inside the RRULE text recurred forever.
+          until: rec.recurrenceEnd,
         },
         rangeStart,
         rangeEnd,
@@ -101,6 +135,10 @@ export async function GET(req: NextRequest) {
       for (const inst of expanded) {
         // Skip if there's an exception that replaces this occurrence
         if (exceptionOriginalTimes.has(inst.startIso)) continue;
+        if (instances.length >= MAX_TOTAL_INSTANCES) {
+          truncated = true;
+          break;
+        }
 
         instances.push({
           id: `${masterEvent.id}:${inst.startIso}`,
@@ -135,6 +173,10 @@ export async function GET(req: NextRequest) {
 
       // Add exception instances
       for (const ex of exceptions) {
+        if (instances.length >= MAX_TOTAL_INSTANCES) {
+          truncated = true;
+          break;
+        }
         instances.push({
           id: ex.id,
           masterEventId: ex.recurringEventId,
@@ -162,7 +204,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ instances });
+    if (truncated) {
+      logger.warn('expand truncated', {
+        route: 'GET /api/events/expand',
+        userId,
+        returned: instances.length,
+        seriesCount: recurrenceRows.length,
+      });
+    }
+
+    // `truncated` is part of the contract, not a silent cut: a client that sees
+    // it should narrow its window rather than render a partial month as if it
+    // were complete.
+    return NextResponse.json({ instances, truncated });
   } catch (err) {
     logger.error('unhandled', { route: 'GET /api/events/expand' }, err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

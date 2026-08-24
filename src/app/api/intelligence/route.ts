@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, gt, gte, lt } from 'drizzle-orm';
+import { and, eq, gt, gte, lt, or, isNull } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence, focusSessions, integrations, plannerItems, tasks } from '@/db/schema';
@@ -207,14 +207,31 @@ export async function GET(req: NextRequest) {
       .select({ recurrence: eventRecurrence, event: events })
       .from(eventRecurrence)
       .innerJoin(events, eq(eventRecurrence.eventId, events.id))
-      .where(eq(eventRecurrence.userId, userId))
+      .where(
+        and(
+        // P2-9: the query pulled EVERY recurrence row the user owns, including
+        // series that ended years ago, and then expanded each one. Rows whose
+        // stored end date is already behind the window cannot contribute an
+        // occurrence, so they are excluded before any expansion happens.
+          eq(eventRecurrence.userId, userId),
+          or(
+            isNull(eventRecurrence.recurrenceEnd),
+            gte(eventRecurrence.recurrenceEnd, startDate),
+          ),
+        ),
+      )
       .catch(() => [] as { recurrence: typeof eventRecurrence.$inferSelect; event: typeof events.$inferSelect }[]);
 
     const recurringInstances: IntelligenceCalendarEvent[] = [];
     for (const { recurrence: rec, event: masterEvent } of recurrenceRows) {
       const durationMs = masterEvent.endTime.getTime() - masterEvent.startTime.getTime();
       const expanded = expandRecurrence(
-        { rrule: rec.rrule, dtstart: masterEvent.startTime.toISOString(), exdates: rec.exdates ?? [] },
+        {
+          rrule: rec.rrule,
+          dtstart: masterEvent.startTime.toISOString(),
+          exdates: rec.exdates ?? [],
+          until: rec.recurrenceEnd,
+        },
         startDate,
         endDate,
         durationMs,

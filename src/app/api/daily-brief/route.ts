@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, lt, gt, gte, ne } from 'drizzle-orm';
+import { eq, and, lt, gt, gte, ne, or, isNull } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
@@ -200,7 +200,19 @@ export async function GET(req: NextRequest) {
         })
         .from(eventRecurrence)
         .innerJoin(events, eq(eventRecurrence.eventId, events.id))
-        .where(eq(eventRecurrence.userId, userId)),
+        .where(
+          and(
+        // P2-9: the query pulled EVERY recurrence row the user owns, including
+        // series that ended years ago, and then expanded each one. Rows whose
+        // stored end date is already behind the window cannot contribute an
+        // occurrence, so they are excluded before any expansion happens.
+            eq(eventRecurrence.userId, userId),
+            or(
+              isNull(eventRecurrence.recurrenceEnd),
+              gte(eventRecurrence.recurrenceEnd, todayStart),
+            ),
+          ),
+        ),
     ]);
 
     // ── Expand recurring events for today ────────────────────────────────────
@@ -214,6 +226,8 @@ export async function GET(req: NextRequest) {
           rrule: rec.rrule,
           dtstart: masterStart.toISOString(),
           exdates: (rec.exdates ?? []) as string[],
+          // P2-9: selected here since day one and never passed through.
+          until: rec.recurrenceEnd,
         },
         todayStart,
         todayEnd,
