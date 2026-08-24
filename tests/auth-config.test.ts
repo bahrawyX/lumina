@@ -24,10 +24,20 @@ vi.mock('better-auth', () => ({
 process.env.BETTER_AUTH_SECRET ||= 'test-secret-at-least-32-chars-long-xxxx';
 process.env.BETTER_AUTH_URL ||= 'https://lumina.example';
 
-async function options(): Promise<Record<string, any>> {
+/**
+ * A loose view of the captured BetterAuth options.
+ *
+ * The object is deeply heterogeneous and each assertion below narrows to the
+ * single value it cares about, so a precise type would be pure ceremony. The
+ * `any` is scoped to this one alias rather than sprayed across the file.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CapturedOptions = Record<string, any>;
+
+async function options(): Promise<CapturedOptions> {
   await import('@/lib/auth');
   if (!captured.options) throw new Error('betterAuth() was never called');
-  return captured.options;
+  return captured.options as CapturedOptions;
 }
 
 describe('P1-8 / F5.8 — the no-op `cookies` block is gone, not relocated', () => {

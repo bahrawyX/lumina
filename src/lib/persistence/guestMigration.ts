@@ -76,16 +76,16 @@ export async function migrateGuestData(): Promise<GuestMigrationResult> {
     // probe). Sending the guest's client-side uid would be meaningless anyway.
     const { id, ...rest } = task as Task & { id?: string };
     void id;
-    const okResult = await post('/api/tasks', rest);
-    okResult ? migrated++ : failed++;
+    if (await post('/api/tasks', rest)) migrated++;
+    else failed++;
   }
 
   // ── Events ───────────────────────────────────────────────────────────────
   for (const event of readGuest<CalendarEvent[]>(GUEST_COLLECTIONS.events, [])) {
     const { id, ...rest } = event as CalendarEvent & { id?: string };
     void id;
-    const okResult = await post('/api/events', rest);
-    okResult ? migrated++ : failed++;
+    if (await post('/api/events', rest)) migrated++;
+    else failed++;
   }
 
   // ── Docs ─────────────────────────────────────────────────────────────────
@@ -96,8 +96,8 @@ export async function migrateGuestData(): Promise<GuestMigrationResult> {
     // `parentId` referenced a guest-local doc id that will not exist after
     // import; dropping it flattens the tree rather than orphaning rows.
     void parentId;
-    const okResult = await post('/api/docs', rest);
-    okResult ? migrated++ : failed++;
+    if (await post('/api/docs', rest)) migrated++;
+    else failed++;
   }
 
   // Planner items are intentionally not migrated — see the module doc comment.

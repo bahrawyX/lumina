@@ -15,7 +15,7 @@ import TimePicker from './TimePicker';
 import { useLuminaAuthClient } from './AuthProvider';
 import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
 import { useGuestStore } from '../store/useGuestStore';
-import { clearLuminaStorage } from '../lib/storage';
+import { signOutEverywhere } from '@/lib/auth/signOut';
 import {
   MIN_PASSWORD_LENGTH,
   getFieldError,
@@ -265,6 +265,13 @@ const StepAuth = memo<{
   authPassword: string;
   authBusy: 'signup' | 'signin' | 'google' | 'signout' | 'microsoft' | null;
   authMessage: string | null;
+  /**
+   * F3.14: successes used to be pushed into `authMessage`, which renders as
+   * `text-destructive`. Usually masked because `refetchAuthSession()` is
+   * awaited first and the step flips — but if the refetch was slow or failed,
+   * the user saw "Signed up successfully." in error red.
+   */
+  authNotice: string | null;
   onAuthNameChange: (value: string) => void;
   onAuthEmailChange: (value: string) => void;
   onAuthPasswordChange: (value: string) => void;
@@ -286,6 +293,7 @@ const StepAuth = memo<{
   authPassword,
   authBusy,
   authMessage,
+  authNotice,
   onAuthNameChange,
   onAuthEmailChange,
   onAuthPasswordChange,
@@ -482,7 +490,10 @@ const StepAuth = memo<{
 
         {/* Server-level error (only shown when there are no field-level errors) */}
         {authMessage && Object.keys(fieldErrors).length === 0 && (
-          <p className="text-xs text-destructive -mt-1">{authMessage}</p>
+          <p role="alert" className="text-xs text-destructive -mt-1">{authMessage}</p>
+        )}
+        {authNotice && !authMessage && (
+          <p role="status" className="text-xs text-muted-foreground -mt-1">{authNotice}</p>
         )}
 
         {/* Primary submit */}
@@ -1024,6 +1035,7 @@ const OnboardingFlow: React.FC = () => {
   const [authPassword, setAuthPassword] = useState('');
   const [authBusy, setAuthBusy] = useState<'signup' | 'signin' | 'google' | 'microsoft' | 'signout' | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [integrationMessage, setIntegrationMessage] = useState<string | null>(null);
 
   const authUser = authData?.user ?? null;
@@ -1039,6 +1051,7 @@ const OnboardingFlow: React.FC = () => {
 
   const clearAuthMessage = useCallback(() => {
     setAuthMessage(null);
+    setAuthNotice(null);
   }, []);
 
   const clearIntegrationMessage = useCallback(() => {
@@ -1219,7 +1232,7 @@ const OnboardingFlow: React.FC = () => {
       if (!onboardingUserName.trim()) {
         setOnboardingUserInfo(normalizedName, onboardingUserRole);
       }
-      setAuthMessage('Signed up successfully.');
+      setAuthNotice('Signed up successfully.');
     } finally {
       setAuthBusy(null);
     }
@@ -1254,7 +1267,7 @@ const OnboardingFlow: React.FC = () => {
       }
       await refetchAuthSession();
       await hydrateNameFromSession();
-      setAuthMessage('Signed in successfully.');
+      setAuthNotice('Signed in successfully.');
     } finally {
       setAuthBusy(null);
     }
@@ -1279,7 +1292,7 @@ const OnboardingFlow: React.FC = () => {
 
       await refetchAuthSession();
       await hydrateNameFromSession();
-      setAuthMessage('Signed in with Google.');
+      setAuthNotice('Signed in with Google.');
     } catch (err: unknown) {
       setAuthMessage(err instanceof Error ? err.message : 'Google sign-in failed.');
     } finally {
@@ -1296,18 +1309,20 @@ const OnboardingFlow: React.FC = () => {
     clearAuthMessage();
     setAuthBusy('signout');
     try {
-      const result = await authClient.signOut();
-      if (result.error) {
-        setAuthMessage(result.error.message ?? 'Sign out failed.');
-        return;
-      }
-      clearLuminaStorage();
+      // F7.3: this used to call `signOut()` + `clearLuminaStorage()` with no
+      // store reset and no reload, so every store still held the signed-out
+      // user's records in memory AND re-wrote its localStorage key on the next
+      // `set()` — partially undoing the wipe within seconds.
+      //
+      // `navigate: false` because this flow stays on the page and re-renders
+      // its signed-out state; the store reset is what makes that safe.
+      await signOutEverywhere({ navigate: false });
       await refetchAuthSession();
-      setAuthMessage('Signed out.');
+      setAuthNotice('Signed out.');
     } finally {
       setAuthBusy(null);
     }
-  }, [authClient, clearAuthMessage, refetchAuthSession]);
+  }, [clearAuthMessage, refetchAuthSession]);
 
   /**
    * Opens the integration OAuth popup for a given provider.
@@ -1643,6 +1658,7 @@ const OnboardingFlow: React.FC = () => {
             authPassword={authPassword}
             authBusy={authBusy}
             authMessage={authMessage ?? authSessionError?.message ?? null}
+            authNotice={authNotice}
             onAuthNameChange={setAuthName}
             onAuthEmailChange={setAuthEmail}
             onAuthPasswordChange={setAuthPassword}

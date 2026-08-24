@@ -60,7 +60,7 @@ jobs:
         run: npx vitest run
 
       # ── ESLint ratchet ────────────────────────────────────────────────────
-      # The repository currently has 65 errors and ~125 warnings. Blocking on
+      # The repository currently has 64 errors and 125 warnings. Blocking on
       # zero would mean either a large cleanup before CI can exist at all, or —
       # far more likely — CI never being turned on.
       #
@@ -76,7 +76,7 @@ jobs:
             const r = require('./eslint-report.json');
             const errors = r.reduce((n, f) => n + f.errorCount, 0);
             const warnings = r.reduce((n, f) => n + f.warningCount, 0);
-            const MAX_ERRORS = 65;
+            const MAX_ERRORS = 64;
             const MAX_WARNINGS = 125;
             console.log('eslint: ' + errors + ' errors, ' + warnings + ' warnings');
             console.log('budget: ' + MAX_ERRORS + ' errors, ' + MAX_WARNINGS + ' warnings');

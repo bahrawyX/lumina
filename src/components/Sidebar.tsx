@@ -6,11 +6,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import { CATEGORIES } from '../constants';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
-import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskBoardStore } from '../store/useTaskBoardStore';
 import { clearProvider, clearAll } from '../lib/calendar/externalEventsCache';
-import { clearLuminaStorage } from '../lib/storage';
 import { focusModeFromMinutes } from '../lib/focusSettings';
 import CustomContextDialog from './CustomContextDialog';
 import {
@@ -73,6 +71,7 @@ import {
 } from './ui/dialog';
 import { toast } from 'sonner';
 import notify from '../utils/notify';
+import { signOutEverywhere } from '@/lib/auth/signOut';
 
 const MoreIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -171,30 +170,24 @@ const AppSidebar: React.FC = () => {
   const authClient = useLuminaAuthClient();
   const { data: _session } = authClient.useSession();
   const _userId = _session?.user?.id ?? null;
-  const resetOnboarding = useOnboardingStore((s) => s.reset);
-  const handleSignOut = useCallback(() => {
-    // CRITICAL: hard-navigate FIRST before any state changes. If we call
-    // authClient.signOut() or resetOnboarding() while still inside an
-    // (app)/ route, AppShell's redirect effect fires synchronously on
-    // re-render and wins the race — landing the user on /onboarding.
-    // window.location.href does a full reload, bypassing React entirely.
+  const handleSignOut = useCallback(async () => {
+    // F7.1: `signOut()` used to be fire-and-forget, immediately followed by
+    // `window.location.href = '/'`. Unloading the document cancels in-flight
+    // fetches, so the request could be aborted before reaching the server —
+    // leaving the `sessions` row alive and the cookie uncleared while the UI
+    // looked signed out. The next person to complete onboarding on that device
+    // landed in the PREVIOUS account's data.
+    //
+    // The race the old comment worried about (AppShell's redirect effect
+    // winning) is handled by the hard navigation itself, which
+    // `signOutEverywhere` performs last.
     try {
       if (_userId) clearAll(_userId);
       usePlannerStore.getState().clearExternalEvents();
-      // Wipe every Lumina-owned localStorage / sessionStorage entry so no
-      // per-user data leaks back into the next session. Theme + PWA prefs
-      // are preserved by clearLuminaStorage.
-      clearLuminaStorage();
-      // Fire-and-forget sign-out — don't await. The subsequent full page
-      // reload will tear everything down. BetterAuth stores the session in
-      // an httpOnly cookie that the server clears via the sign-out endpoint;
-      // the hard redirect below ensures we get a fresh page without a session.
-      authClient.signOut().catch(() => { /* swallow */ });
     } catch { /* swallow */ }
-    // Hard redirect to landing — no race, no React rerender.
-    window.location.href = '/';
-  }, [authClient, _userId]);
-  void resetOnboarding; // Preserved for potential future use; unused here.
+
+    await signOutEverywhere({ redirectTo: '/' });
+  }, [_userId]);
   const startTutorial = useTutorialStore((s) => s.startTutorial);
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const tasks = useTaskBoardStore((s) => s.tasks);

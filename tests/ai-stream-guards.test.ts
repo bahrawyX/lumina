@@ -37,6 +37,8 @@ vi.mock('@/lib/coins/dedupeKeys', () => ({
 vi.mock('@/lib/coins/earnRules', () => ({ aiInDocsAward: () => ({ amount: 1, reason: 'ai_docs' }) }));
 
 /** Captures exactly what the handler asked Gemini for. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the captured
+// Gemini request is heterogeneous; each assertion narrows to one field.
 const generateCalls: Array<Record<string, any>> = [];
 let chunkSource: () => AsyncGenerator<{ text: string }>;
 
