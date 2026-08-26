@@ -26,11 +26,9 @@ import type { Task, TaskPriority, TaskStatus, TaskDifficulty } from '../../types
 import { COLUMNS } from '../../types/task';
 import { EVENT_COLORS } from '../../constants';
 import { addMinutesToTime } from '../../utils/taskBoard';
-import { scheduleTask, DEFAULT_DURATION_MINS } from '../../utils/scheduling/scheduleTask';
+import { scheduleTaskToDay } from '@/lib/tasks/scheduleTaskToDay';
 import { useDailyPlanStore } from '../../store/useDailyPlanStore';
-import { toast as sonnerToast } from 'sonner';
 import { expandRecurrences } from '../../utils/dateUtils';
-import { TIMELINE_START_HOUR, TIMELINE_END_HOUR } from '../../utils/dailyPlanUtils';
 import { format } from 'date-fns';
 import { uid } from '../../lib/uid';
 import { createLinkedEvent } from '../../lib/persistence/linkPersistence';
@@ -57,6 +55,7 @@ import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
 import { Skeleton } from '@/components/ui/LoadingBoundary';
 import { TaskFilterBar } from './TaskFilterBar';
 import { filterTasks, hasActiveFilters } from '../../utils/taskFilters';
+import { LazyDialogFallback } from '@/components/ui/LazyDialogFallback';
 
 // ── Plus icon ─────────────────────────────────────────────────────────────────
 
@@ -440,96 +439,60 @@ export const TaskBoard: React.FC = () => {
     router.push('/focus');
   }, [preferredFocusMinutes, startFocusSession, router, updateTask]);
 
+  // P3-9: the ~105 lines that used to live here are now
+  // `src/lib/tasks/scheduleTaskToDay.ts` — a pure
+  // `(task, occupancy, now) -> { plan, event, taskPatch }`. What is left is
+  // gathering inputs and applying the result, which is what a component should
+  // be doing. The decision itself is the task<->event linking path where the
+  // store-drift bugs in P1-17 and the orphan-event race in P2-5 surface, and it
+  // is now testable without driving the UI.
   const handleAutoSchedule = useCallback((task: Task) => {
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const now = new Date();
+    const today = format(now, 'yyyy-MM-dd');
 
-    // Guard: already on today's timeline
-    const alreadyPlanned = getPlanItemsForDate(today).some(pi => pi.taskId === task.id);
-    if (alreadyPlanned) {
+    const allInstances = expandRecurrences(events, new Date(today), new Date(today));
+
+    const result = scheduleTaskToDay({
+      task,
+      today,
+      nowMins: now.getHours() * 60 + now.getMinutes(),
+      calendarItems: allInstances
+        .filter((ev) => ev.instanceDate === today)
+        .map((ev) => ({ id: ev.id, startTime: ev.startTime, endTime: ev.endTime })),
+      planItems: getPlanItemsForDate(today).map((pi) => ({
+        id: pi.id,
+        startTime: pi.startTime,
+        endTime: pi.endTime,
+      })),
+      alreadyPlanned: getPlanItemsForDate(today).some((pi) => pi.taskId === task.id),
+      linkedEvent: task.linkedEventId ? linkedEvents[task.linkedEventId] ?? null : null,
+      timezone,
+      newEventId: uid('ev_'),
+    });
+
+    if (result.kind === 'already_planned') {
       notify(`"${task.title}" is already scheduled for today`);
       return;
     }
 
-    // Show "Scheduling…" indicator
-    const loadingId = sonnerToast.loading(`Scheduling "${task.title}"…`);
-    const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
-    const durationMins = task.durationMinutes ?? DEFAULT_DURATION_MINS;
-
-    // Build today's calendar event list
-    const allInstances = expandRecurrences(events, new Date(today), new Date(today));
-    const todayCalItems = allInstances
-      .filter(ev => ev.instanceDate === today)
-      .map(ev => ({ id: ev.id, startTime: ev.startTime, endTime: ev.endTime }));
-
-    // Build today's plan items list
-    const todayPlanItems = getPlanItemsForDate(today)
-      .map(pi => ({ id: pi.id, startTime: pi.startTime, endTime: pi.endTime }));
-
-    const dayStart = TIMELINE_START_HOUR * 60;
-    const dayEnd = TIMELINE_END_HOUR * 60;
-    const result = scheduleTask(durationMins, todayCalItems, todayPlanItems, nowMins, dayStart, dayEnd);
-
-    sonnerToast.dismiss(loadingId);
-
-    if (!result.ok) {
-      if ('reason' in result && result.reason === 'task_too_long') {
-        notify(`No slot long enough for "${task.title}" (need ${durationMins} min)`);
-      } else {
-        notify('No free time available today');
-      }
+    if (result.kind === 'no_slot') {
+      notify(
+        result.reason === 'task_too_long'
+          ? `No slot long enough for "${task.title}" (need ${result.durationMins} min)`
+          : 'No free time available today',
+      );
       return;
     }
 
-    addPlanItem(task.id, today, result.startTime, result.endTime);
+    addPlanItem(result.plan.taskId, result.plan.date, result.plan.startTime, result.plan.endTime);
 
-    const linkedEvent = task.linkedEventId
-      ? linkedEvents[task.linkedEventId] ?? null
-      : null;
-
-    if (linkedEvent) {
-      updateEvent({
-        ...linkedEvent,
-        title: task.title,
-        description: task.description ?? '',
-        category: 'Focus',
-        color: EVENT_COLORS.Focus,
-        date: today,
-        startTime: result.startTime,
-        endTime: result.endTime,
-        linkedTaskId: task.id,
-        source: 'lumina',
-      });
-      updateTask(task.id, {
-        status: task.status === 'todo' ? 'doing' : task.status,
-        dueDate: today,
-        linkedEventId: linkedEvent.id,
-        scheduledStart: result.startTime,
-        scheduledEnd: result.endTime,
-      });
+    if (result.event.mode === 'update') {
+      updateEvent(result.event.value);
+      updateTask(task.id, result.taskPatch);
     } else {
-      const eventId = uid('ev_');
-      addEventOptimistic({
-        id: eventId,
-        title: task.title,
-        description: task.description ?? '',
-        category: 'Focus',
-        date: today,
-        startTime: result.startTime,
-        endTime: result.endTime,
-        linkedTaskId: task.id,
-        source: 'lumina',
-        timezone,
-        color: EVENT_COLORS.Focus,
-      });
-      updateTask(task.id, {
-        status: task.status === 'todo' ? 'doing' : task.status,
-        dueDate: today,
-        linkedEventId: eventId,
-        scheduledStart: result.startTime,
-        scheduledEnd: result.endTime,
-      });
-      // Atomic: create event + link in one DB transaction
+      addEventOptimistic(result.event.value);
+      updateTask(task.id, result.taskPatch);
+      // Atomic: create event + link in one DB transaction (P2-5).
       createLinkedEvent({
         title: task.title,
         date: today,
@@ -959,7 +922,7 @@ export const TaskBoard: React.FC = () => {
       </AnimatePresence>
 
       {/* Task dialog (create / edit) — lazy, only mount when open */}
-      <React.Suspense fallback={null}>
+      <React.Suspense fallback={<LazyDialogFallback label="Opening task editor" />}>
         {(dialogOpen || editingTask) && (
           <TaskDialog
             open={dialogOpen}
@@ -981,7 +944,7 @@ export const TaskBoard: React.FC = () => {
         )}
       </React.Suspense>
 
-      <React.Suspense fallback={null}>
+      <React.Suspense fallback={<LazyDialogFallback label="Opening scheduler" />}>
         {(scheduleOpen || schedulingTask) && (
           <TaskScheduleDialog
             open={scheduleOpen}

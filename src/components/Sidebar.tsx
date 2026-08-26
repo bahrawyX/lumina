@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { CATEGORIES } from '../constants';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
+import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskBoardStore } from '../store/useTaskBoardStore';
 import { clearProvider, clearAll } from '../lib/calendar/externalEventsCache';
@@ -164,6 +165,23 @@ interface ExternalCalendarFilter {
   name: string;
   color: string;
   enabled: boolean;
+}
+
+/**
+ * Write the server's integration truth into the onboarding store.
+ *
+ * P3-9: this fact lived in three places — the sidebar's local state,
+ * `usePlannerStore`, and `useOnboardingStore` — and the disconnect path wrote
+ * only the first two.
+ *
+ * Read imperatively rather than subscribed, so `refreshIntegrationStatus`
+ * keeps a stable callback identity: it is a dependency of the OAuth poll loop,
+ * and re-creating it on every status change would restart the poll.
+ */
+function syncOnboardingIntegrationFlags(google: boolean, microsoft: boolean): void {
+  const store = useOnboardingStore.getState();
+  if (store.googleConnected !== google) store.setGoogleConnected(google);
+  if (store.microsoftConnected !== microsoft) store.setMicrosoftConnected(microsoft);
 }
 
 const AppSidebar: React.FC = () => {
@@ -434,6 +452,7 @@ const AppSidebar: React.FC = () => {
         setGoogleCalConnected(false);
         setGoogleConnected(false);
         setOutlookConnected(false);
+        syncOnboardingIntegrationFlags(false, false);
         setOutlookEvents([]);
         return { google: false, microsoft: false };
       }
@@ -446,6 +465,14 @@ const AppSidebar: React.FC = () => {
       setGoogleCalConnected(isGoogleConnected);
       setGoogleConnected(isGoogleConnected);
       setOutlookConnected(isMicrosoftConnected);
+      // P3-9: the same fact lived in THREE places — this component's local
+      // state, `usePlannerStore`, and `useOnboardingStore` — and only the first
+      // two were written here. Disconnecting Google from the sidebar left
+      // `useOnboardingStore.googleConnected === true`, persisted to
+      // localStorage, so the onboarding flow's "Connected" badge was stale
+      // until the value was un-persisted. The server response now reconciles
+      // all three.
+      syncOnboardingIntegrationFlags(isGoogleConnected, isMicrosoftConnected);
 
       if (!isMicrosoftConnected) {
         setOutlookEvents([]);

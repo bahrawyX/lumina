@@ -331,6 +331,14 @@ const TaskSelector: React.FC<{
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // P3-9: the blur handler's 150ms `setTimeout` (which lets a click on a
+  // result land before the list closes) had no cleanup either — unmounting the
+  // panel inside that window set state on a dead component.
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+  }, []);
 
   const storeTasks = useTaskBoardStore((s) => s.tasks);
   const availableTasks = useMemo(
@@ -417,7 +425,13 @@ const TaskSelector: React.FC<{
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onBlur={() => {
+            if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+            blurTimerRef.current = setTimeout(() => {
+              blurTimerRef.current = null;
+              setOpen(false);
+            }, 150);
+          }}
           className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
         />
         {open && filtered.length > 0 && (
@@ -481,6 +495,7 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
   const [showInterruptPrompt, setShowInterruptPrompt] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completionHandledRef = useRef(false);
+  const celebrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── FIX 1: Sync with useFocusStore on mount ──────────────────────────────
   // If a task was started from TaskBoard "Start focus", pre-populate the selector.
@@ -572,12 +587,27 @@ const PomodoroView: React.FC<PomodoroViewProps> = ({ onSessionComplete, onReques
       if (focusTask?.id) {
         updateTask(focusTask.id, { remainingFocusTime: null });
       }
-      setTimeout(() => {
+      // P3-9: this `setTimeout` had no cleanup. Navigating away during the
+      // 2.5s celebration fired `dismissCelebration()` and `onRequestFeedback()`
+      // against an unmounted tree, and — worse — left `completionHandledRef`
+      // stuck at `true`, so a re-mount inside the window could double-fire
+      // `onSessionComplete` and record the session twice.
+      celebrationTimerRef.current = setTimeout(() => {
+        celebrationTimerRef.current = null;
         dismissCelebration();
         onRequestFeedback(null);
         completionHandledRef.current = false;
       }, 2500);
     }
+
+    return () => {
+      if (celebrationTimerRef.current === null) return;
+      clearTimeout(celebrationTimerRef.current);
+      celebrationTimerRef.current = null;
+      // Release the guard on the way out, so a remount starts clean rather
+      // than silently refusing to record the next completed session.
+      completionHandledRef.current = false;
+    };
   }, [showCelebration, workSessionStartedAt, workMins, focusTask, onSessionComplete, onRequestFeedback, dismissCelebration, updateTask]);
 
   // ── Derived ────────────────────────────────────────────────────────────────

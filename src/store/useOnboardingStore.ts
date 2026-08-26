@@ -200,6 +200,41 @@ export const useOnboardingStore = create<OnboardingState>()(
           timezone: typeof state.timezone === 'string' ? state.timezone : DETECTED_TZ,
         };
       },
+
+      /**
+       * P3-9: `googleConnected` / `microsoftConnected` used to persist.
+       *
+       * They mirror server state, and nothing in the sidebar's disconnect path
+       * wrote them — so disconnecting Google left `googleConnected: true` in
+       * localStorage, and the onboarding flow showed a stale "Connected" badge
+       * that survived every reload. A cached copy of a server fact is exactly
+       * the thing that goes stale.
+       *
+       * They are still in the store (the onboarding flow sets them the moment
+       * its own OAuth popup returns, before any refetch), but they now start
+       * `false` on every load and are reconciled by
+       * `refreshIntegrationStatus`, which reads `/api/integrations/status`.
+       */
+      partialize: (state) =>
+        // An explicit allowlist rather than an omit, so a field added to the
+        // store tomorrow is not persisted by accident.
+        ({
+          completed: state.completed,
+          step: state.step,
+          userName: state.userName,
+          userRole: state.userRole,
+          workStart: state.workStart,
+          workEnd: state.workEnd,
+          timezone: state.timezone,
+          focusPreference: state.focusPreference,
+          focusSessionLength: state.focusSessionLength,
+          customFocusMinutes: state.customFocusMinutes,
+          customBreakMinutes: state.customBreakMinutes,
+          focusGoals: state.focusGoals,
+          // `as` because `partialize` narrows the persisted-state type while
+          // `migrate` above is typed against the full state. Dropping two
+          // server-derived booleans does not change the shape `migrate` reads.
+        }) as unknown as OnboardingState,
     }
   )
 );

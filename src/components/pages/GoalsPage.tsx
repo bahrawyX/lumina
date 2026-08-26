@@ -30,6 +30,7 @@ import {
 import { format, differenceInDays, isPast } from 'date-fns';
 import { CoinsBadge } from '@/components/coins/CoinsBadge';
 import { cn } from '@/lib/utils';
+import { LazyDialogFallback } from '@/components/ui/LazyDialogFallback';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -558,7 +559,7 @@ export default function GoalsPage() {
           a real UUID, otherwise the suggestion endpoint would 404. */}
       {suggestionGoal && (
         <div className="flex-shrink-0 mb-2">
-          <Suspense fallback={null}>
+          <Suspense fallback={<LazyDialogFallback label="Loading suggestion" />}>
             <GoalSuggestionCard
               goal={suggestionGoal}
               onDismiss={() => { setPendingSuggestionFor(null); setResolvedSuggestionGoalId(null); }}
@@ -640,7 +641,7 @@ export default function GoalsPage() {
       </div>
 
       {/* Dialogs — lazy, only mount once opened */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<LazyDialogFallback label="Opening goal editor" />}>
         {(dialogOpen || editingGoal) && (
           <GoalDialog
             open={dialogOpen}
@@ -651,7 +652,7 @@ export default function GoalsPage() {
         )}
       </Suspense>
 
-      <Suspense fallback={null}>
+      <Suspense fallback={<LazyDialogFallback label="Opening goal details" />}>
         {selectedGoal && (
           <GoalDetailSheet
             goal={selectedGoal}

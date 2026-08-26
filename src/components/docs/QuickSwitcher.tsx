@@ -33,6 +33,8 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
   const [apiDocResults, setApiDocResults] = useState<{ id: string; title: string; icon: string | null; isPinned?: boolean }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const docs = useDocsStore((s) => s.docs);
   const tasks = useTaskBoardStore((s) => s.tasks);
@@ -46,28 +48,51 @@ export default function QuickSwitcher({ open, onOpenChange }: QuickSwitcherProps
       setQuery('');
       setActiveIndex(0);
       setApiDocResults([]);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      // Cleaned up like the others: closing the palette inside the 50ms window
+      // otherwise focused an input that was on its way out.
+      focusTimer.current = setTimeout(() => inputRef.current?.focus(), 50);
     }
+    return () => {
+      if (focusTimer.current) clearTimeout(focusTimer.current);
+    };
   }, [open]);
 
-  // Debounced API doc search when query changes
+  // Debounced API doc search when query changes.
+  //
+  // P3-9: this debounced but never ABORTED the in-flight request, so results
+  // could arrive out of order — type "pro", pause, type "ject", and a slow
+  // response for "pro" landing after the one for "project" overwrote it. The
+  // user then saw results for a prefix they had already finished typing.
+  // `DocLinkPicker` already did this correctly; this is the same shape.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchAbort.current?.abort();
+
     const q = query.trim();
     if (!q) {
       setApiDocResults([]);
       return;
     }
+
+    const controller = new AbortController();
+    searchAbort.current = controller;
+
     searchTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/docs/search?q=${encodeURIComponent(q)}`);
-        if (res.ok) {
+        const res = await fetch(`/api/docs/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+        });
+        if (res.ok && !controller.signal.aborted) {
           const data = await res.json();
           setApiDocResults(data.slice(0, 5));
         }
-      } catch { /* best-effort */ }
+      } catch { /* best-effort; an abort lands here too */ }
     }, 200);
-    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      controller.abort();
+    };
   }, [query]);
 
   // Filter results

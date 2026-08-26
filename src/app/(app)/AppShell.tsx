@@ -24,6 +24,7 @@ import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { useQuickCaptureStore } from "@/store/useQuickCaptureStore";
 import { HydrationFailureBanner } from '@/components/system/HydrationFailureBanner';
+import { LazyDialogFallback } from '@/components/ui/LazyDialogFallback';
 import { SessionExpiredDialog } from '@/components/system/SessionExpiredDialog';
 import { SessionExpiryWatcher } from '@/components/system/SessionExpiryWatcher';
 
@@ -668,7 +669,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Quick Switcher (Cmd+K) — only mount once opened */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<LazyDialogFallback label="Opening quick switcher" />}>
         {quickSwitcherOpen && (
           <QuickSwitcher open={quickSwitcherOpen} onOpenChange={setQuickSwitcherOpen} />
         )}
