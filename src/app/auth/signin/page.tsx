@@ -34,19 +34,30 @@ const AuthField: React.FC<{
       <span className="text-destructive/50" aria-hidden="true">*</span>
     </label>
     {children}
-    <AnimatePresence>
-      {error && (
-        <motion.p
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.14 }}
-          className="text-xs text-destructive overflow-hidden leading-tight"
-        >
-          {error}
-        </motion.p>
-      )}
-    </AnimatePresence>
+    {/* F3.9: the errors were animated text with no programmatic relationship
+        to their input, so a screen reader user submitting the form was told
+        nothing at all. The id is what `aria-describedby` on the input points
+        at, and `role="alert"` is what makes a newly appearing message announce
+        itself.
+
+        FOUND WHILE FIXING THAT: this was an `AnimatePresence` + `motion.p`, and
+        the exit phase never finalises — verified in a browser, the cleared
+        error sat in the DOM at `opacity: 0; height: 0` indefinitely rather than
+        unmounting. Invisible, so it went unnoticed; but with `role="alert"` on
+        it, stale error text would have stayed in the accessibility tree after
+        the user had fixed the field. `AppShell` documents the same React 19 +
+        Framer Motion failure for its hydration overlay and reaches the same
+        conclusion: a plain conditional render removes the node in one frame,
+        and a 140ms tween on an error message is not worth that class of bug. */}
+    {error && (
+      <p
+        id={htmlFor ? `${htmlFor}-error` : undefined}
+        role="alert"
+        className="text-xs text-destructive overflow-hidden leading-tight"
+      >
+        {error}
+      </p>
+    )}
   </div>
 );
 
@@ -76,9 +87,38 @@ function SignInPageInner() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const clearErr = (field: string) =>
-    setFieldErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      fieldErrorsRef.current = next;
+      return next;
+    });
 
   const clearMessage = () => setMessage(null);
+
+  /**
+   * F3.12: the mode toggles cleared only the page-level message. Field errors
+   * survived, so failing sign-in validation and then switching to "Create
+   * account" showed errors about rules that no longer applied — including a
+   * password-length error against the sign-in schema, which has none.
+   */
+  const switchMode = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setMessage(null);
+    setFieldErrors({});
+    fieldErrorsRef.current = {};
+  };
+
+  /**
+   * F3.9: wires each input to its own error text and marks it invalid.
+   * Without this the red border was the ONLY signal, which is invisible to a
+   * screen reader and to anyone who cannot distinguish the colour.
+   */
+  const a11yProps = (field: string, id: string) => ({
+    'aria-invalid': fieldErrors[field] ? (true as const) : undefined,
+    'aria-describedby': fieldErrors[field] ? `${id}-error` : undefined,
+    required: true,
+  });
 
   const inputCls = (field: string) =>
     cn(
@@ -88,6 +128,10 @@ function SignInPageInner() {
         ? 'border-destructive focus-visible:ring-destructive/20'
         : 'border-border/60 focus-visible:ring-primary/20 focus-visible:border-primary/50',
     );
+
+  // `setFieldErrors` is async, so `handleSubmit` cannot read the result of
+  // `validate()` from state in the same tick. The ref mirrors it.
+  const fieldErrorsRef = React.useRef<Record<string, string>>({});
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
@@ -103,6 +147,7 @@ function SignInPageInner() {
     );
     if (pe) errors.password = pe;
     setFieldErrors(errors);
+    fieldErrorsRef.current = errors;
     return Object.keys(errors).length === 0;
   };
 
@@ -153,6 +198,12 @@ function SignInPageInner() {
 
       useGuestStore.getState().clearGuestSession();
       router.replace(destination);
+    } catch {
+      // F3.7: there was no catch here. A dropped connection or a 500 threw out
+      // of `authClient`, `finally` cleared the spinner, and the user was left
+      // looking at an unchanged form with no error — indistinguishable from
+      // "nothing happened", so they pressed the button again.
+      setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
       setBusy(null);
     }
@@ -173,6 +224,9 @@ function SignInPageInner() {
       if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
       useGuestStore.getState().clearGuestSession();
       router.replace(destination);
+    } catch {
+      // F3.7 — see handleSignUp.
+      setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
       setBusy(null);
     }
@@ -252,8 +306,16 @@ function SignInPageInner() {
     }
   }, [openOAuthPopup, authClient, router, destination]);
 
-  const handleSubmit = () => {
-    if (!validate()) return;
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!validate()) {
+      // F3.9: a failed submit left focus on the button, so a keyboard or screen
+      // reader user had to hunt for what was wrong. Move to the first field
+      // that failed, in DOM order.
+      const first = ['name', 'email', 'password'].find((f) => fieldErrorsRef.current[f]);
+      if (first) document.getElementById(`auth-${first}`)?.focus();
+      return;
+    }
     if (authMode === 'signup') handleSignUp();
     else handleSignIn();
   };
@@ -277,9 +339,16 @@ function SignInPageInner() {
           <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">
             {authMode === 'signup' ? 'Begin' : 'Return'}
           </p>
-          <span className="font-logo text-4xl font-medium tracking-[-0.03em] text-foreground select-none block leading-none">
-            Lumina
-          </span>
+          {/* F3.13: the page had NO `<h1>` — the largest text was a `<span>`
+              wordmark, so a screen reader's heading list was empty and the
+              page never stated its own task. The visible wordmark stays; the
+              heading names what this screen is for. */}
+          <h1 className="font-logo text-4xl font-medium tracking-[-0.03em] text-foreground select-none block leading-none">
+            <span aria-hidden="true">Lumina</span>
+            <span className="sr-only">
+              {authMode === 'signup' ? 'Create your Lumina account' : 'Sign in to Lumina'}
+            </span>
+          </h1>
           <p className="text-[12px] text-muted-foreground/80 italic">
             {authMode === 'signup' ? 'A quiet place to get focused work done.' : 'Welcome back.'}
           </p>
@@ -291,7 +360,7 @@ function SignInPageInner() {
           <div className="flex p-0.5 rounded-lg border border-border/60 bg-muted/30">
             <button
               type="button"
-              onClick={() => { setAuthMode('signin'); clearMessage(); }}
+              onClick={() => switchMode('signin')}
               disabled={Boolean(busy)}
               className={cn(
                 'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
@@ -304,7 +373,7 @@ function SignInPageInner() {
             </button>
             <button
               type="button"
-              onClick={() => { setAuthMode('signup'); clearMessage(); }}
+              onClick={() => switchMode('signup')}
               disabled={Boolean(busy)}
               className={cn(
                 'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
@@ -317,6 +386,12 @@ function SignInPageInner() {
             </button>
           </div>
 
+          {/* F3.8: there was no `<form>` element. Enter did not submit (an
+              ad-hoc `onKeyDown` was doing it by hand), and password managers
+              never offered to SAVE the credential — they look for a form
+              submission, so a user could autofill on the next visit only if
+              they had saved it some other way. */}
+          <form onSubmit={handleSubmit} noValidate>
           {/* Fields */}
           <div className="space-y-3.5">
             <AnimatePresence initial={false}>
@@ -339,6 +414,7 @@ function SignInPageInner() {
                       autoComplete="name"
                       autoFocus={authMode === 'signup'}
                       disabled={Boolean(busy)}
+                      {...a11yProps('name', 'auth-name')}
                       className={inputCls('name')}
                     />
                   </AuthField>
@@ -354,7 +430,9 @@ function SignInPageInner() {
                 onChange={(e) => { setEmail(e.target.value); clearErr('email'); }}
                 placeholder="you@example.com"
                 autoComplete="email"
+                autoFocus={authMode === 'signin'}
                 disabled={Boolean(busy)}
+                {...a11yProps('email', 'auth-email')}
                 className={inputCls('email')}
               />
             </AuthField>
@@ -388,8 +466,8 @@ function SignInPageInner() {
                 // autofill behaviour on two screens of the same product.
                 autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
                 name={authMode === 'signup' ? 'new-password' : 'current-password'}
-                required
                 disabled={Boolean(busy)}
+                {...a11yProps('password', 'auth-password')}
                 className={inputCls('password')}
               />
             </AuthField>
@@ -408,13 +486,14 @@ function SignInPageInner() {
 
           {/* Error */}
           {message && Object.keys(fieldErrors).length === 0 && (
-            <p className="text-xs text-destructive -mt-1">{message}</p>
+            // F3.9: this was a silent `<p>`. `role="alert"` is what makes a
+            // newly rendered message announce itself without stealing focus.
+            <p role="alert" className="text-xs text-destructive -mt-1">{message}</p>
           )}
 
           {/* Submit */}
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
             disabled={Boolean(busy)}
             className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
@@ -422,6 +501,7 @@ function SignInPageInner() {
               ? (busy === 'signup' ? 'Creating account…' : 'Create account')
               : (busy === 'signin' ? 'Signing in…' : 'Sign in')}
           </button>
+          </form>
 
           {/* Divider */}
           <div className="relative">
