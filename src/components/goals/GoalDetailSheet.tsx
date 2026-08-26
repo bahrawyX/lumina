@@ -203,6 +203,14 @@ export const GoalDetailSheet: React.FC<{
     if (isNaN(raw)) return;
     const pct = Math.max(0, Math.min(100, raw));
 
+    // P3-6: `editableRingTarget` is `Target | null | undefined` — `undefined`
+    // means "this goal has multiple targets (or a task-completion one), so the
+    // ring is not directly editable". The `=== null` branch below handled the
+    // no-targets case and the else branch then dereferenced `.type`, so an
+    // `undefined` reaching here threw. `ringEditable` gates the UI, but nothing
+    // gated the handler; `strictNullChecks` is what surfaced it.
+    if (editableRingTarget === undefined) return;
+
     if (editableRingTarget === null) {
       // No targets yet — create a percentage "Progress" target, then set it
       const t = addTarget(liveGoal.id, { title: 'Progress', type: 'percentage', targetValue: 100 });

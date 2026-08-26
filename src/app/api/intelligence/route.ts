@@ -41,7 +41,10 @@ function mapLocalEvents(rows: Array<typeof events.$inferSelect>): IntelligenceCa
     endIso: row.endTime.toISOString(),
     isAllDay: row.isAllDay,
     timezone: row.timezone,
-    category: row.category,
+    // `events.category` is a nullable column; `IntelligenceCalendarEvent.category`
+    // is optional. `null` would have reached the analysis code, which tests it
+    // with `if (event.category)` — same behaviour, but the type lied.
+    category: row.category ?? undefined,
   }));
 }
 
@@ -246,7 +249,7 @@ export async function GET(req: NextRequest) {
           endIso: inst.endIso,
           isAllDay: masterEvent.isAllDay,
           timezone: masterEvent.timezone,
-          category: masterEvent.category,
+          category: masterEvent.category ?? undefined,
         });
       }
     }

@@ -178,7 +178,10 @@ const DayView: React.FC<DayViewProps> = ({ events }) => {
     rafRef.current = requestAnimationFrame(() => {
       const container = scrollContainerRef.current;
       const wrap = contentWrapRef.current;
-      if (!container || !wrap || !dragState.draggedEventId || !dragState.origin) return;
+      // P3-6: `pointer` is set in the SAME `startDrag` call as `origin` and
+      // `draggedEventId`, but the guard checked only the other two — so the
+      // type said `pointer` could be null here and nothing proved otherwise.
+      if (!container || !wrap || !dragState.draggedEventId || !dragState.origin || !dragState.pointer) return;
 
       const rect = container.getBoundingClientRect();
       const pointerY = e.clientY - rect.top + container.scrollTop;

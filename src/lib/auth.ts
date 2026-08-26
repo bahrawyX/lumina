@@ -19,9 +19,6 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 const microsoftClientId = process.env.MICROSOFT_CLIENT_ID;
 const microsoftClientSecret = process.env.MICROSOFT_CLIENT_SECRET;
 
-const hasGoogleCredentials = Boolean(googleClientId && googleClientSecret);
-const hasMicrosoftCredentials = Boolean(microsoftClientId && microsoftClientSecret);
-
 if (!db) {
   throw new Error('DATABASE_URL is required for BetterAuth database sessions.');
 }
@@ -38,7 +35,10 @@ const socialProviders = {
   // ── Google login: identity only (openid, email, profile) ──────────────────
   // Calendar scopes are requested separately via the explicit integration connect
   // flow (/api/integrations/google/connect). Never add calendar scopes here.
-  ...(hasGoogleCredentials
+  // Narrowed on the values themselves rather than on `hasGoogleCredentials`:
+  // TypeScript cannot carry a `boolean` const's narrowing into this scope, so
+  // the derived flag left both fields as `string | undefined` at the call site.
+  ...(googleClientId && googleClientSecret
     ? {
         google: google({
           clientId: googleClientId,
@@ -49,7 +49,7 @@ const socialProviders = {
 
   // ── Microsoft login: identity only ────────────────────────────────────────
   // Calendar scopes (Calendars.Read) are requested via /api/integrations/microsoft/connect.
-  ...(hasMicrosoftCredentials
+  ...(microsoftClientId && microsoftClientSecret
     ? {
         microsoft: microsoft({
           clientId: microsoftClientId,

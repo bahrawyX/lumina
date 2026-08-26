@@ -207,8 +207,10 @@ export interface DayCalendarTimelineProps {
   onMouseLeave?: () => void;
   onScroll?: () => void;
 
-  scrollContainerRef?: React.RefObject<HTMLDivElement>;
-  contentWrapRef?: React.RefObject<HTMLDivElement>;
+  // React 19 types `useRef<T>(null)` as `RefObject<T | null>`; these predate
+  // that and no caller can satisfy the narrower type.
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  contentWrapRef?: React.RefObject<HTMLDivElement | null>;
 
   children?: React.ReactNode;
   gridBodyChildren?: React.ReactNode;

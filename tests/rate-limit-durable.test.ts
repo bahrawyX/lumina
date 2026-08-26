@@ -53,7 +53,7 @@ afterAll(async () => {
 describe('P1-9 — the counter is shared, not per-instance', () => {
   it('allows exactly `max` sequential requests, then limits', async () => {
     const limiter = createRateLimiter('seqTest', { windowMs: 60_000, max: 3 });
-    const results = [];
+    const results: Awaited<ReturnType<typeof limiter.check>>[] = [];
     for (let i = 0; i < 6; i++) {
       results.push(await limiter.check('user-seq'));
     }

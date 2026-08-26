@@ -257,7 +257,19 @@ const EventModal: React.FC = () => {
           </div>
 
           {/* Meeting Notes */}
-          {activeEvent && <MeetingNotesSection eventId={activeEvent.id} eventTitle={activeEvent.title} eventDate={formData.date} eventStartTime={formData.startTime} eventEndTime={formData.endTime} />}
+          {/* `formData` is `Partial<CalendarEvent>`, so these three are
+              `string | undefined`. The notes body interpolates them straight
+              into text, which rendered "Date: undefined" whenever the modal was
+              opened before the form had been populated. */}
+          {activeEvent && (
+            <MeetingNotesSection
+              eventId={activeEvent.id}
+              eventTitle={activeEvent.title}
+              eventDate={formData.date ?? ''}
+              eventStartTime={formData.startTime ?? ''}
+              eventEndTime={formData.endTime ?? ''}
+            />
+          )}
 
           {isExternalEvent && (
             <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-2">

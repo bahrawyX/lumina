@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Map DB rows to the client-side Task shape
-    const mapped = rows.map((row, index) => ({
+    const mapped = rows.map((row) => ({
       id: row.id,
       title: row.title,
       description: row.description ?? undefined,

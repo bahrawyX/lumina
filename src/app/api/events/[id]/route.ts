@@ -367,26 +367,31 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     // If editScope is 'all' and recurrence data is provided, update the rule too.
     const recurrenceBody = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
-    const updatesRecurrence =
-      editScope === 'all' && recurrenceBody && typeof recurrenceBody.rrule === 'string';
+    // Capture the narrowed value rather than a boolean: a `boolean` const does
+    // not carry its narrowing into the block below, so `recurrenceBody.rrule`
+    // stayed `string | undefined` at the `validateRRule` call.
+    const nextRrule =
+      editScope === 'all' && recurrenceBody && typeof recurrenceBody.rrule === 'string'
+        ? recurrenceBody.rrule
+        : null;
 
     let recPatch: Record<string, unknown> | null = null;
-    if (updatesRecurrence) {
+    if (nextRrule !== null) {
       // Pre-validate the RRULE before storage (DoS protection) AND before the
       // event write, so a rejected rule cannot leave the times already changed.
       const dtstartForValidation = (patch.startTime as Date | undefined) ?? existing.startTime;
-      const validation = validateRRule(recurrenceBody.rrule, dtstartForValidation);
+      const validation = validateRRule(nextRrule, dtstartForValidation);
       if (validation.ok === false) {
         return NextResponse.json(
           { error: `Invalid recurrence: ${validation.reason}` },
           { status: 400 },
         );
       }
-      recPatch = { rrule: recurrenceBody.rrule, updatedAt: new Date() };
-      if (Array.isArray(recurrenceBody.exdates)) {
+      recPatch = { rrule: nextRrule, updatedAt: new Date() };
+      if (Array.isArray(recurrenceBody?.exdates)) {
         recPatch.exdates = recurrenceBody.exdates;
       }
-      const until = recurrenceBody.until ? new Date(recurrenceBody.until) : null;
+      const until = recurrenceBody?.until ? new Date(recurrenceBody.until) : null;
       // An unguarded `new Date(junk)` produced an Invalid Date that the driver
       // rejected *after* the event row had already been updated.
       if (until && !isNaN(until.getTime())) recPatch.recurrenceEnd = until;
