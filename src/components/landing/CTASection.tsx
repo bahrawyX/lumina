@@ -28,11 +28,10 @@ export function CTASection() {
                 Free to use. No credit card required.
               </p>
               <div className="mt-8">
-                <Link href="/onboarding" tabIndex={-1}>
-                  <Button size="lg" className="rounded-xl px-8 text-sm font-semibold">
-                    Get started free
-                  </Button>
-                </Link>
+                {/* F1.11: see HeroSection — one `<a>`, not `<a><button>`. */}
+                <Button asChild size="lg" className="rounded-xl px-8 text-sm font-semibold">
+                  <Link href="/onboarding">Get started free</Link>
+                </Button>
               </div>
             </div>
 

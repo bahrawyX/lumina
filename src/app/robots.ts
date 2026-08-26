@@ -7,20 +7,32 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
+        // F1.14: every entry carried a trailing slash, but the actual routes
+        // are single-segment with none. Robots directives are literal prefix
+        // matches, so `Disallow: /calendar/` did not match `/calendar` — in
+        // practice only `/api/` was genuinely blocked by this file.
+        //
+        // It did not matter in the end: every app route serves
+        // `<meta name="robots" content="noindex, nofollow">`, so the pages were
+        // correctly excluded anyway. Fixed so the two mechanisms agree, rather
+        // than leaving a decorative file that reads as protection.
+        //
+        // Without the slash each entry covers both `/calendar` and
+        // `/calendar/anything`.
         disallow: [
-          '/api/',
-          '/auth/',
-          '/onboarding/',
-          '/calendar/',
-          '/tasks/',
-          '/plan/',
-          '/focus/',
-          '/pomodoro/',
-          '/performance/',
-          '/intelligence/',
-          '/goals/',
-          '/shop/',
-          '/docs/',
+          '/api',
+          '/auth',
+          '/onboarding',
+          '/calendar',
+          '/tasks',
+          '/plan',
+          '/focus',
+          '/pomodoro',
+          '/performance',
+          '/intelligence',
+          '/goals',
+          '/shop',
+          '/docs',
         ],
       },
     ],

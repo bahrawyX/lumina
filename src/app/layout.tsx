@@ -162,6 +162,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </noscript>
       </head>
       <body className="bg-warm-50 dark:bg-neutral-dark text-gray-800 dark:text-gray-100">
+        {/* F1.11: there was no skip link anywhere. A keyboard user had to tab
+            the wordmark, the theme toggle, "Sign in" and "Get started" before
+            reaching any content — with no visible focus indicator to tell them
+            where they were. It is the first child of <body> so it is the first
+            stop, and `sr-only focus:not-sr-only` keeps it invisible until it
+            has focus. */}
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
         <Providers>{children}</Providers>
         {/* Service worker registration — production only */}
         {process.env.NODE_ENV === 'production' && (

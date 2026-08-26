@@ -63,16 +63,17 @@ export function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
             >
-              <Link href="/onboarding" tabIndex={-1}>
-                <Button size="lg" className="rounded-xl px-6 text-sm font-semibold">
-                  Get started free
-                </Button>
-              </Link>
-              <Link href="#features" tabIndex={-1}>
-                <Button variant="outline" size="lg" className="rounded-xl px-6 text-sm">
-                  See how it works
-                </Button>
-              </Link>
+              {/* F1.11: these were `<Link tabIndex={-1}><Button>` — an `<a>`
+                  containing a `<button>`, an invalid content model with
+                  undefined assistive-tech behaviour, where the `tabIndex={-1}`
+                  patched over the double tab stop it created. `asChild`
+                  renders a single `<a>` carrying the button styling. */}
+              <Button asChild size="lg" className="rounded-xl px-6 text-sm font-semibold">
+                <Link href="/onboarding">Get started free</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg" className="rounded-xl px-6 text-sm">
+                <Link href="#features">See how it works</Link>
+              </Button>
             </motion.div>
           </div>
 

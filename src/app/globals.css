@@ -289,6 +289,36 @@ html.transitioning-theme *::after {
   }
 }
 
+/* ─── F1.11: skip link ──────────────────────────────────────────────────────
+ *
+ * Written as an explicit class rather than `sr-only focus:not-sr-only`, because
+ * that pairing depends on Tailwind emitting `.focus\:not-sr-only:focus` after
+ * `.sr-only` — true today, but a silent regression if utility ordering ever
+ * changes, and the failure mode is a skip link that never becomes visible.
+ *
+ * Off-screen rather than `display: none` or `visibility: hidden`, both of which
+ * would make it unfocusable and therefore useless.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 8px 24px -8px rgba(17, 17, 28, 0.25);
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
 /* ─── iOS/Android safe-area helpers ─────────────────────────────────────── */
 .pt-safe { padding-top: env(safe-area-inset-top); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }

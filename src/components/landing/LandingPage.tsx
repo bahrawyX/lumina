@@ -23,7 +23,7 @@ export function LandingPage() {
       <SmoothScroll />
       <CustomCursor />
       <LandingNav />
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <HeroSection />
         <ProblemStatement />
         <FeatureShowcase />

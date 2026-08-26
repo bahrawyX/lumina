@@ -21,16 +21,14 @@ export function LandingNav() {
         {/* Actions */}
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Link href="/auth/signin" tabIndex={-1}>
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-              Sign in
-            </Button>
-          </Link>
-          <Link href="/onboarding" tabIndex={-1}>
-            <Button size="sm" className="rounded-lg px-4">
-              Get started
-            </Button>
-          </Link>
+          {/* F1.11: `<a>` wrapping `<button>` is an invalid content model;
+              `asChild` renders one `<a>` with the button styling. */}
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+            <Link href="/auth/signin">Sign in</Link>
+          </Button>
+          <Button asChild size="sm" className="rounded-lg px-4">
+            <Link href="/onboarding">Get started</Link>
+          </Button>
         </div>
       </nav>
     </header>

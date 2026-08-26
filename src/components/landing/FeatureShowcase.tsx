@@ -53,7 +53,9 @@ const SLIDES: SlideDef[] = [
       'Kanban or list view, your call. Subtasks, priorities, due dates, filters. Tasks link directly to calendar events and documents.',
     bullets: [
       'Drag-and-drop kanban with subtasks',
-      'Filters, search, and saved views',
+      // F1.3: this said 'saved views'. `grep -rn "saved views" -i src/`
+      // returned exactly one hit — that line. The feature does not exist.
+      'Filters, search, and priority sorting',
       'Priorities and due-date sorting',
     ],
     accent: ACCENT.sky,
@@ -81,7 +83,8 @@ const SLIDES: SlideDef[] = [
       'Focus timer, Pomodoro cycles with mood tracking, stopwatch, ambient sounds. Every session builds your streak and earns coins.',
     bullets: [
       'Pomodoro, stopwatch, and custom timers',
-      'Ambient sounds and focus playlists',
+      // F1.3: 'focus playlists' likewise existed only in this string.
+      'Ambient sound mixer with four tracks',
       'Streaks, coins, and daily targets',
     ],
     accent: ACCENT.rose,
@@ -221,29 +224,37 @@ export function FeatureShowcase() {
     window.scrollTo({ top, behavior: 'smooth' });
   }, []);
 
-  /* Arrow-key navigation — gated to when the section is on screen */
+  /* Arrow-key navigation — only while focus is inside the carousel.
+   *
+   * F1.5: this was a `window` listener gated on "is the section anywhere on
+   * screen", and the section is `h-screen` sticky with a ghost spacer roughly
+   * six viewport heights tall — so that condition held for most of the page.
+   * It also claimed ArrowUp and ArrowDown, which meant a keyboard user pressing
+   * ArrowDown to SCROLL got a slide change instead.
+   *
+   * Vertical arrows belong to the browser. Horizontal arrows belong to the
+   * carousel, and only when the user is actually in it — which is also what the
+   * ARIA tablist pattern specifies.
+   */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const section = sectionRef.current;
       if (!section) return;
-      const rect = section.getBoundingClientRect();
-      const onScreen = rect.top < window.innerHeight && rect.bottom > 0;
-      if (!onScreen) return;
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+
+      const active = document.activeElement;
+      if (!active || !section.contains(active)) return;
 
       if (e.target instanceof HTMLInputElement) return;
       if (e.target instanceof HTMLTextAreaElement) return;
       if ((e.target as HTMLElement | null)?.isContentEditable) return;
 
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        if (activeIndex < SLIDES.length - 1) {
-          e.preventDefault();
-          goToSlide(activeIndex + 1);
-        }
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        if (activeIndex > 0) {
-          e.preventDefault();
-          goToSlide(activeIndex - 1);
-        }
+      if (e.key === 'ArrowRight' && activeIndex < SLIDES.length - 1) {
+        e.preventDefault();
+        goToSlide(activeIndex + 1);
+      } else if (e.key === 'ArrowLeft' && activeIndex > 0) {
+        e.preventDefault();
+        goToSlide(activeIndex - 1);
       }
     };
     window.addEventListener('keydown', handler);
@@ -287,10 +298,19 @@ export function FeatureShowcase() {
               {SLIDES.map((slide, i) => (
                 <div
                   key={slide.key}
+                  id={`feature-slide-${slide.key}`}
                   data-slide-index={i}
                   className="flex-shrink-0 w-screen h-full"
                   aria-roledescription="slide"
                   aria-label={`${i + 1} of ${SLIDES.length}: ${slide.title}`}
+                  // F1.9: all six slides sat in the accessibility tree at once,
+                  // so a screen reader read every feature list back-to-back
+                  // with no indication that five of them were off-screen — and
+                  // Tab walked into links the user could not see. `inert` also
+                  // removes them from the tab order, which `aria-hidden` alone
+                  // does not.
+                  aria-hidden={i !== activeIndex}
+                  inert={i !== activeIndex}
                 >
                   <FeatureSlide
                     eyebrow={slide.eyebrow}
@@ -321,6 +341,11 @@ export function FeatureShowcase() {
                 role="tab"
                 aria-selected={i === activeIndex}
                 aria-label={`Go to slide ${i + 1}: ${slide.title}`}
+                // F1.9: `role="tab"` without `aria-controls` and without a
+                // roving tabindex is a half-implemented pattern — a screen
+                // reader announces "tab" and then cannot say what it controls.
+                aria-controls={`feature-slide-${slide.key}`}
+                tabIndex={i === activeIndex ? 0 : -1}
                 onClick={() => goToSlide(i)}
                 className="relative h-2 rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 style={{
