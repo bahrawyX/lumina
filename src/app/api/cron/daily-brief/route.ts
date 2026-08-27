@@ -8,6 +8,7 @@ import { mapWithConcurrency } from '@/lib/integrations/mapWithConcurrency';
 import { claimNotification, isLocalHour, releaseClaim } from '@/lib/notifications/claim';
 import { zonedDayBounds, zonedToday } from '@/lib/time/zonedTime';
 import { logger } from '@/lib/logger';
+import { sweepExpiredRateLimits } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -195,11 +196,37 @@ export async function GET(req: Request) {
     }
   });
 
+  /**
+   * Prune expired rate-limit rows.
+   *
+   * `sweepExpiredRateLimits` existed with NO production caller — only a test
+   * referenced it — and the schema comment claiming rows are "swept daily" was
+   * therefore false. That was survivable only because BetterAuth's built-in
+   * database storage pruned rows itself.
+   *
+   * Replacing that storage with `customStorage` (so a missing table degrades
+   * rate limiting instead of taking down authentication) removed BetterAuth's
+   * pruning too: `getRateLimitStorage` returns the custom storage BEFORE it
+   * constructs the wrapper that does the deleting. Nothing was left sweeping,
+   * while `consume` writes a row per (ip, path) for every auth request —
+   * including `/get-session` — over an attacker-influenceable key space.
+   *
+   * Best-effort: a failed sweep is a storage cost, never a reason to fail the
+   * cron that sends people their daily brief.
+   */
+  let rateLimitRowsPruned: number | null = null;
+  try {
+    rateLimitRowsPruned = await sweepExpiredRateLimits();
+  } catch (err) {
+    logger.error('unhandled', { route: 'cron/daily-brief rate-limit sweep' }, err);
+  }
+
   return NextResponse.json({
     sent: sentCount,
     considered: candidates.length,
     dueNow: dueNow.length,
     skippedAlreadySent,
+    rateLimitRowsPruned,
     // A run that hits the ceiling is visible rather than silently partial.
     truncated: candidates.length >= MAX_USERS_PER_RUN,
   });

@@ -757,6 +757,17 @@ CREATE INDEX IF NOT EXISTS "idx_push_subscriptions_user_id" ON "push_subscriptio
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_push_subscriptions_user_endpoint" ON "push_subscriptions" USING btree ("user_id","endpoint");
 --> statement-breakpoint
+-- Deduplicate before the unique index, the way 0024 does for the link indexes.
+-- If `rate_limits` was created by a `drizzle-kit push` that skipped this index
+-- — exactly the drift this file exists to repair — duplicate keys would make
+-- the CREATE fail, and without the index every `ON CONFLICT ("key")` in the
+-- auth rate limiter raises 42P10 on every request. The rows are ephemeral
+-- counters, so keeping the highest count per key loses nothing that matters.
+DELETE FROM "rate_limits" a
+  USING "rate_limits" b
+ WHERE a."key" = b."key"
+   AND (a."count", a."id") < (b."count", b."id");
+--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "rate_limits_key_uniq" ON "rate_limits" USING btree ("key");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "rate_limits_expires_at_idx" ON "rate_limits" USING btree ("expires_at");

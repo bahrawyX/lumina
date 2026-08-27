@@ -53,7 +53,14 @@ interface ConsumeRule {
   max: number;
 }
 
-/** Logged once per process; a per-request log would drown everything else. */
+/**
+ * Logged once per outage, not once per request — a per-request log would drown
+ * everything else at exactly the moment the logs matter.
+ *
+ * It RESETS on the next success, so a 30-second database blip and a permanent
+ * misconfiguration are distinguishable: the first produces a matched
+ * degraded/recovered pair, the second produces one line and silence.
+ */
 let warnedUnavailable = false;
 
 function reportUnavailable(operation: string, err: unknown): void {
@@ -65,6 +72,13 @@ function reportUnavailable(operation: string, err: unknown): void {
     { operation },
     err,
   );
+}
+
+/** Called after any successful storage operation. */
+function reportRecovered(): void {
+  if (!warnedUnavailable) return;
+  warnedUnavailable = false;
+  logger.info('rate limit storage recovered — enforcement is active again');
 }
 
 /**
@@ -85,6 +99,7 @@ export function createFailOpenRateLimitStorage() {
         const result = await db.execute(
           sql`select "key", "count", "last_request" from "rate_limits" where "key" = ${key} limit 1`,
         );
+        reportRecovered();
         const row = firstRow<{ key: string; count: number | string; last_request: number | string }>(result);
         if (!row) return undefined;
         return {
@@ -109,6 +124,7 @@ export function createFailOpenRateLimitStorage() {
                     "last_request" = ${value.lastRequest},
                     "expires_at" = now() + interval '1 day'`,
         );
+        reportRecovered();
       } catch (err) {
         reportUnavailable('set', err);
       }
@@ -153,6 +169,7 @@ export function createFailOpenRateLimitStorage() {
               returning "count", "last_request"`,
         );
 
+        reportRecovered();
         const row = firstRow<{ count: number | string; last_request: number | string }>(result);
         if (!row) return { allowed: true, retryAfter: null };
 

@@ -17,31 +17,40 @@
 --
 -- ## Why not `npm run db:migrate`
 --
--- Use that if your `__drizzle_migrations` journal is intact — it is the normal
--- path. This file is for the case that produced the outage: a database whose
--- journal does not match what is actually in it, where drizzle-kit would either
--- re-run 0000 (and fail on "relation already exists") or skip work that is
--- genuinely missing.
+-- Try that first — it is the normal path. This file is for the case that
+-- produced the outage: a database whose `__drizzle_migrations` journal does not
+-- match what is actually in it, where drizzle-kit would either re-run 0000 (and
+-- fail on "relation already exists") or skip work that is genuinely missing.
+--
+-- ## How to run it
+--
+--     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/catch-up-schema.sql
+--
+-- `ON_ERROR_STOP=1` matters. The whole file is wrapped in BEGIN/COMMIT, but
+-- psql without that flag keeps going after an error, which would send the
+-- COMMIT after the transaction had already aborted and roll everything back
+-- while looking like it worked. With the flag, any error aborts and rolls back
+-- cleanly, leaving the database exactly as it was.
+--
+-- On Neon, paste the file into the SQL Editor (it runs statements in one
+-- session, and the BEGIN/COMMIT below applies).
 --
 -- ## Safety
 --
 -- Every statement is idempotent: `IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
--- or a `DO $$ ... EXCEPTION WHEN duplicate_object $$` guard. Running it on a
--- fully-migrated database is a no-op; running it twice is a no-op. It creates
--- and backfills — it never drops a table, a column, or a row.
+-- or a `DO $$ ... EXCEPTION $$` guard. Running it on an already-current
+-- database is a no-op; running it twice is a no-op. It creates and backfills —
+-- it never drops a table, drops a column, or truncates.
 --
 -- Verified in `tests/schema-catch-up.test.ts` against a real Postgres: applied
 -- to an empty database it produces every table, column and index the app
 -- queries; applied to a database in the exact broken state above it heals it;
--- and applied twice it succeeds both times.
---
--- ## Running it
---
---     psql "$DATABASE_URL" -f scripts/catch-up-schema.sql
---
--- Neon: paste into the SQL Editor. Take a branch/snapshot first if you want a
--- trivial rollback — this script does not need one, but it costs nothing.
+-- applied twice it is a no-op INCLUDING task ordering; and it repairs a
+-- `users` table missing arbitrary columns, not just the two that migration
+-- 0021 names.
 -- ============================================================================
+
+BEGIN;
 
 
 
@@ -808,6 +817,17 @@ CREATE INDEX IF NOT EXISTS "idx_push_subscriptions_user_id" ON "push_subscriptio
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_push_subscriptions_user_endpoint" ON "push_subscriptions" USING btree ("user_id","endpoint");
 --> statement-breakpoint
+-- Deduplicate before the unique index, the way 0024 does for the link indexes.
+-- If `rate_limits` was created by a `drizzle-kit push` that skipped this index
+-- — exactly the drift this file exists to repair — duplicate keys would make
+-- the CREATE fail, and without the index every `ON CONFLICT ("key")` in the
+-- auth rate limiter raises 42P10 on every request. The rows are ephemeral
+-- counters, so keeping the highest count per key loses nothing that matters.
+DELETE FROM "rate_limits" a
+  USING "rate_limits" b
+ WHERE a."key" = b."key"
+   AND (a."count", a."id") < (b."count", b."id");
+--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "rate_limits_key_uniq" ON "rate_limits" USING btree ("key");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "rate_limits_expires_at_idx" ON "rate_limits" USING btree ("expires_at");
@@ -901,16 +921,31 @@ ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "position" integer DEFAULT 0 NOT NU
 -- Seed each user's existing tasks with their current created-at order, per
 -- status column — so the first render after this migration matches what the
 -- user was looking at before it, rather than collapsing every task to 0.
-UPDATE "tasks" t
-SET "position" = seeded.rn
-FROM (
-  SELECT
-    id,
-    (row_number() OVER (PARTITION BY user_id, status ORDER BY created_at) - 1) AS rn
-  FROM "tasks"
-) AS seeded
-WHERE t.id = seeded.id
-  AND t."position" = 0;--> statement-breakpoint
+--
+-- The guard is "no task anywhere has a non-zero position", NOT "this task is at
+-- position 0". The latter looks like a one-shot guard and is not: position 0 is
+-- the NORMAL state of the top card in every column, and the default for every
+-- task created after this migration. Re-running with that guard rewrites every
+-- top card to its created-at rank — silently destroying manual ordering and
+-- creating duplicate positions. Reproduced: a board ordered C,A,B came back
+-- C=2, A=1, B=2.
+--
+-- This condition is true exactly once, immediately after the column is added
+-- with DEFAULT 0, so the seeding runs once and every later run is a no-op.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM "tasks" WHERE "position" <> 0) THEN
+    UPDATE "tasks" t
+    SET "position" = seeded.rn
+    FROM (
+      SELECT
+        id,
+        (row_number() OVER (PARTITION BY user_id, status ORDER BY created_at) - 1) AS rn
+      FROM "tasks"
+    ) AS seeded
+    WHERE t.id = seeded.id;
+  END IF;
+END $$;--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS "tasks_user_status_position_idx"
   ON "tasks" ("user_id", "status", "position");--> statement-breakpoint
@@ -1101,3 +1136,400 @@ UPDATE events e
 CREATE UNIQUE INDEX IF NOT EXISTS events_linked_task_uniq
   ON events (linked_task_id)
   WHERE linked_task_id IS NOT NULL;
+
+
+-- ==========================================================================
+-- column-heal — generated by scripts/generate-column-heal.ts, do not hand-edit
+--
+-- One idempotent ADD COLUMN per column in the Drizzle schema. The migrations
+-- above create tables with CREATE TABLE IF NOT EXISTS, which heals a missing
+-- TABLE but silently skips a table that exists with missing COLUMNS — the exact
+-- shape of the sign-in outage (`users` existed; `onboarding_completed_at` did
+-- not). This pass closes that gap for every table, not just the two columns
+-- migration 0021 happened to name.
+-- ==========================================================================
+
+-- accounts
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "account_id" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "provider_id" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "access_token" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "refresh_token" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "id_token" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "access_token_expires_at" timestamp with time zone;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "refresh_token_expires_at" timestamp with time zone;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "scope" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "password" text;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- achievements
+ALTER TABLE "achievements" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "achievements" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "achievements" ADD COLUMN IF NOT EXISTS "type" varchar(64);
+ALTER TABLE "achievements" ADD COLUMN IF NOT EXISTS "unlocked_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "achievements" ADD COLUMN IF NOT EXISTS "seen" boolean DEFAULT false NOT NULL;
+
+-- calendars
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "provider" calendar_provider;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "external_id" varchar(255);
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "name" varchar(255);
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "color" varchar(32) DEFAULT '#6D59E0' NOT NULL;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "enabled" boolean DEFAULT true NOT NULL;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "is_primary" boolean DEFAULT false NOT NULL;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "calendars" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- coin_transactions
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "amount" integer;
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "reason" varchar(100);
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "label" varchar(255);
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "metadata" jsonb DEFAULT '{}';
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "dedupe_key" varchar(200);
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "source_type" varchar(100);
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "source_id" varchar(255);
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "balance_after" integer;
+ALTER TABLE "coin_transactions" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- contact_submissions
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "type" varchar(32);
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "subject" varchar(100);
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "message" text;
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "email" varchar(255);
+ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "submitted_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- daily_brief_cache
+ALTER TABLE "daily_brief_cache" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "daily_brief_cache" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "daily_brief_cache" ADD COLUMN IF NOT EXISTS "date" date;
+ALTER TABLE "daily_brief_cache" ADD COLUMN IF NOT EXISTS "narrative" text;
+ALTER TABLE "daily_brief_cache" ADD COLUMN IF NOT EXISTS "generated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- daily_reward_caps
+ALTER TABLE "daily_reward_caps" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "daily_reward_caps" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "daily_reward_caps" ADD COLUMN IF NOT EXISTS "reason" varchar(100);
+ALTER TABLE "daily_reward_caps" ADD COLUMN IF NOT EXISTS "bucket_date" date;
+ALTER TABLE "daily_reward_caps" ADD COLUMN IF NOT EXISTS "used_units" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "daily_reward_caps" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- docs
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "parent_id" uuid;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "title" varchar(512) DEFAULT 'Untitled' NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "content" jsonb;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "content_text" text DEFAULT '';
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "icon" varchar(64);
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "cover_image" text;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "cover_gradient" integer;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "is_archived" boolean DEFAULT false NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "is_pinned" boolean DEFAULT false NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "position" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "linked_task_id" uuid;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "linked_event_id" uuid;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "word_count" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "docs" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- event_recurrence
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "event_id" uuid;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "rrule" text;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "exdates" text[] DEFAULT '[]' NOT NULL;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "recurrence_end" timestamp with time zone;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "event_recurrence" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- events
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "calendar_id" uuid;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "title" varchar(512);
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "description" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "start_time" timestamp with time zone;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "end_time" timestamp with time zone;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "is_all_day" boolean DEFAULT false NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "timezone" text DEFAULT 'UTC' NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "category" varchar(64);
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "color" varchar(32);
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "completed" boolean DEFAULT false NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "linked_task_id" uuid;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location" varchar(512);
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "provider" event_provider DEFAULT 'local' NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "external_event_id" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "external_etag" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "source_updated_at" timestamp with time zone;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "sync_status" event_sync_status DEFAULT 'local_only' NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "meeting_url" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "organizer_email" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "is_task_generated" boolean DEFAULT false NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "source" event_source DEFAULT 'manual' NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "external_id" varchar(255);
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "last_synced_at" timestamp with time zone;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "recurring_event_id" uuid;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "original_start_time" timestamp with time zone;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "is_recurrence_exception" boolean DEFAULT false NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "created_via_nl" boolean DEFAULT false NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "reminder_sent_at" timestamp with time zone;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "linked_doc_id" uuid;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- focus_sessions
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "task_id" uuid;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "task_title" varchar(512);
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "goal_id" uuid;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "start_time" timestamp with time zone;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "end_time" timestamp with time zone;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "duration_minutes" integer;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "coins_earned" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "focus_sessions" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- goal_targets
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "goal_id" uuid;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "title" varchar(255);
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "description" text;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "type" target_type;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "current_value" numeric(10, 2) DEFAULT '0' NOT NULL;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "target_value" numeric(10, 2);
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "unit" varchar(50);
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "linked_task_ids" text;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "order" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "goal_targets" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- goals
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "title" varchar(255);
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "description" text;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "emoji" varchar(10);
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "color" varchar(20);
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "status" goal_status DEFAULT 'active' NOT NULL;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "timeframe" goal_timeframe;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "start_date" timestamp with time zone;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "end_date" timestamp with time zone;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- integrations
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "provider" integration_provider;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "access_token" text;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "refresh_token" text;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "expires_at" timestamp with time zone;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "scope" text;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "token_type" text;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "last_sync_at" timestamp with time zone;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "status" integration_status DEFAULT 'active' NOT NULL;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "integrations" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- mood_logs
+ALTER TABLE "mood_logs" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "mood_logs" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "mood_logs" ADD COLUMN IF NOT EXISTS "focus_session_id" uuid;
+ALTER TABLE "mood_logs" ADD COLUMN IF NOT EXISTS "mood" varchar(16);
+ALTER TABLE "mood_logs" ADD COLUMN IF NOT EXISTS "note" text;
+ALTER TABLE "mood_logs" ADD COLUMN IF NOT EXISTS "logged_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- notification_sends
+ALTER TABLE "notification_sends" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "notification_sends" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "notification_sends" ADD COLUMN IF NOT EXISTS "kind" varchar(64);
+ALTER TABLE "notification_sends" ADD COLUMN IF NOT EXISTS "local_date" varchar(10);
+ALTER TABLE "notification_sends" ADD COLUMN IF NOT EXISTS "sent_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- planner_items
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "task_id" uuid;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "start_time" timestamp with time zone;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "end_time" timestamp with time zone;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "is_auto_scheduled" boolean DEFAULT false NOT NULL;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "planner_items" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- push_subscriptions
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "endpoint" text;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "p256dh" text;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "auth" text;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "user_agent" text;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "push_subscriptions" ADD COLUMN IF NOT EXISTS "last_used_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- rate_limits
+ALTER TABLE "rate_limits" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "rate_limits" ADD COLUMN IF NOT EXISTS "key" text;
+ALTER TABLE "rate_limits" ADD COLUMN IF NOT EXISTS "count" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "rate_limits" ADD COLUMN IF NOT EXISTS "last_request" bigint;
+ALTER TABLE "rate_limits" ADD COLUMN IF NOT EXISTS "expires_at" timestamp with time zone DEFAULT now() + interval '1 day' NOT NULL;
+
+-- sessions
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "expires_at" timestamp with time zone;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "token" text;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "ip_address" text;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "user_agent" text;
+ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+
+-- tasks
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "user_id" uuid;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "title" varchar(512);
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "description" text;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "status" task_status DEFAULT 'todo' NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "priority" task_priority DEFAULT 'medium' NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "difficulty" task_difficulty DEFAULT 'medium' NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "estimated_minutes" integer DEFAULT 30 NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "due_date" timestamp with time zone;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "scheduled_start" varchar(5);
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "scheduled_end" varchar(5);
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "remaining_focus_time" integer;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "linked_event_id" uuid;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "linked_doc_id" uuid;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "goal_id" uuid;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "parent_task_id" uuid;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "depth" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "position" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- users
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email" varchar(255);
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email_verified" boolean DEFAULT false NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "image" text;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar" text;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "focus_session_length" integer DEFAULT 25 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "coins" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "daily_streak" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "best_daily_streak" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "session_streak" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "best_session_streak" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_focus_date" date;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_session_at" timestamp with time zone;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "timezone" text DEFAULT 'UTC' NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "active_cosmetics" jsonb DEFAULT '{}';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "owned_items" jsonb DEFAULT '[]';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "consumables" jsonb DEFAULT '{"focusBoost":0,"streakShield":0,"taskMultiplier":0,"autoPlan":0,"goalAccelerator":0}';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notification_preferences" jsonb DEFAULT '{"dailyBrief":true,"eventReminders":true,"streakReminder":true,"taskReminders":true,"focusComplete":false}';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "work_start" varchar(5) DEFAULT '09:00';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "work_end" varchar(5) DEFAULT '17:00';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_completed_at" timestamp with time zone;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "user_role" varchar(120);
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "custom_categories" jsonb DEFAULT '[]';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "short_break_mins" integer DEFAULT 5 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "long_break_mins" integer DEFAULT 20 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "sessions_per_cycle" integer DEFAULT 4 NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ambient_track" varchar(32);
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- verifications
+ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;
+ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "identifier" text;
+ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "value" text;
+ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "expires_at" timestamp with time zone;
+ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;
+
+-- --------------------------------------------------------------------------
+-- Emitted NULLABLE despite being NOT NULL in the schema, because they have no
+-- default and Postgres cannot add a NOT NULL column to a table with rows:
+--   accounts.account_id
+--   accounts.provider_id
+--   accounts.user_id
+--   achievements.user_id
+--   achievements.type
+--   calendars.user_id
+--   calendars.provider
+--   calendars.name
+--   coin_transactions.user_id
+--   coin_transactions.amount
+--   coin_transactions.reason
+--   coin_transactions.label
+--   contact_submissions.type
+--   contact_submissions.subject
+--   contact_submissions.message
+--   daily_brief_cache.user_id
+--   daily_brief_cache.date
+--   daily_brief_cache.narrative
+--   daily_reward_caps.user_id
+--   daily_reward_caps.reason
+--   daily_reward_caps.bucket_date
+--   docs.user_id
+--   event_recurrence.event_id
+--   event_recurrence.user_id
+--   event_recurrence.rrule
+--   events.user_id
+--   events.calendar_id
+--   events.title
+--   events.start_time
+--   events.end_time
+--   focus_sessions.user_id
+--   focus_sessions.start_time
+--   focus_sessions.end_time
+--   focus_sessions.duration_minutes
+--   goal_targets.goal_id
+--   goal_targets.title
+--   goal_targets.type
+--   goal_targets.target_value
+--   goals.user_id
+--   goals.title
+--   goals.timeframe
+--   goals.start_date
+--   goals.end_date
+--   integrations.user_id
+--   integrations.provider
+--   integrations.access_token
+--   integrations.refresh_token
+--   integrations.expires_at
+--   mood_logs.user_id
+--   mood_logs.mood
+--   notification_sends.user_id
+--   notification_sends.kind
+--   notification_sends.local_date
+--   planner_items.user_id
+--   planner_items.task_id
+--   planner_items.start_time
+--   planner_items.end_time
+--   push_subscriptions.user_id
+--   push_subscriptions.endpoint
+--   push_subscriptions.p256dh
+--   push_subscriptions.auth
+--   rate_limits.key
+--   rate_limits.last_request
+--   sessions.expires_at
+--   sessions.token
+--   sessions.user_id
+--   tasks.user_id
+--   tasks.title
+--   users.email
+--   verifications.identifier
+--   verifications.value
+--   verifications.expires_at
+-- If any of these is genuinely missing in your database, backfill it and add
+-- the constraint deliberately. A failed migration is worse than a nullable
+-- column, which is why the script does not attempt it.
+-- --------------------------------------------------------------------------
+
+COMMIT;
