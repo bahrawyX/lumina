@@ -45,6 +45,7 @@ import { authClient } from '@/lib/auth-client';
 import { useGuestStore } from '@/store/useGuestStore';
 import { migrateGuestData } from '@/lib/persistence/guestMigration';
 import notify from '@/utils/notify';
+import { clearLuminaStorage } from '@/lib/storage';
 import { adoptBrowserTimeZone } from '@/lib/time/adoptBrowserTimeZone';
 import {
   useHydrationStatusStore,
@@ -186,6 +187,24 @@ export default function PersistenceBootstrap() {
       });
   }, [session?.user?.id, sessionPending]);
 
+  /**
+   * F8.3: these three used to be called inside the hydration effect, which runs
+   * once on mount — BEFORE `useSession` resolves. `session?.user?.id` was
+   * `undefined` every time, so `setUserId` never actually fired for a real
+   * user.
+   *
+   * Harmless while the per-user save functions are no-ops, but a live trap for
+   * anyone reinstating user-scoped local caching — which is exactly what the
+   * guest-data work needs. Keyed on the id so it fires when the session lands.
+   */
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    setEventsUserId(userId);
+    setTasksUserId(userId);
+    setFocusUserId(userId);
+  }, [session?.user?.id, setEventsUserId, setTasksUserId, setFocusUserId]);
+
   // Sync the auth user's real name + email into the calendar profile so the
   // sidebar footer and Profile page show the DB name, not the hardcoded default.
   useEffect(() => {
@@ -221,21 +240,31 @@ export default function PersistenceBootstrap() {
     //             lumina_custom_categories, lumina_focus_sessions, lumina_timer_*, ...)
     // Failing to clear the underscore variants leaks Pomodoro state, custom
     // contexts, focus history, and the calendar profile across user switches.
-    const keysToClear: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (
-        key &&
-        key !== USER_ID_KEY &&
-        (key.startsWith('lumina-') || key.startsWith('lumina_'))
-      ) {
-        keysToClear.push(key);
-      }
+    // F7.4: this used to sweep localStorage by hand and then reload. Two gaps.
+    //
+    // It never touched sessionStorage, where the `lumina:` external-event cache
+    // lives — so account A's Google/Outlook events survived into account B.
+    //
+    // And `reload()` does not unload synchronously: the page keeps running
+    // until the navigation commits, with every persisted store still hydrated
+    // in memory. A `set()` in that window re-wrote its key with account A's
+    // data, which then survived the reload. `clearLuminaStorage()` seals
+    // Lumina-owned writes after sweeping, so a store writing during teardown
+    // can no longer resurrect what was just deleted.
+    // `seal: true` because `location.reload()` follows on the next line and
+    // this document is finished. The seal is what stops a store flushing
+    // during teardown from resurrecting the previous account's data.
+    clearLuminaStorage({ seal: true });
+
+    // Written AFTER the sweep and through the raw API — `USER_ID_KEY` is the
+    // one Lumina key that must survive it, since it is how the next mount
+    // knows whose data is in the browser.
+    try {
+      localStorage.setItem(USER_ID_KEY, currentId);
+    } catch {
+      // A failure here costs one redundant wipe on the next load, not
+      // correctness.
     }
-    keysToClear.forEach((key) => {
-      try { localStorage.removeItem(key); } catch { /* ignore */ }
-    });
-    localStorage.setItem(USER_ID_KEY, currentId);
     window.location.reload();
   }, [session?.user?.id]);
 
@@ -250,13 +279,6 @@ export default function PersistenceBootstrap() {
     if (!isRetry && eventsHydrated && tasksHydrated && focusHydrated && plannerHydrated) return;
     hasRun.current = true;
     lastRunNonce.current = retryNonce;
-
-    const userId = session?.user?.id ?? null;
-    if (userId) {
-      setEventsUserId(userId);
-      setTasksUserId(userId);
-      setFocusUserId(userId);
-    }
 
     void Promise.allSettled([
       // User preferences — expands to include timezone, notification prefs,

@@ -138,6 +138,41 @@ export const useSettingsStore = create<SettingsState>()(
         preferencesHydrated: false,
       }),
     }),
-    { name: 'lumina-settings' },
+    {
+      name: 'lumina-settings',
+      version: 1,
+      /**
+       * F5.3: this had no `partialize`, so the whole slice was written to
+       * localStorage — INCLUDING `preferencesHydrated: true`. `PersistenceBootstrap`
+       * skips the preferences fetch when that flag is set, so on any browser
+       * where a previous user's `lumina-settings` survived, account B ran on
+       * account A's work hours, timezone and notification preferences until the
+       * cross-user wipe forced a reload.
+       *
+       * The flag means "this session has fetched from the server". It is
+       * per-session state, not a preference, and persisting it was the bug.
+       * `usePlannerStore` and `useDailyBriefStore` already partialize correctly.
+       *
+       * An explicit allowlist rather than an omit, so a field added tomorrow is
+       * not persisted by accident.
+       */
+      partialize: (state) =>
+        ({
+          focusSessionLength: state.focusSessionLength,
+          timezone: state.timezone,
+          notificationPreferences: state.notificationPreferences,
+          workStart: state.workStart,
+          workEnd: state.workEnd,
+        }) as unknown as SettingsState,
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Partial<SettingsState>;
+        // v0 persisted `preferencesHydrated`. Drop it on read too, or an
+        // existing browser keeps suppressing the fetch until it next writes.
+        if (version < 1) {
+          delete (state as { preferencesHydrated?: boolean }).preferencesHydrated;
+        }
+        return state as SettingsState;
+      },
+    },
   ),
 );

@@ -61,6 +61,11 @@ const PRESERVE_ON_CLEAR = new Set<string>([
   // singular spelling here matched nothing, so the snooze was cleared on every
   // sign-out and the install prompt re-nagged. (F7.5)
   'lumina-pwa-snoozed',
+  // The cross-user wipe's own bookkeeping: which account's data is in this
+  // browser. Sweeping it would make the next load look like a first run, so the
+  // wipe could never record that it had happened. It holds an opaque id and no
+  // user data.
+  'lumina-user-id',
 ]);
 
 /**
@@ -69,7 +74,80 @@ const PRESERVE_ON_CLEAR = new Set<string>([
  * Used on signout and on cross-user-id detection so no per-user data leaks
  * across sessions. Theme + PWA install flags are intentionally preserved.
  */
-export function clearLuminaStorage(): void {
+/**
+ * F7.4: `clearLuminaStorage()` + `location.reload()` is not atomic. `reload()`
+ * does not unload synchronously — the page keeps running until the navigation
+ * commits, and every persisted Zustand store is still hydrated in memory. Any
+ * `set()` in that window (a resize handler, an intelligence recalc, the guest
+ * effect) re-writes its key with the PREVIOUS account's data, which then
+ * survives the reload and defeats the whole wipe.
+ *
+ * So the clear also seals storage: after it runs, writes to Lumina-owned keys
+ * are dropped. The document is about to be replaced, so nothing legitimate is
+ * lost — and a store that writes during teardown can no longer resurrect the
+ * data we just deleted.
+ *
+ * Deliberately NOT reversible: the only correct exit from this state is the
+ * reload that follows.
+ */
+let storageSealed = false;
+
+function isLuminaKey(key: string): boolean {
+  return key.startsWith('lumina-') || key.startsWith('lumina_') || key.startsWith('lumina:');
+}
+
+function sealLuminaWrites(): void {
+  if (storageSealed) return;
+  storageSealed = true;
+  try {
+    // Patched on `Storage.prototype`, not on the two instances. `localStorage`
+    // and `sessionStorage` are exotic Proxy-backed objects in some engines
+    // (jsdom among them), where an own-property definition does not shadow the
+    // prototype method and the seal would silently do nothing. One prototype
+    // patch covers both stores and every engine.
+    const proto = Storage.prototype;
+    const original = proto.setItem;
+    proto.setItem = function sealedSetItem(this: Storage, key: string, value: string): void {
+      // `PRESERVE_ON_CLEAR` keys are exactly the ones meant to outlive a wipe —
+      // the theme, the PWA flags, and the id recording whose data this is — so
+      // the seal lets them through. Everything else Lumina owns is dropped.
+      if (isLuminaKey(String(key)) && !PRESERVE_ON_CLEAR.has(String(key))) return;
+      original.call(this, key, value);
+    };
+  } catch {
+    // An engine that refuses to patch the prototype still gets the sweep above;
+    // this is defence in depth, not the mechanism itself.
+  }
+}
+
+/**
+ * Test seam — the seal patches a global prototype, so it would leak between
+ * cases. Never called in production: the only correct exit from a sealed
+ * document is the reload that follows the wipe.
+ */
+const pristineSetItem = typeof window !== 'undefined' ? Storage.prototype.setItem : null;
+
+export function __unsealLuminaWritesForTests(): void {
+  storageSealed = false;
+  if (pristineSetItem) Storage.prototype.setItem = pristineSetItem;
+}
+
+export interface ClearOptions {
+  /**
+   * Seal Lumina-owned writes after sweeping.
+   *
+   * ONLY pass this when the document is about to be destroyed by a hard
+   * navigation or reload. A sealed document that keeps living silently stops
+   * persisting anything for the rest of its life — which is exactly what
+   * happens on the two paths that clear storage WITHOUT replacing the page:
+   * `SessionExpiryWatcher` (a soft `router.refresh()`) and
+   * `signOutEverywhere({ navigate: false })`. Both must leave storage writable
+   * so the next sign-in can persist normally.
+   */
+  seal?: boolean;
+}
+
+export function clearLuminaStorage(options: ClearOptions = {}): void {
   if (!canUseStorage) return;
   try {
     const lsKeys: string[] = [];
@@ -99,4 +177,8 @@ export function clearLuminaStorage(): void {
       try { sessionStorage.removeItem(k); } catch { /* ignore */ }
     });
   } catch { /* ignore */ }
+
+  // Sealed AFTER the sweep, so the sweep's own removals are unaffected — and
+  // only when the caller is about to destroy the document.
+  if (options.seal) sealLuminaWrites();
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { and, eq, gte, lt, ne } from 'drizzle-orm';
 import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
-import { users, pushSubscriptions, events, tasks } from '@/db/schema';
+import { users, pushSubscriptions, events, tasks, sessions } from '@/db/schema';
 import { sendPushToUser } from '@/lib/push/sendPushNotification';
 import { mapWithConcurrency } from '@/lib/integrations/mapWithConcurrency';
 import { claimNotification, isLocalHour, releaseClaim } from '@/lib/notifications/claim';
@@ -221,12 +221,39 @@ export async function GET(req: Request) {
     logger.error('unhandled', { route: 'cron/daily-brief rate-limit sweep' }, err);
   }
 
+  /**
+   * F5.9: expired session rows were never deleted.
+   *
+   * BetterAuth's only cleanup is lazy and owner-triggered — `get-session`
+   * deletes the row when the SAME client presents an expired token. A user who
+   * signs up and never returns, or who clears cookies, leaves the row forever.
+   * (Verification rows are cleaned; sessions were not.)
+   *
+   * Folded into this cron rather than added as a fourth: the Vercel Hobby plan
+   * caps at three scheduled jobs, and a fourth entry would silently never run —
+   * which is worse than no sweep, because the schedule would claim otherwise.
+   *
+   * Best-effort, like the sweep above: this cron's job is sending people their
+   * daily brief, and housekeeping must never be the reason it fails.
+   */
+  let expiredSessionsPruned: number | null = null;
+  try {
+    const deleted = await db
+      .delete(sessions)
+      .where(lt(sessions.expiresAt, now))
+      .returning({ id: sessions.id });
+    expiredSessionsPruned = deleted.length;
+  } catch (err) {
+    logger.error('unhandled', { route: 'cron/daily-brief session sweep' }, err);
+  }
+
   return NextResponse.json({
     sent: sentCount,
     considered: candidates.length,
     dueNow: dueNow.length,
     skippedAlreadySent,
     rateLimitRowsPruned,
+    expiredSessionsPruned,
     // A run that hits the ceiling is visible rather than silently partial.
     truncated: candidates.length >= MAX_USERS_PER_RUN,
   });

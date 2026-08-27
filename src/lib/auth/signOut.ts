@@ -108,7 +108,12 @@ export async function signOutEverywhere(options: SignOutOptions = {}): Promise<v
   }
 
   // 4. Storage last, so nothing above can re-persist into it.
-  clearLuminaStorage();
+  //
+  // Sealed only when a hard navigation follows. `signOutEverywhere({ navigate:
+  // false })` (the onboarding "start over" path) keeps the document alive, and
+  // sealing there would silently stop every store persisting for the rest of
+  // the page's life — including whatever the user does next.
+  clearLuminaStorage({ seal: navigate && typeof window !== 'undefined' });
 
   if (navigate && typeof window !== 'undefined') {
     // Hard navigation: tears down every in-memory store, so none of them can
