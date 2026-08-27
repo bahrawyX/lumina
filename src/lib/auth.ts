@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import * as schema from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { createFailOpenRateLimitStorage } from '@/lib/auth/rateLimitStorage';
 import {
   isEmailConfigured,
   sendPasswordResetMail,
@@ -158,7 +159,21 @@ export const auth = betterAuth({
    */
   rateLimit: {
     enabled: true,
-    storage: 'database',
+    /**
+     * `storage: 'database'` was correct in intent and catastrophic in failure
+     * mode: BetterAuth's built-in database storage lets a query error
+     * propagate, so a missing `rate_limits` table — or a momentarily
+     * unreachable database — turned EVERY auth endpoint into a 500, including
+     * `/get-session`, which every page load calls. Reproduced: nobody could
+     * sign in by any method, with `relation "rate_limits" does not exist`
+     * underneath.
+     *
+     * `customStorage` keeps the same table and the same distributed semantics
+     * (which is why database storage was chosen over the in-memory `Map` in the
+     * first place) and adds the one thing missing: when the storage cannot be
+     * reached, rate limiting degrades instead of authentication failing.
+     */
+    customStorage: createFailOpenRateLimitStorage(),
     customRules: {
       '/sign-in/email': { window: 60, max: 5 },
       '/sign-up/email': { window: 3600, max: 3 },
