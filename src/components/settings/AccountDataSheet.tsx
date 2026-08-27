@@ -118,7 +118,12 @@ export default function AccountDataSheet({ open, onOpenChange }: Props) {
       // The server has already dropped every session row and cleared the
       // cookie. Local caches would otherwise outlive the account on this
       // device — and the next person to use it.
-      clearLuminaStorage();
+      // `seal: true` because the hard navigation on the next line ends this
+      // document. This is the case where the race matters MOST: the account is
+      // already gone server-side, so a store flushing before the navigation
+      // commits would write a deleted account's data back to localStorage — on
+      // what may well be a shared device.
+      clearLuminaStorage({ seal: true });
       window.location.href = '/';
     } catch {
       setError("We couldn't reach the server. Your account has not been changed.");

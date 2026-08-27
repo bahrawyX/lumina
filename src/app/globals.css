@@ -289,6 +289,21 @@ html.transitioning-theme *::after {
   }
 }
 
+/* ─── F1.4: the custom cursor's clickability affordance ─────────────────────
+ *
+ * Suppressing the native cursor removed the pointer hand from every link and
+ * button, and the replacement had no hover state at all — so on a marketing
+ * page whose only job is to get a click, nothing at cursor level said anything
+ * was clickable. `data-interactive` is set by the render loop from
+ * `closest('a, button, [role="button"], …')`.
+ */
+.lumina-cursor {
+  transition: opacity 120ms ease-out, scale 120ms ease-out;
+}
+.lumina-cursor[data-interactive='true'] {
+  scale: 1.6;
+}
+
 /* ─── F1.11: skip link ──────────────────────────────────────────────────────
  *
  * Written as an explicit class rather than `sr-only focus:not-sr-only`, because

@@ -82,15 +82,28 @@ const PRESERVE_ON_CLEAR = new Set<string>([
  * effect) re-writes its key with the PREVIOUS account's data, which then
  * survives the reload and defeats the whole wipe.
  *
- * So the clear also seals storage: after it runs, writes to Lumina-owned keys
- * are dropped. The document is about to be replaced, so nothing legitimate is
- * lost — and a store that writes during teardown can no longer resurrect the
- * data we just deleted.
+ * So the clear can also SEAL storage — `clearLuminaStorage({ seal: true })` —
+ * after which writes to Lumina-owned keys are dropped. The caller is declaring
+ * that this document is about to be replaced, so nothing legitimate is lost,
+ * and a store writing during teardown cannot resurrect the data just deleted.
  *
- * Deliberately NOT reversible: the only correct exit from this state is the
- * reload that follows.
+ * Opt-in, because two paths clear storage WITHOUT replacing the document
+ * (`SessionExpiryWatcher`'s soft refresh, and the onboarding sign-out), and
+ * sealing those would stop the app persisting anything for the rest of the
+ * page's life. And time-limited, because even an opted-in navigation can be
+ * cancelled — see `SEAL_RELEASE_MS`.
  */
 let storageSealed = false;
+
+/**
+ * How long a seal survives without the promised navigation. Long enough that
+ * no real reload loses the protection, short enough that a cancelled one does
+ * not leave the app unable to save.
+ */
+const SEAL_RELEASE_MS = 5_000;
+
+/** Captured before any patching, so the release always restores the real one. */
+const pristineSetItem = typeof window !== 'undefined' ? Storage.prototype.setItem : null;
 
 function isLuminaKey(key: string): boolean {
   return key.startsWith('lumina-') || key.startsWith('lumina_') || key.startsWith('lumina:');
@@ -117,16 +130,30 @@ function sealLuminaWrites(): void {
   } catch {
     // An engine that refuses to patch the prototype still gets the sweep above;
     // this is defence in depth, not the mechanism itself.
+    return;
   }
+
+  // A seal is a bet that this document is about to be replaced. The bet can
+  // lose: `AppShell` arms a `beforeunload` guard while in guest mode, and if
+  // the browser prompts and the user picks "Stay", the navigation never
+  // commits. A permanently sealed document silently persists nothing for the
+  // rest of its life — the exact failure the opt-in was introduced to avoid.
+  //
+  // Every real navigation or reload commits in far less than this, so
+  // releasing here costs nothing when the bet wins and restores a working app
+  // when it loses.
+  window.setTimeout(() => {
+    if (!storageSealed || !pristineSetItem) return;
+    storageSealed = false;
+    Storage.prototype.setItem = pristineSetItem;
+  }, SEAL_RELEASE_MS);
 }
 
 /**
  * Test seam — the seal patches a global prototype, so it would leak between
- * cases. Never called in production: the only correct exit from a sealed
- * document is the reload that follows the wipe.
+ * cases. Never called by application code; the production exits from a sealed
+ * document are the navigation that follows, or the timed release above.
  */
-const pristineSetItem = typeof window !== 'undefined' ? Storage.prototype.setItem : null;
-
 export function __unsealLuminaWritesForTests(): void {
   storageSealed = false;
   if (pristineSetItem) Storage.prototype.setItem = pristineSetItem;

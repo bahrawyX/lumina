@@ -44,7 +44,12 @@ interface FocusState {
 interface FocusActions {
   hydrateFromDb: (sessions: FocusSession[]) => void;
   hydrateFromDbFailed: () => void;
-  setUserId: (userId: string) => void;
+  /**
+   * `null` when the session ends. Leaving the departed user's id in the store
+   * is the same stale-identity trap F8.3 was raised about, one step further
+   * along — and the per-user cache keys are derived from it.
+   */
+  setUserId: (userId: string | null) => void;
   startSession: (taskId: string, taskTitle: string, durationSecs?: number) => void;
   pauseSession: () => void;
   resumeSession: () => void;

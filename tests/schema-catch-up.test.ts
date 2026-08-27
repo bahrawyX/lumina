@@ -104,6 +104,7 @@ describe('catch-up applied to an empty database', () => {
       'notification_sends_user_kind_date_uniq',
       'coin_tx_user_dedupe_uniq',
       'calendars_one_primary_local_per_user',
+      'sessions_expires_at_idx',
     ]) {
       expect(await hasIndex(pg, index), index).toBe(true);
     }
@@ -399,6 +400,7 @@ describe('catch-up never destroys anything', () => {
       '0022_task_position',
       '0023_notification_sends',
       '0024_link_uniqueness',
+      '0025_session_expiry_index',
     ]) {
       expect(SCRIPT, tag).toContain(tag);
     }

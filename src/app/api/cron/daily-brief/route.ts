@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq, gte, lt, ne } from 'drizzle-orm';
+import { and, eq, gte, lt, ne, sql } from 'drizzle-orm';
 import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { users, pushSubscriptions, events, tasks, sessions } from '@/db/schema';
@@ -9,6 +9,12 @@ import { claimNotification, isLocalHour, releaseClaim } from '@/lib/notification
 import { zonedDayBounds, zonedToday } from '@/lib/time/zonedTime';
 import { logger } from '@/lib/logger';
 import { sweepExpiredRateLimits } from '@/lib/rateLimit';
+
+/**
+ * Ceiling on session rows deleted per run. The cron is hourly, so a backlog
+ * drains at 5k/hour without any single run holding a long lock.
+ */
+const MAX_SESSION_SWEEP = 5_000;
 
 export const dynamic = 'force-dynamic';
 
@@ -238,11 +244,25 @@ export async function GET(req: Request) {
    */
   let expiredSessionsPruned: number | null = null;
   try {
-    const deleted = await db
-      .delete(sessions)
-      .where(lt(sessions.expiresAt, now))
-      .returning({ id: sessions.id });
-    expiredSessionsPruned = deleted.length;
+    /**
+     * Bounded, not `DELETE FROM sessions WHERE expires_at < now()`.
+     *
+     * The first run over an accumulated table would otherwise take one long
+     * row-lock inside a function that has a timeout, and the previous version
+     * also used `.returning({ id })` — materialising every deleted row's id
+     * purely to call `.length` on it. This deletes a capped batch per run and
+     * lets the hourly schedule drain the backlog.
+     */
+    const result = await db.execute(sql`
+      DELETE FROM ${sessions}
+       WHERE id IN (
+         SELECT id FROM ${sessions}
+          WHERE expires_at < ${now}
+          LIMIT ${MAX_SESSION_SWEEP}
+       )
+    `);
+    const rowCount = (result as { rowCount?: number | null } | null)?.rowCount;
+    expiredSessionsPruned = typeof rowCount === 'number' ? rowCount : null;
   } catch (err) {
     logger.error('unhandled', { route: 'cron/daily-brief session sweep' }, err);
   }

@@ -200,7 +200,7 @@ describe('P2-14 — the rights are reachable from the UI', () => {
   it('clears local caches after the account is gone', () => {
     // Otherwise they outlive the account on this device — and the next person
     // to use it.
-    expect(sheet).toContain('clearLuminaStorage()');
+    expect(sheet).toContain('clearLuminaStorage({ seal: true })');
   });
 
   it('the preferences endpoint exposes only the boolean', () => {

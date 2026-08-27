@@ -198,8 +198,10 @@ export default function PersistenceBootstrap() {
    * guest-data work needs. Keyed on the id so it fires when the session lands.
    */
   useEffect(() => {
-    const userId = session?.user?.id;
-    if (!userId) return;
+    // `null` on sign-out, not an early return: leaving the departed user's id
+    // in the stores is the same stale-identity trap this finding is about, one
+    // step further along.
+    const userId = session?.user?.id ?? null;
     setEventsUserId(userId);
     setTasksUserId(userId);
     setFocusUserId(userId);

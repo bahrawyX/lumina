@@ -98,6 +98,26 @@ function resolveThemePrimary(): string {
   return raw ? `hsl(${raw})` : "hsl(249, 66%, 61%)";
 }
 
+/**
+ * Does this element sit inside something the user can click?
+ *
+ * F1.4: suppressing the native cursor removed the pointer hand from every
+ * control, and the replacement cursor had NO hover state — so on a marketing
+ * page whose only job is to get a click, nothing at cursor level said anything
+ * was clickable.
+ *
+ * Exported because the render loop runs inside `requestAnimationFrame`, which
+ * is throttled in a headless browser — this is the part worth testing, and it
+ * is testable only if it is reachable.
+ */
+export function isInteractiveTarget(el: Element | null): boolean {
+  if (!el) return false;
+  return (
+    el.closest('a[href], button, [role="button"], [role="tab"], summary, label[for], select') !==
+    null
+  );
+}
+
 export function CustomCursor() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [label, setLabel] = useState(DEFAULT_LABEL);
@@ -124,6 +144,16 @@ export function CustomCursor() {
 
     // Touch device — never render
     if (window.matchMedia("(pointer: coarse)").matches) {
+      wrap.style.display = "none";
+      return;
+    }
+
+    // F1.4: there was no reduced-motion check here at all, while SmoothScroll,
+    // LottieAnimation, CountUp and BlurText all had one. A RAF-driven trailing
+    // cursor is a classic vestibular trigger — and hiding the native cursor
+    // also defeats the OS's own cursor-size and high-contrast-cursor settings,
+    // which are the accessibility tools these users rely on.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       wrap.style.display = "none";
       return;
     }
@@ -189,6 +219,15 @@ export function CustomCursor() {
       }
 
       const el = lastTarget instanceof HTMLElement ? lastTarget : null;
+
+      // F1.4: the replacement cursor was a single static arrow with NO hover
+      // state anywhere in the component — so "Get started free", "Sign in", the
+      // theme toggle and the six carousel dots all lost the pointer hand, and a
+      // visitor had no cursor-level signal that anything was clickable. On a
+      // marketing page whose only job is to get a click, that is a direct
+      // conversion cost.
+      wrap.dataset.interactive = isInteractiveTarget(el) ? "true" : "false";
+
       const zone = el?.closest<HTMLElement>("[data-cursor-label]") ?? null;
       const zoneLabel = zone?.dataset.cursorLabel;
       const zoneColor = zone?.dataset.cursorColor;
@@ -220,11 +259,31 @@ export function CustomCursor() {
     document.addEventListener("mouseleave", onMouseLeave);
     document.addEventListener("mouseenter", onMouseEnter);
 
+    // F1.4: the style hiding the native cursor was installed synchronously, but
+    // the replacement started at `opacity: 0` and was only shown from inside
+    // `render()`, which only ran on the first `mousemove`. Load the page and
+    // don't move the mouse: there was no cursor at all. Park it centre-screen
+    // and show it now; the first real move corrects the position.
+    mouseX = window.innerWidth / 2;
+    mouseY = window.innerHeight / 2;
+    render();
+
+    // F1.4: cleanup ran on unmount ONLY. A hard navigation, or an error
+    // boundary firing between mount and unmount, left `data-lumina-cursor="on"`
+    // on <html> for the life of the document — no cursor, and no recovery but a
+    // reload. `pagehide` covers the bfcache and hard-navigation cases that
+    // React unmount does not.
+    const restoreNativeCursor = () => {
+      document.documentElement.removeAttribute("data-lumina-cursor");
+    };
+    window.addEventListener("pagehide", restoreNativeCursor);
+
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseleave", onMouseLeave);
       document.removeEventListener("mouseenter", onMouseEnter);
-      document.documentElement.removeAttribute("data-lumina-cursor");
+      window.removeEventListener("pagehide", restoreNativeCursor);
+      restoreNativeCursor();
       style.remove();
     };
   }, []);
@@ -246,6 +305,9 @@ export function CustomCursor() {
         opacity: 0,
         transition: "opacity 120ms ease-out",
       }}
+      // Scaled up over anything clickable — the cursor-level "this is a
+      // control" signal that replaces the pointer hand we suppressed.
+      className="lumina-cursor"
     >
       {/* Triangular arrow cursor with notch */}
       <svg

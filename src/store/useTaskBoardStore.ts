@@ -155,7 +155,12 @@ interface TaskBoardState {
 
   hydrateFromDb: (tasks: Task[]) => void;
   hydrateFromDbFailed: () => void;
-  setUserId: (userId: string) => void;
+  /**
+   * `null` when the session ends. Leaving the departed user's id in the store
+   * is the same stale-identity trap F8.3 was raised about, one step further
+   * along — and the per-user cache keys are derived from it.
+   */
+  setUserId: (userId: string | null) => void;
   addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty; dueDate?: string | null; durationMinutes?: number; parentTaskId?: string | null; depth?: number; goalId?: string | null }) => Task | null;
   addSubtask: (parentId: string, input: { title: string; status?: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty }) => Task | null;
   duplicateTask: (taskId: string) => Promise<void>;

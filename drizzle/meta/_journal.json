@@ -176,6 +176,13 @@
       "when": 1775002400000,
       "tag": "0024_link_uniqueness",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1775002500000,
+      "tag": "0025_session_expiry_index",
+      "breakpoints": true
     }
   ]
 }

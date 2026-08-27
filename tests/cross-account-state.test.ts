@@ -9,7 +9,7 @@
  * moment, outliving it.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clearLuminaStorage, __unsealLuminaWritesForTests } from '@/lib/storage';
 
@@ -169,7 +169,7 @@ describe('F8.3 — setUserId fires when the session resolves', () => {
   it('is its own effect keyed on the user id', () => {
     // It used to sit inside the hydration effect, which runs once on mount —
     // before `useSession` resolves — so the id was always undefined.
-    expect(src).toMatch(/useEffect\(\(\) => \{\s*const userId = session\?\.user\?\.id;/);
+    expect(src).toContain('const userId = session?.user?.id ?? null;');
     expect(src).toContain('}, [session?.user?.id, setEventsUserId, setTasksUserId, setFocusUserId]);');
   });
 
@@ -177,6 +177,16 @@ describe('F8.3 — setUserId fires when the session resolves', () => {
     expect(src).toContain('setEventsUserId(userId)');
     expect(src).toContain('setTasksUserId(userId)');
     expect(src).toContain('setFocusUserId(userId)');
+  });
+
+  it('clears the id on sign-out rather than leaving the departed user', () => {
+    // An early `if (!userId) return;` left the previous account's id in the
+    // stores — the same stale-identity trap, one step further along.
+    expect(src).not.toContain('if (!userId) return;');
+    for (const store of ['useCalendarEventsStore', 'useTaskBoardStore', 'useFocusStore']) {
+      const text = readFileSync(join(process.cwd(), 'src', 'store', `${store}.ts`), 'utf8');
+      expect(text, store).toContain('setUserId: (userId: string | null) => void;');
+    }
   });
 });
 
@@ -187,8 +197,38 @@ describe('F5.9 — expired sessions are swept', () => {
     // BetterAuth's only cleanup is lazy: `get-session` deletes the row when the
     // SAME client presents an expired token. A user who never returns leaves it
     // forever.
-    expect(cron).toContain('.delete(sessions)');
-    expect(cron).toContain('lt(sessions.expiresAt, now)');
+    expect(cron).toContain('DELETE FROM ${sessions}');
+    expect(cron).toContain('WHERE expires_at < ${now}');
+  });
+
+  it('deletes a bounded batch rather than the whole backlog at once', () => {
+    // An unbounded delete over an accumulated table takes one long row-lock
+    // inside a function that has a timeout. Hourly, so a backlog still drains.
+    expect(cron).toContain('MAX_SESSION_SWEEP');
+    expect(cron).toContain('LIMIT ${MAX_SESSION_SWEEP}');
+  });
+
+  it('does not materialise every deleted id just to count them', () => {
+    const block = cron.slice(cron.indexOf('expiredSessionsPruned: number | null'));
+    expect(block).not.toContain('.returning({ id: sessions.id })');
+    expect(block).toContain('rowCount');
+  });
+
+  it('has the index the sweep needs', () => {
+    // Without it the hourly delete is a seq scan over one of the busiest tables
+    // in the schema — while `rate_limits`, swept in the same handler, has had
+    // the equivalent index since the baseline.
+    const schema = readFileSync(
+      join(process.cwd(), 'src', 'db', 'schema', 'sessions.ts'),
+      'utf8',
+    );
+    expect(schema).toContain("index('sessions_expires_at_idx').on(table.expiresAt)");
+
+    const migration = readFileSync(
+      join(process.cwd(), 'drizzle', '0025_session_expiry_index.sql'),
+      'utf8',
+    );
+    expect(migration).toContain('sessions_expires_at_idx');
   });
 
   it('reports what it pruned', () => {
@@ -233,13 +273,45 @@ describe('F5.11 — the dead auth rewrite is gone', () => {
 });
 
 describe('the seal is not left on by accident', () => {
-  it('exposes a reset only for tests, and nothing else calls it', () => {
-    const storage = read('lib', 'storage.ts');
-    expect(storage).toContain('__unsealLuminaWritesForTests');
-    // The seal must be one-way in production: the only correct exit is reload.
-    const callers = ['components', 'store', 'app'].flatMap(() => []);
-    expect(callers).toEqual([]);
-    expect(storage).toContain('Deliberately NOT reversible');
+  it('no application code calls the test-only unseal', () => {
+    // This used to be `['components','store','app'].flatMap(() => [])`, which
+    // is unconditionally `[]` — it searched nothing and could never fail. It
+    // now actually walks the tree.
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry.name)) {
+          const text = readFileSync(full, 'utf8');
+          // The declaration itself lives in storage.ts; every other hit is a call.
+          if (text.includes('__unsealLuminaWritesForTests') && !full.endsWith('storage.ts')) {
+            offenders.push(full);
+          }
+        }
+      }
+    };
+    walk(join(process.cwd(), 'src'));
+    expect(offenders).toEqual([]);
+  });
+
+  it('releases itself if the promised navigation never happens', async () => {
+    // `AppShell` arms a `beforeunload` guard in guest mode. If the browser
+    // prompts and the user picks "Stay", a permanently sealed document would
+    // silently persist nothing for the rest of its life.
+    vi.useFakeTimers();
+    try {
+      clearLuminaStorage({ seal: true });
+      localStorage.setItem('lumina-tasks', 'sealed');
+      expect(localStorage.getItem('lumina-tasks')).toBeNull();
+
+      vi.advanceTimersByTime(5_000);
+
+      localStorage.setItem('lumina-tasks', 'released');
+      expect(localStorage.getItem('lumina-tasks')).toBe('released');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

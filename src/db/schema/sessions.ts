@@ -18,6 +18,13 @@ export const sessions = pgTable(
   (table) => [
     uniqueIndex('sessions_token_unique').on(table.token),
     index('sessions_user_id_idx').on(table.userId),
+    /**
+     * F5.9: the hourly sweep deletes by expiry. Without this it is a seq scan
+     * over one of the busiest tables in the schema, inside a serverless
+     * function with a timeout — and `rate_limits`, whose sweep sits directly
+     * beside it in the same handler, already had the equivalent index.
+     */
+    index('sessions_expires_at_idx').on(table.expiresAt),
   ]
 );
 

@@ -20,7 +20,12 @@ interface CalendarEventsState {
 
   hydrateFromDb: (events: CalendarEvent[]) => void;
   hydrateFromDbFailed: () => void;
-  setUserId: (userId: string) => void;
+  /**
+   * `null` when the session ends. Leaving the departed user's id in the store
+   * is the same stale-identity trap F8.3 was raised about, one step further
+   * along — and the per-user cache keys are derived from it.
+   */
+  setUserId: (userId: string | null) => void;
   addEvent: (event: CalendarEvent) => void;
   /** Add event to local state only (no DB persistence). Use when persistence is handled externally. */
   addEventOptimistic: (event: CalendarEvent) => void;
