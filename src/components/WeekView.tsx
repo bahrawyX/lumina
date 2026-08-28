@@ -65,6 +65,8 @@ interface PendingDrag {
 
 const WeekView: React.FC<WeekViewProps> = ({ events }) => {
   const currentDate = useCalendarStore(s => s.currentDate);
+  // P2-16: keyboard paging off either end of the week needs to move the view.
+  const setCurrentDate = useCalendarStore(s => s.setCurrentDate);
   const openModal   = useCalendarStore(s => s.openModal);
   const profile     = useCalendarStore(s => s.profile);
   const timezone    = useCalendarStore(s => s.timezone);
@@ -227,6 +229,99 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
       overlappingEvents: overlaps,
     });
   }, [dragState.isDragging, eventsByDay, openNewEventAtMinute, startConflictFlow]);
+
+  /**
+   * P2-16: roving tabindex + arrow keys across the seven day columns.
+   *
+   * The day columns carried `role="gridcell"` inside a container with no
+   * `role="row"` — an invalid grid, so a screen reader could not announce a
+   * position at all — and the whole file contained zero `tabIndex` and zero
+   * `onKeyDown`. `MonthView` was given this treatment and `WeekView` was not,
+   * so the calendar's default view was the one with no keyboard access.
+   *
+   * Same pattern as `MonthView`: exactly one cell is tabbable, arrows move
+   * between them, and focus is only stolen after a deliberate keyboard move.
+   */
+  const [focusedDayIdx, setFocusedDayIdx] = useState<number | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const pendingFocusIdx = useRef<number | null>(null);
+
+  /** The single tabbable column: last focused, else today, else Monday. */
+  const activeDayIdx = useMemo(() => {
+    if (focusedDayIdx !== null && focusedDayIdx >= 0 && focusedDayIdx < weekDays.length) {
+      return focusedDayIdx;
+    }
+    const todayIdx = weekDays.findIndex((d) => isSameDay(d, now));
+    return todayIdx >= 0 ? todayIdx : 0;
+  }, [focusedDayIdx, weekDays, now]);
+
+  useEffect(() => {
+    const target = pendingFocusIdx.current;
+    if (target === null) return;
+    pendingFocusIdx.current = null;
+    gridRef.current?.querySelector<HTMLElement>(`[data-day-index="${target}"]`)?.focus();
+  });
+
+  const handleGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const raw = (e.target as HTMLElement).closest?.('[data-day-index]')
+        ?.getAttribute('data-day-index');
+      if (raw === null || raw === undefined) return;
+      const from = Number(raw);
+
+      // Within the week, move focus. Off either end, page the week and land on
+      // the wrapped-around day, so a keyboard user can cross weeks without
+      // reaching for the header buttons.
+      const move = (delta: number) => {
+        const next = from + delta;
+        if (next >= 0 && next < weekDays.length) {
+          setFocusedDayIdx(next);
+          pendingFocusIdx.current = next;
+          return;
+        }
+        const shifted = new Date(currentDate);
+        shifted.setDate(shifted.getDate() + (next < 0 ? -7 : 7));
+        setCurrentDate(shifted);
+        const landing = next < 0 ? weekDays.length - 1 : 0;
+        setFocusedDayIdx(landing);
+        pendingFocusIdx.current = landing;
+      };
+
+      switch (e.key) {
+        case 'ArrowRight': move(1); break;
+        case 'ArrowLeft': move(-1); break;
+        case 'Home': setFocusedDayIdx(0); pendingFocusIdx.current = 0; break;
+        case 'End': {
+          const last = weekDays.length - 1;
+          setFocusedDayIdx(last);
+          pendingFocusIdx.current = last;
+          break;
+        }
+        case 'PageUp':
+        case 'PageDown': {
+          const shifted = new Date(currentDate);
+          shifted.setDate(shifted.getDate() + (e.key === 'PageUp' ? -7 : 7));
+          setCurrentDate(shifted);
+          pendingFocusIdx.current = from;
+          break;
+        }
+        case 'Enter':
+        case ' ': {
+          // Open the new-event composer at 9am on the focused day — the same
+          // thing clicking an empty morning slot does. Without this the columns
+          // are reachable and inert, which is worse than not reachable.
+          const day = weekDays[from];
+          if (day) openNewEventAtMinute(formatDateISO(day), 9 * 60);
+          break;
+        }
+        default:
+          return;
+      }
+
+      e.preventDefault();
+    },
+    [weekDays, currentDate, setCurrentDate, openNewEventAtMinute],
+  );
 
   const handleAddNewFromConflict = useCallback(() => {
     if (!selectedTime) return;
@@ -589,7 +684,17 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
           </div>
 
           {/* 7-Day Grid Canvas */}
-          <div className="flex-1 grid grid-cols-7 relative">
+          {/* P2-16: `role="row"`. The day columns below declare
+              `role="gridcell"`, and a gridcell with no owning row is an
+              invalid grid — a screen reader cannot report "column 3 of 7"
+              without it. `aria-rowindex={2}` because the day headers are
+              row 1. */}
+          <div
+            ref={gridRef}
+            role="row"
+            aria-rowindex={2}
+            onKeyDown={handleGridKeyDown}
+            className="flex-1 grid grid-cols-7 relative">
             <DragGhost dayKeys={weekDays.map(d => formatDateISO(d))} />
 
             {/* Current Time Indicator Row */}
@@ -632,8 +737,13 @@ const WeekView: React.FC<WeekViewProps> = ({ events }) => {
               return (
                 <div
                   key={dayIdx}
-                  className="relative border-r border-border/60 last:border-r-0 h-full"
+                  className="relative border-r border-border/60 last:border-r-0 h-full focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[hsl(var(--ring))]"
                   role="gridcell"
+                  aria-colindex={dayIdx + 2}
+                  aria-label={`${DAYS[date.getDay()]} ${date.getDate()}, ${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}
+                  data-day-index={dayIdx}
+                  tabIndex={dayIdx === activeDayIdx ? 0 : -1}
+                  onFocus={() => setFocusedDayIdx(dayIdx)}
                 >
                   {/* Density heat tint */}
                   {(dayDensityMap.get(dateStr) ?? 0) > 0 && (
