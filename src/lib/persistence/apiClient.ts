@@ -33,6 +33,8 @@
  * this survives the eventual `strict: true` flip either way.
  */
 
+import { isSessionExpired } from '@/store/useSessionStore';
+
 /** A request that did not produce a usable body. */
 export type FetchFailure = {
   kind: 'error';
@@ -97,6 +99,27 @@ function notifyUnauthorized(): void {
  * that just want a parsed body should use `apiGetJson` / `apiGetList`.
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  // F5.2: `isSessionExpired()` documented itself as the guard write paths call
+  // before issuing a mutation — and had ZERO callers anywhere in the codebase.
+  // So once a session was known dead, every optimistic update still went ahead,
+  // failed, and left the user working on state that would vanish on reload:
+  // exactly what the helper was written to prevent.
+  //
+  // Enforcing it here rather than at ~60 call sites is what makes it true for
+  // all of them, including ones added later. Reads are deliberately still
+  // allowed: a stale GET renders nothing worse than stale data, while a
+  // refused one turns a recoverable session expiry into an empty app.
+  //
+  // The gate lifts by itself — `markActive` clears `expired` the moment a
+  // session is re-established.
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD' && isSessionExpired()) {
+    return new Response(
+      JSON.stringify({ error: 'session_expired' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
   const res = await fetch(`${apiBase()}${path}`, {
     // Same-origin in the browser (apiBase is ''), so this is a no-op there; it
     // preserves the explicit `include` that docsPersistence carried.

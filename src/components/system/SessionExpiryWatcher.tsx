@@ -25,6 +25,25 @@ import { clearLuminaStorage } from '@/lib/storage';
  * goals, notification preferences, pomodoro state and guest documents rendered
  * straight out of localStorage.
  */
+/**
+ * The account this browser last held data for, across restarts.
+ *
+ * Written by `PersistenceBootstrap`'s cross-user guard and kept by
+ * `clearLuminaStorage` (see `PRESERVE_ON_CLEAR`). It holds an opaque id and no
+ * user data.
+ */
+const STORED_USER_ID_KEY = 'lumina-user-id';
+
+function readStoredUserId(): string | null {
+  try {
+    return localStorage.getItem(STORED_USER_ID_KEY);
+  } catch {
+    // Private mode, or storage disabled. Losing the wipe is worse than
+    // throwing here would be, but there is nothing to fall back to.
+    return null;
+  }
+}
+
 export function SessionExpiryWatcher() {
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
@@ -48,9 +67,24 @@ export function SessionExpiryWatcher() {
       markActive(currentId);
       return;
     }
-    // No user. If we previously had one in this tab, the session was lost
-    // rather than never established.
-    if (lastKnownUserId && !expired) {
+    // No user. If we previously had one, the session was lost rather than never
+    // established.
+    //
+    // F5.4: `lastKnownUserId` lives only in memory, so this was true ONLY when
+    // the session died with the tab open. Close the browser after an expiry and
+    // reopen it, and the store starts at `null` — the wipe never ran, and the
+    // next person to open the browser saw the previous user's name, role, work
+    // hours, timezone, focus goals and notification preferences rendered
+    // straight out of localStorage. That is the exact scenario this watcher
+    // exists for, and the one it could not see.
+    //
+    // `lumina-user-id` is the durable record: `PersistenceBootstrap` writes it
+    // for every authenticated session and `PRESERVE_ON_CLEAR` deliberately
+    // keeps it through a wipe, so it survives both the restart and the cleanup
+    // it triggers.
+    const rememberedUserId = lastKnownUserId ?? readStoredUserId();
+
+    if (rememberedUserId && !expired) {
       markExpired();
       // Nothing on the device should still describe the departed user.
       clearLuminaStorage();

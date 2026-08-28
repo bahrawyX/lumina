@@ -153,16 +153,24 @@ export async function createOne(event: CalendarEvent): Promise<boolean> {
   }
 }
 
-/** Update an existing event in the DB. Fire-and-forget safe. */
-export async function updateOne(id: string, patch: Partial<CalendarEvent>): Promise<void> {
+/**
+ * Update an existing event in the DB.
+ *
+ * P1-17: returned `void`, so the caller could not distinguish a saved edit from
+ * one the server rejected — the optimistic update stayed on screen either way
+ * and the change was gone on the next reload. `tasksPersistence.updateOne`
+ * already returned a boolean; this is the same contract.
+ */
+export async function updateOne(id: string, patch: Partial<CalendarEvent>): Promise<boolean> {
   if (isGuestUser()) {
     const events = readGuestEvents();
     const index = events.findIndex((e) => e.id === id);
     if (index >= 0) {
       events[index] = { ...events[index], ...patch };
       writeGuestEvents(events);
+      return true;
     }
-    return;
+    return false;
   }
   try {
     const provider = patch.provider === 'microsoft' || patch.provider === 'outlook'
@@ -187,7 +195,7 @@ export async function updateOne(id: string, patch: Partial<CalendarEvent>): Prom
             : patch.source === 'lumina'
               ? 'manual'
               : undefined;
-    await apiFetch(`/api/events/${id}`, {
+    const res = await apiFetch(`/api/events/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({
         ...patch,
@@ -196,25 +204,29 @@ export async function updateOne(id: string, patch: Partial<CalendarEvent>): Prom
         externalEventId: patch.outlookId ?? undefined,
       }),
     });
+    return res.ok;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[eventsPersistence] updateOne failed:', err);
     }
+    return false;
   }
 }
 
-/** Delete an event from the DB. Fire-and-forget safe. */
-export async function deleteOne(id: string, queryString?: string): Promise<void> {
+/** Delete an event from the DB. P1-17: reports whether it actually happened. */
+export async function deleteOne(id: string, queryString?: string): Promise<boolean> {
   if (isGuestUser()) {
     writeGuestEvents(readGuestEvents().filter((e) => e.id !== id));
-    return;
+    return true;
   }
   try {
-    await apiFetch(`/api/events/${id}${queryString ?? ''}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/events/${id}${queryString ?? ''}`, { method: 'DELETE' });
+    return res.ok;
   } catch (err) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[eventsPersistence] deleteOne failed:', err);
     }
+    return false;
   }
 }
 

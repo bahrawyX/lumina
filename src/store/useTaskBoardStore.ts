@@ -442,8 +442,20 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       saveTasks(next, state.userId);
       return { tasks: next };
     });
-    // Fire-and-forget DB persistence after updateTask resolves
-    tasksPersistence.updateOne(id, { ...patch });
+    // P1-17: the boolean `updateOne` returns was discarded here — the one
+    // place it matters most, since `updateTask` is the main edit path. A
+    // rejected PATCH left the optimistic edit on the board looking saved, and
+    // the change was gone on the next reload with nothing having been said.
+    // `moveTask` below already reported this correctly; this did not.
+    void tasksPersistence.updateOne(id, { ...patch }).then((saved) => {
+      if (saved) return;
+      const title = get().tasks.find((t) => t.id === id)?.title;
+      notify(
+        title
+          ? `Couldn't save changes to "${title}" — please try again.`
+          : "Couldn't save your changes — please try again.",
+      );
+    });
 
     // Two-way sync: notify any open doc editors about task status/title changes
     if (patch.status !== undefined || patch.title !== undefined) {
