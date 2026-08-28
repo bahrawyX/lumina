@@ -31,7 +31,7 @@ export function HeroSection() {
           <div className="max-w-3xl">
             {/* Eyebrow */}
             <motion.p
-              className="font-mono text-[10px] md:text-[11px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-4"
+              className="font-mono text-[10px] md:text-[11px] uppercase tracking-[0.2em] text-muted-foreground-subtle mb-4"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
@@ -78,9 +78,9 @@ export function HeroSection() {
           </div>
 
           {/* Hero Lottie — floating calendar/planner. Hover speeds it up. */}
-          <CursorZone label="Explore" color="#cef136" className="hidden lg:block flex-shrink-0">
+          <CursorZone label="Explore" color="#cef136" className="flex-shrink-0">
             <motion.div
-              className="w-[350px] h-[350px]"
+              className="w-[200px] h-[200px] mx-auto mt-4 lg:mt-0 lg:mx-0 lg:w-[350px] lg:h-[350px]"
               onMouseEnter={heroHover.onMouseEnter}
               onMouseLeave={heroHover.onMouseLeave}
               initial={{ opacity: 0, scale: 0.92 }}
@@ -98,21 +98,14 @@ export function HeroSection() {
             </motion.div>
           </CursorZone>
 
-          {/* Mobile/tablet Lottie — shows below headline on narrow screens */}
-          <motion.div
-            className="lg:hidden w-[200px] h-[200px] mx-auto mt-4"
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            aria-hidden="true"
-          >
-            <LottieAnimation
-              src={LOTTIES.hero.src}
-              autoplay
-              loop
-              className="w-full h-full"
-            />
-          </motion.div>
+          {/*
+            F1.6: there used to be a SECOND `<LottieAnimation>` here for narrow
+            screens. Tailwind's `hidden` is `display: none` — it does not
+            unmount — so both rendered unconditionally and every visitor fetched
+            the third-party `.lottie` twice and ran two canvas RAF loops, one of
+            them inside an invisible box.
+            One instance now, resized by CSS.
+          */}
         </div>
       </div>
     </section>

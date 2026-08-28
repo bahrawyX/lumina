@@ -13,7 +13,7 @@ export function LandingNav() {
           <span className="font-logo text-[20px] font-medium tracking-[-0.035em] text-foreground leading-none">
             Lumina
           </span>
-          <span className="font-mono text-[8px] uppercase tracking-[0.2em] text-muted-foreground/50 leading-none">
+          <span className="font-mono text-[8px] uppercase tracking-[0.2em] text-muted-foreground-subtle leading-none">
             Focused Craft
           </span>
         </Link>

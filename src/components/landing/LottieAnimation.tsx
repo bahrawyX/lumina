@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useReducedMotion } from 'framer-motion';
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 
 // DotLottieReact needs browser APIs (WebAssembly + Canvas) — must be client-only
 const DotLottieReact = dynamic(
@@ -50,6 +50,7 @@ export function LottieAnimation({
   staticFirstFrame = false,
 }: LottieAnimationProps) {
   const prefersReduced = useReducedMotion();
+  const [failed, setFailed] = useState(false);
   const effectiveAutoplay = prefersReduced || staticFirstFrame ? false : autoplay;
   const effectiveLoop = prefersReduced ? false : loop;
 
@@ -64,6 +65,31 @@ export function LottieAnimation({
     dotLottieRefCallback?.(dotLottie);
   };
 
+  /**
+   * F1.6: there was no `onError` and no poster anywhere in this component. The
+   * animations load from THREE external hosts — `lottie.host`,
+   * `assets-v2.lottiefiles.com`, and jsdelivr/unpkg for the WASM renderer — so
+   * a CDN 404 or a hang left the hero's 350x350 box and the four focus icons
+   * as permanent empty holes, with nothing to tell the visitor anything was
+   * meant to be there.
+   *
+   * The fallback is a neutral placeholder rather than a broken-image or error
+   * message: on a marketing page an animation that fails should read as a
+   * quiet gap, not as a fault.
+   */
+  if (failed) {
+    return (
+      <div
+        className={className}
+        style={style}
+        aria-hidden="true"
+        data-lottie-fallback="true"
+      >
+        <div className="h-full w-full rounded-2xl bg-muted/30" />
+      </div>
+    );
+  }
+
   return (
     <DotLottieReact
       src={src}
@@ -73,6 +99,7 @@ export function LottieAnimation({
       className={className}
       style={style}
       dotLottieRefCallback={handleRef}
+      onError={() => setFailed(true)}
     />
   );
 }

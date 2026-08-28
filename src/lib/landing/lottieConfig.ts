@@ -16,11 +16,19 @@
  *
  * ─── Current state ────────────────────────────────────────────────────────
  *
- * `DEMO_LOTTIE` is a publicly-available, confirmed-working animation that
- * acts as a placeholder across all 10 slots until you swap in your curated
- * picks. It was sourced from a public GitHub learning repo so it's safe to
- * use for dev. The visuals won't match each slot's intent — that's the
- * point; swap them before shipping.
+ * F1.6: this file used to declare fifteen slots, NINE of which were referenced
+ * by nothing, and its own header said the visuals were placeholders to "swap
+ * before shipping" — committed, shipped, and still saying so. The dead slots
+ * are gone; only the six the landing page actually renders remain.
+ *
+ * STILL OPEN: the six that remain load from `lottie.host` and
+ * `assets-v2.lottiefiles.com`, and `@lottiefiles/dotlottie-web` resolves its
+ * WASM renderer from jsdelivr/unpkg — so LCP on the marketing page depends on
+ * three uncontrolled origins, and that is why `connect-src` has to stay open.
+ * Self-hosting them means downloading third-party assets into this repo, which
+ * needs a licence check per animation and is a deliberate decision rather than
+ * a refactor. `LottieAnimation` now degrades to a neutral placeholder when a
+ * fetch fails, so the failure mode is a quiet gap rather than an empty hole.
  */
 
 export interface LottieSlot {
@@ -48,60 +56,6 @@ export const LOTTIES: Record<string, LottieSlot> = {
     intent: 'Floating calendar/planner dashboard that feels alive',
     searchTerm: 'calendar schedule planner dashboard',
     behavior: 'autoplay-loop',
-  },
-  featureCheck: {
-    src: 'https://assets-v2.lottiefiles.com/a/b36cb88a-1150-11ee-8f49-9b6c0bfe85bb/Y50UE4gUwg.lottie',
-    intent: 'Checkmark burst with sparkle — plays when feature card enters view',
-    searchTerm: 'checkmark success task complete',
-    behavior: 'once-on-view',
-  },
-  pomodoroRing: {
-    src: 'https://assets-v2.lottiefiles.com/a/6c1b20e4-1177-11ee-9e89-778f350cc6b9/MFflSBATh0.lottie',
-    intent: 'Circular progress ring filling up — pomodoro session complete',
-    searchTerm: 'timer circle countdown progress',
-    behavior: 'once-on-hover',
-  },
-  soundWaves: {
-    src: 'https://assets-v2.lottiefiles.com/a/a73eb2d8-1179-11ee-83a9-8faaffe0d6a1/ICvcPGE56U.lottie',
-    intent: 'Headphones / sound waves — continuous ambient motion',
-    searchTerm: 'sound wave audio equalizer headphones',
-    behavior: 'ambient-loop',
-  },
-  aiSparkle: {
-    src: 'https://assets-v2.lottiefiles.com/a/6d1224de-1172-11ee-8e99-2f3c8126c19c/sOXidENOzm.lottie',
-    intent: 'Brain with sparkle / lightbulb / magic wand — represents AI',
-    searchTerm: 'AI brain sparkle lightbulb',
-    behavior: 'autoplay-loop',
-  },
-  rocket: {
-    src: 'https://assets-v2.lottiefiles.com/a/5de84460-a34a-11ee-b470-83e52242919a/SfozhTvKjU.lottie',
-    intent: 'Rocket launching — synchronized with CountUp stats',
-    searchTerm: 'rocket launch takeoff',
-    behavior: 'once-on-view',
-  },
-  confetti: {
-    src: 'https://assets-v2.lottiefiles.com/a/e7df6e94-1170-11ee-9640-1b85e6ca1c88/useeXXBWNy.lottie',
-    intent: 'Confetti burst celebration — plays on CTA section entry + click',
-    searchTerm: 'confetti celebration burst party',
-    behavior: 'once-on-view',
-  },
-  navSparkle: {
-    src: 'https://assets-v2.lottiefiles.com/a/362d1336-1166-11ee-b318-6fb6adbd5325/kovVpaslMa.lottie',
-    intent: 'Tiny subtle sparkle on Get Started button',
-    searchTerm: 'sparkle shine glint tiny',
-    behavior: 'ambient-loop',
-  },
-  untangle: {
-    src: 'https://assets-v2.lottiefiles.com/a/ab5b0866-2155-11ef-93b3-63b32e34d0cf/IpM74ywaZF.lottie',
-    intent: 'Sparkle burst — represents unifying scattered apps',
-    searchTerm: 'untangle lines organize simplify',
-    behavior: 'once-on-view',
-  },
-  wave: {
-    src: 'https://assets-v2.lottiefiles.com/a/91cc0ece-1150-11ee-b7cb-d3afb5c0c001/l07O4nRg7q.lottie',
-    intent: 'Waving hand or beating heart — warmth in footer',
-    searchTerm: 'wave hand greeting heartbeat',
-    behavior: 'ambient-loop',
   },
   // ── Focus modes section ──────────────────────────────────────────────────────
   focusPomodoro: {

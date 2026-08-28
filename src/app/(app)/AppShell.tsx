@@ -24,6 +24,8 @@ import { useGuestStore } from "@/store/useGuestStore";
 import { useLinkStore } from "@/store/useLinkStore";
 import { useQuickCaptureStore } from "@/store/useQuickCaptureStore";
 import { HydrationFailureBanner } from '@/components/system/HydrationFailureBanner';
+import { authClient } from '@/lib/auth-client';
+import { useHydrationStatusStore } from '@/store/useHydrationStatusStore';
 import { LazyDialogFallback } from '@/components/ui/LazyDialogFallback';
 import { SessionExpiredDialog } from '@/components/system/SessionExpiredDialog';
 import { SessionExpiryWatcher } from '@/components/system/SessionExpiryWatcher';
@@ -233,7 +235,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const t = setTimeout(() => setHydrationTimeoutFired(true), 3000);
     return () => clearTimeout(t);
   }, [hydrationTimeoutFired]);
-  const allHydrated = (eventsHydrated && tasksHydrated && focusHydrated) || hydrationTimeoutFired;
+
+  /**
+   * F5.6: whether there is anyone to load data FOR.
+   *
+   * `useSession()` is already mounted below for the expiry watcher; this reads
+   * the same hook so the overlay and the watcher cannot disagree. While the
+   * session is still resolving we treat it as present — the alternative is a
+   * flash of the app before the overlay appears.
+   */
+  const { data: shellSession, isPending: shellSessionPending } = authClient.useSession();
+  const hasSession = shellSessionPending || Boolean(shellSession?.user);
+
+  const storesHydrated = eventsHydrated && tasksHydrated && focusHydrated;
+  const allHydrated = storesHydrated || hydrationTimeoutFired;
+
+  /**
+   * F5.6: the 3-second escape hatch is correct — it is scheduled once, guarded
+   * against rescheduling, and ORs into `allHydrated`, so a hung fetch can never
+   * pin the overlay. What was wrong is what it dismissed INTO.
+   *
+   * `dbHydrated` is still false at that point, so an empty board is
+   * indistinguishable from "you have no data", and any edit made in that window
+   * is written against empty state. Recording it as a hydration failure is what
+   * puts the retry banner on screen instead of a confident blank workspace.
+   */
+  const markHydrationFailed = useHydrationStatusStore((s) => s.markFailed);
+  useEffect(() => {
+    if (!hydrationTimeoutFired) return;
+    // Only the domains that are actually still missing — marking all three
+    // would name domains that had loaded fine and make the banner lie.
+    if (!eventsHydrated) markHydrationFailed('events', 'network');
+    if (!tasksHydrated) markHydrationFailed('tasks', 'network');
+    if (!focusHydrated) markHydrationFailed('focus', 'network');
+  }, [hydrationTimeoutFired, eventsHydrated, tasksHydrated, focusHydrated, markHydrationFailed]);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -444,7 +479,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           the overlay pinned at opacity:1 forever. A direct unmount avoids
           that whole class of failure — the overlay disappears in one frame
           the moment allHydrated flips. */}
-      {onboardingCompleted && !allHydrated && (
+      {/*
+        F5.6: gated only on `onboardingCompleted`, which is TRUE for a signed-out
+        user whose localStorage still says they finished onboarding — so they
+        got a full-screen z-9999 spinner while every fetch 401'd, for the whole
+        three seconds, before landing in an empty app. `hasSession` keeps the
+        overlay for the case it exists for: a signed-in user waiting on real
+        data.
+      */}
+      {onboardingCompleted && hasSession && !allHydrated && (
         <motion.div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-background"
         >

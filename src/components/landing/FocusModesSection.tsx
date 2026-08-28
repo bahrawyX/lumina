@@ -50,7 +50,7 @@ export function FocusModesSection() {
     <section ref={ref} className="py-16 md:py-24 px-4 md:px-6" aria-label="Focus modes">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-10 md:mb-14">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground-subtle mb-3">
             Deep work
           </p>
           <h2 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em]">

@@ -270,10 +270,24 @@ export function FeatureShowcase() {
     >
       {/* Sticky viewport — pinned at top while the user scrolls through
           the ghost's height below */}
-      <div className="sticky top-0 h-screen w-full overflow-hidden flex flex-col">
+      {/*
+        F1.8: this was `h-screen ... overflow-hidden` with a non-scrollable
+        inner track. On a 375x667 device each slide stacks a section header, a
+        16:10 mockup, an eyebrow, a text-3xl title, a description, three
+        bullets, a bubble, and the dots/progress block — well past the ~520px
+        of usable height. Because the wrapper was `overflow-hidden` with
+        `items-center`, the excess was CLIPPED WITH NO WAY TO REACH IT.
+
+        `100svh` rather than `100vh`: `h-screen` is the LARGE viewport on iOS
+        Safari, so content sat under the retracting URL bar even before the
+        clipping. `overflow-x-hidden` keeps the horizontal track hidden (that
+        is what the carousel translates) while letting the slide scroll
+        vertically.
+      */}
+      <div className="sticky top-0 h-[100svh] w-full overflow-x-hidden flex flex-col">
         {/* Section heading */}
         <div className="text-center pt-12 md:pt-10 pb-5 md:pb-4 px-4 flex-shrink-0">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground-subtle mb-3">
             Everything you need
           </p>
           <h2 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em]">
@@ -380,8 +394,8 @@ export function FeatureShowcase() {
                 {String(activeIndex + 1).padStart(2, '0')}
               </motion.span>
             </AnimatePresence>
-            <span className="text-muted-foreground/50">/</span>
-            <span className="text-muted-foreground/50 tabular-nums">
+            <span className="text-muted-foreground-subtle">/</span>
+            <span className="text-muted-foreground-subtle tabular-nums">
               {String(SLIDES.length).padStart(2, '0')}
             </span>
           </div>

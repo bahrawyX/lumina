@@ -1,5 +1,10 @@
-'use client';
-
+/**
+ * F1.10: this was `'use client'` with nothing to justify it. Every interactive
+ * child (`Reveal`, `CursorZone`, `CountUp`) carries its own `'use client'`, so
+ * a server component can render them and the boundary simply moves down —
+ * which takes framer-motion out of this module's client bundle. The `/` route
+ * shipped 318 KB gzip with nine of eleven landing components importing it.
+ */
 import { Reveal } from './animations/Reveal';
 
 export function ProblemStatement() {
@@ -11,7 +16,7 @@ export function ProblemStatement() {
         duration={0.7}
         margin="-80px"
       >
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground-subtle mb-4">
           The problem
         </p>
         <p className="font-display text-xl md:text-2xl font-medium text-foreground tracking-[-0.02em] leading-relaxed">

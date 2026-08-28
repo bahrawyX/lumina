@@ -49,6 +49,9 @@ export default {
         muted: {
           DEFAULT:    'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',
+          // F1.7 — subtler than `foreground` and still WCAG AA at 10px. Use
+          // this instead of `text-muted-foreground/50`, which measured 2.1:1.
+          'foreground-subtle': 'hsl(var(--muted-foreground-subtle))',
         },
         accent: {
           DEFAULT:    'hsl(var(--accent))',

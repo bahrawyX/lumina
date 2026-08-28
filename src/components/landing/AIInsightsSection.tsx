@@ -1,5 +1,10 @@
-'use client';
-
+/**
+ * F1.10: this was `'use client'` with nothing to justify it. Every interactive
+ * child (`Reveal`, `CursorZone`, `CountUp`) carries its own `'use client'`, so
+ * a server component can render them and the boundary simply moves down —
+ * which takes framer-motion out of this module's client bundle. The `/` route
+ * shipped 318 KB gzip with nine of eleven landing components importing it.
+ */
 import { CursorZone } from './CursorZone';
 import { Reveal } from './animations/Reveal';
 
@@ -15,7 +20,7 @@ export function AIInsightsSection() {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-10 max-w-3xl">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50 mb-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground-subtle mb-3">
               Intelligence
             </p>
             <h2 className="font-display text-2xl md:text-3xl font-medium text-foreground tracking-[-0.035em]">

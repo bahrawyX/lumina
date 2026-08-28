@@ -18,6 +18,19 @@
     --secondary-foreground: 222 30% 12%;
     --muted:        36 18% 94%;           /* warm-tinted muted */
     --muted-foreground: 222 12% 42%;      /* warmer grey */
+    /*
+     * F1.7: the landing page's eyebrows, labels and footer used
+     * `text-muted-foreground/50` and `/60` at 10px. Measured against the real
+     * backgrounds those compute to 2.11:1 and 2.52:1 in light, 2.68:1 and
+     * 3.32:1 in dark — against a 4.5:1 requirement, with no large-text
+     * exemption at 10px. That is the page's entire navigational scent layer:
+     * every section eyebrow and all four stat labels.
+     *
+     * This token is subtler than `--muted-foreground` and still clears AA:
+     * 4.65:1 light, 4.70:1 dark. Use it INSTEAD of an opacity modifier — an
+     * opacity modifier on a colour that only just passes will always fail.
+     */
+    --muted-foreground-subtle: 222 12% 46%;
     --accent:       249 66% 95%;
     --accent-foreground: 249 66% 35%;
     --destructive:  350 70% 55%;
@@ -42,6 +55,7 @@
     --secondary-foreground: 36 20% 96%;
     --muted:        240 5% 14%;
     --muted-foreground: 36 8% 62%;        /* warmer dark-mode muted */
+    --muted-foreground-subtle: 36 8% 49%;   /* F1.7 — 4.70:1 on --background */
     --accent:       249 30% 22%;
     --accent-foreground: 249 66% 80%;
     --destructive:  350 65% 58%;

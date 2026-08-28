@@ -28,8 +28,11 @@ export function FeatureSlide({
 }) {
   const reduce = useReducedMotion();
 
+  // F1.8: `items-center` on a fixed-height clipped box centres overflow into
+  // invisibility at BOTH ends. On mobile the slide scrolls and starts at the
+  // top; from `md` up it still centres, because there it genuinely fits.
   return (
-    <div className="w-full h-full flex items-center justify-center px-4 md:px-10">
+    <div className="w-full h-full overflow-y-auto flex items-start md:items-center justify-center px-4 py-6 md:py-0 md:px-10">
       <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
         {/* Left — text */}
         <div className="flex flex-col gap-4 md:gap-5 order-2 md:order-1">
@@ -144,10 +147,20 @@ export function FeatureSlide({
                 />
               </svg>
             </div>
+            {/*
+              F1.8: this said "swipe or use arrow keys". There is no touch
+              handler anywhere in the landing subtree —
+              `grep -rn "onTouch|pointerdown|swipe|drag" src/components/landing`
+              matched only this string — so the FIRST instruction a mobile
+              visitor was given did nothing at all. The carousel advances on
+              scroll, which is true on every device; arrow keys are mentioned
+              only where they work (F1.5 scoped them to keyboard focus).
+            */}
             <div
               className="text-xs text-muted-foreground italic px-3 py-1.5 rounded-full border border-border bg-card/60"
             >
-              Psst — swipe or use arrow keys
+              <span className="md:hidden">Psst — scroll to explore</span>
+              <span className="hidden md:inline">Psst — scroll, or use arrow keys</span>
             </div>
           </motion.div>
         </div>

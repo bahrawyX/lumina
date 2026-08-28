@@ -1,4 +1,13 @@
-'use client';
+/**
+ * F1.10: `'use client'` for one reason — `new Date().getFullYear()`, which is
+ * also a hydration-mismatch hazard across a New Year boundary: the server
+ * renders one year, a client hydrating seconds later renders another, and
+ * React logs a mismatch on the busiest night of the year for nobody's benefit.
+ *
+ * Computed once on the server now. This is a server component.
+ */
+/** Evaluated at render time on the server — never re-computed on the client. */
+const YEAR = new Date().getFullYear();
 
 export function LandingFooter() {
   return (
@@ -9,7 +18,7 @@ export function LandingFooter() {
             Lumina
           </span>
           <span className="text-muted-foreground/40">·</span>
-          <span className="font-mono text-[10px] text-muted-foreground/50 tracking-wide">
+          <span className="font-mono text-[10px] text-muted-foreground-subtle tracking-wide">
             Built by Abdelrahman El-Bahrawy
           </span>
         </div>
@@ -18,12 +27,12 @@ export function LandingFooter() {
             href="https://github.com/bahrawyX/lumina"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors tracking-wide"
+            className="font-mono text-[10px] text-muted-foreground-subtle hover:text-muted-foreground transition-colors tracking-wide"
           >
             GitHub
           </a>
           <span className="font-mono text-[10px] text-muted-foreground/40 tracking-wide">
-            © {new Date().getFullYear()}
+            © {YEAR}
           </span>
         </div>
       </div>

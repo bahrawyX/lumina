@@ -1,5 +1,7 @@
-'use client';
-
+/**
+ * F1.10: `'use client'` with no hooks, no state and no handlers — every
+ * interactive child declares its own boundary.
+ */
 import { LandingNav } from './LandingNav';
 import { HeroSection } from './HeroSection';
 import { ProblemStatement } from './ProblemStatement';
