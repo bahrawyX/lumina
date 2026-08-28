@@ -46,9 +46,16 @@ interface DailyBriefState {
   isLoading: boolean;
   error: string | null;
 
-  fetchBrief: (timezone: string) => Promise<void>;
+  /**
+   * P2-8: takes no timezone. The server derives the day from
+   * `users.timezone`, because the brief's cache row is keyed on that day
+   * and a client-supplied zone let the caller choose which row it read and
+   * wrote. Callers still key their re-fetch effect on the local zone, so a
+   * user who travels still refreshes.
+   */
+  fetchBrief: () => Promise<void>;
   dismiss: () => void;
-  refresh: (timezone: string) => Promise<void>;
+  refresh: () => Promise<void>;
   isDismissedToday: () => boolean;
   shouldShow: () => boolean;
 }
@@ -62,10 +69,16 @@ export const useDailyBriefStore = create<DailyBriefState>()(
       isLoading: false,
       error: null,
 
-      fetchBrief: async (timezone) => {
+      fetchBrief: async () => {
         set({ isLoading: true, error: null });
         try {
-          const res = await fetch(`/api/daily-brief?timezone=${encodeURIComponent(timezone)}`);
+          // P2-8: no `?timezone=`. The server reads `users.timezone`, because
+          // the brief's cache row is keyed on the day it computes and a
+          // client-supplied zone let the caller pick which row it read and
+          // wrote. `timezone` stays in the signature: it is what the effects
+          // above key their re-fetch on, so a user who travels still
+          // refreshes.
+          const res = await fetch('/api/daily-brief');
           if (res.status === 401) {
             // Not authenticated — stop trying for this session.
             // Mark lastFetched so the effect doesn't loop on null.
@@ -113,12 +126,10 @@ export const useDailyBriefStore = create<DailyBriefState>()(
           .catch(() => {});
       },
 
-      refresh: async (timezone) => {
+      refresh: async () => {
         set({ isLoading: true, error: null });
         try {
-          const res = await fetch(
-            `/api/daily-brief?timezone=${encodeURIComponent(timezone)}&refresh=true`,
-          );
+          const res = await fetch('/api/daily-brief?refresh=true');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data: DailyBriefData = await res.json();
           set({
@@ -147,6 +158,22 @@ export const useDailyBriefStore = create<DailyBriefState>()(
     }),
     {
       name: 'lumina-daily-brief',
+      /**
+       * F5.5: persisted with no `version`, so zustand had no way to know an
+       * old payload was an old SHAPE. A rename or a type change would rehydrate
+       * last release's object straight into this release's store — silently,
+       * with no error and no way to detect it afterwards.
+       *
+       * `version: 1` plus a `migrate` that drops anything it does not
+       * recognise is the cheap correct answer: this store persists a single dismissed-date string,
+       * so discarding an unknown payload costs the user seeing today's brief once more.
+       */
+      version: 1,
+      migrate: (persisted, from) => {
+        // Anything written before versioning existed is shape-unknown.
+        if (from < 1) return {} as Record<string, unknown>;
+        return persisted as Record<string, unknown>;
+      },
       // Only the dismissed-date flag is persisted — the brief itself is
       // re-fetched from the API on mount so deleting it from the DB takes
       // effect immediately and a different user can't see the previous

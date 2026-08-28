@@ -3,6 +3,7 @@ import { eq, and, lt, gt, gte, ne, or, isNull } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
+import { userDayBounds } from '@/lib/time/userDay';
 import {
   events,
   tasks,
@@ -86,12 +87,7 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
   const { searchParams } = new URL(req.url);
-  const timezone = searchParams.get('timezone')?.trim();
   const forceRefresh = searchParams.get('refresh') === 'true';
-
-  if (!timezone) {
-    return NextResponse.json({ error: 'timezone query param is required' }, { status: 400 });
-  }
 
   // Gate the expensive cache-bypass path only.
   if (forceRefresh) {
@@ -105,11 +101,28 @@ export async function GET(req: NextRequest) {
     const db = getDatabase();
     const now = new Date();
 
-    // Compute today's boundaries in user's timezone
-    const todayInTz = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-    const todayStr = `${todayInTz.getFullYear()}-${String(todayInTz.getMonth() + 1).padStart(2, '0')}-${String(todayInTz.getDate()).padStart(2, '0')}`;
-    const todayStart = new Date(todayInTz.getFullYear(), todayInTz.getMonth(), todayInTz.getDate());
-    const todayEnd = new Date(todayStart.getTime() + 86_400_000);
+    /**
+     * P2-8: the day this brief is about comes from `users.timezone`, not from
+     * the request.
+     *
+     * This route *required* a `?timezone=` query param and trusted it. Two
+     * problems, one of them exploitable:
+     *
+     *  - `dailyBriefCache` is keyed on `(userId, date)`, and `date` was derived
+     *    from that param — so a client could choose which cache row it read and
+     *    wrote, and force a fresh generation on every request by naming a zone
+     *    it had not used yet.
+     *  - `new Date(y, m, d)` constructs in the **server's** zone, not the
+     *    user's. On Vercel that is UTC, so `todayStart`/`todayEnd` were wrong
+     *    by the user's offset for everyone outside it — the same defect P2-8
+     *    fixed in the coin and planner paths, still live here.
+     *
+     * `userDayBounds` is the helper those paths already use, and it computes
+     * the end as local midnight of the next calendar date rather than
+     * `start + 24h`, which is what makes it correct on both DST days.
+     */
+    const { zone: timezone, date: todayStr, start: todayStart, end: todayEnd } =
+      await userDayBounds(db, userId, now);
 
     const historyStart = new Date(now.getTime() - 7 * 86_400_000);
 
@@ -340,7 +353,15 @@ export async function GET(req: NextRequest) {
 
     // Streak
     const currentStreak = userRow?.dailyStreak ?? 0;
-    const currentHour = todayInTz.getHours();
+    // The user's local hour, read through their zone rather than off a Date
+    // that was already mangled into the server's.
+    const currentHour = Number(
+      new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        hour12: false,
+        timeZone: timezone,
+      }).format(now),
+    );
     const hadFocusToday = userRow?.lastFocusDate === todayStr;
     const isStreakAtRisk = !hadFocusToday && currentHour >= 18;
 

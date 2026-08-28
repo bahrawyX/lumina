@@ -106,7 +106,7 @@ export const DailyBriefStrip: React.FC = () => {
     const lastFetched = useDailyBriefStore.getState().lastFetched;
     const today = format(new Date(), 'yyyy-MM-dd');
     if ((!lastFetched || !lastFetched.startsWith(today)) && !useDailyBriefStore.getState().isLoading) {
-      fetchBrief(timezone);
+      fetchBrief();
     }
   }, [timezone, fetchBrief]);
 

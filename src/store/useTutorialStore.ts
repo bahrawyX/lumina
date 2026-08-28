@@ -39,6 +39,22 @@ export const useTutorialStore = create<TutorialState>()(
     }),
     {
       name: 'lumina-tutorial',
+      /**
+       * F5.5: persisted with no `version`, so zustand had no way to know an
+       * old payload was an old SHAPE. A rename or a type change would rehydrate
+       * last release's object straight into this release's store — silently,
+       * with no error and no way to detect it afterwards.
+       *
+       * `version: 1` plus a `migrate` that drops anything it does not
+       * recognise is the cheap correct answer: this store persists two seen/completed booleans,
+       * so discarding an unknown payload costs the user being offered the tutorial once more.
+       */
+      version: 1,
+      migrate: (persisted, from) => {
+        // Anything written before versioning existed is shape-unknown.
+        if (from < 1) return {} as Record<string, unknown>;
+        return persisted as Record<string, unknown>;
+      },
       partialize: (s) => ({
         hasCompletedTutorial: s.hasCompletedTutorial,
         hasSeenPrompt: s.hasSeenPrompt,

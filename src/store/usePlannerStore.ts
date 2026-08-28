@@ -87,6 +87,22 @@ export const usePlannerStore = create<PlannerState>()(
     }),
     {
       name: 'lumina-planner',
+      /**
+       * F5.5: persisted with no `version`, so zustand had no way to know an
+       * old payload was an old SHAPE. A rename or a type change would rehydrate
+       * last release's object straight into this release's store — silently,
+       * with no error and no way to detect it afterwards.
+       *
+       * `version: 1` plus a `migrate` that drops anything it does not
+       * recognise is the cheap correct answer: this store persists two connection booleans,
+       * so discarding an unknown payload costs the user a re-read of the integration status it already fetches on mount.
+       */
+      version: 1,
+      migrate: (persisted, from) => {
+        // Anything written before versioning existed is shape-unknown.
+        if (from < 1) return {} as Record<string, unknown>;
+        return persisted as Record<string, unknown>;
+      },
       // Explicit return type guarantees event arrays can NEVER accidentally
       // be added to localStorage persistence in a future edit.
       partialize: (state): { outlookConnected: boolean; googleConnected: boolean } => ({

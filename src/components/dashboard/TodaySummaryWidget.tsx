@@ -82,7 +82,7 @@ export const TodaySummaryWidget: React.FC = () => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const needsFetch = !lastFetched || !lastFetched.startsWith(today);
     if (needsFetch && !useDailyBriefStore.getState().isLoading) {
-      fetchBrief(timezone);
+      fetchBrief();
     }
   }, [timezone, fetchBrief]);
 

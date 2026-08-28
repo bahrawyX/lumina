@@ -1,6 +1,6 @@
 'use client';
 
-import { motion, useInView } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useRef } from 'react';
 import type React from 'react';
 import { CursorZone } from './CursorZone';
@@ -38,7 +38,6 @@ const FOCUS_MODES = [
 
 export function FocusModesSection() {
   const ref = useRef<HTMLElement>(null);
-  const isInView = useInView(ref, { once: true, margin: '-60px' });
 
   const hover0 = useLottieHover(0.7, 2);
   const hover1 = useLottieHover(0.7, 2);
@@ -65,11 +64,26 @@ export function FocusModesSection() {
           {FOCUS_MODES.map((mode, i) => {
             const hover = hovers[i]!;
             return (
+              // F1.2: `initial={{opacity:0}}` with
+              // `animate={isInView ? {...} : {}}` leaves the card permanently
+              // invisible if the observer never fires — an empty `animate`
+              // object is not "stay where you are", it is "no target", so the
+              // element sits at its `initial` forever. That happens with JS
+              // disabled or broken, and in any browser without
+              // IntersectionObserver. Four cards, invisible, on a marketing page.
+              //
+              // `whileInView` + `viewport={{ once: true }}` is
+              // framer-motion's own primitive for this and does not depend on a
+              // hook's boolean, and `data-reveal` is the no-JS escape hatch
+              // `globals.css` keys its `(scripting: none)` override on — which
+              // this component was missing entirely.
               <motion.div
                 key={mode.lottieKey}
+                data-reveal
                 className="card-lift rounded-xl border border-border bg-card p-4 md:p-5 shadow-card text-center cursor-default"
                 initial={{ opacity: 0, y: 16 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
                 transition={{ duration: 0.45, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
                 onHoverStart={hover.onMouseEnter}
                 onHoverEnd={hover.onMouseLeave}

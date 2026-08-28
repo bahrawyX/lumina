@@ -6,8 +6,18 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { JsonLd } from "@/components/seo/JsonLd";
 
+/**
+ * The canonical origin, in one place.
+ *
+ * F1.13: `metadataBase` and the JSON-LD `url` each spelled this out
+ * separately, and the JSON-LD `image` used a root-relative path — so the two
+ * absolutised fields agreed and the third silently did not. Naming it once
+ * makes that class of drift impossible.
+ */
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://lumina-six-bay.vercel.app';
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://lumina-six-bay.vercel.app'),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'Lumina — Calendar, tasks, and focus in one place',
     template: '%s · Lumina',
@@ -122,11 +132,24 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             operatingSystem: 'Web',
             description:
               'A productivity workspace combining calendar, tasks, focus sessions, goals, and AI scheduling insights.',
-            url: process.env.NEXT_PUBLIC_APP_URL ?? 'https://lumina-six-bay.vercel.app',
-            image: '/icons/pwa-512.png',
+            url: SITE_URL,
+            // F1.13: this was `'/icons/pwa-512.png'`. JSON-LD is consumed
+            // off-page by crawlers with no document base to resolve against, so
+            // a root-relative path is simply not a resolvable image — the
+            // adjacent `url` was absolutised in the same pass and this line was
+            // skipped.
+            image: `${SITE_URL}/icons/pwa-512.png`,
             author: {
               '@type': 'Person',
               name: 'Abdelrahman El-Bahrawy',
+            },
+            // F1.13: `SoftwareApplication` without `offers` is incomplete for
+            // rich results, and Lumina is free — which is worth stating
+            // explicitly rather than leaving a crawler to guess.
+            offers: {
+              '@type': 'Offer',
+              price: '0',
+              priceCurrency: 'USD',
             },
           }}
         />
