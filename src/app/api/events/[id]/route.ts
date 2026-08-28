@@ -74,6 +74,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const db = getDatabase();
 
+    /**
+     * P1-4: `linkedTaskId` was verified only on the main UPDATE path, roughly
+     * 200 lines below. The two recurrence-exception INSERT paths — edit scope
+     * `'this'` and `'this_and_following'` — wrote it straight out of the
+     * request body:
+     *
+     *     linkedTaskId: typeof linkedTaskId === 'string' ? linkedTaskId : master.linkedTaskId
+     *
+     * so any caller could attach another user's task id to their own event by
+     * editing a single occurrence of a recurring one. The check is hoisted
+     * here, before the branch, so every write in this handler goes through it.
+     */
+    if (typeof linkedTaskId === 'string' && linkedTaskId.trim()) {
+      const owned = await db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(eq(tasks.id, linkedTaskId), eq(tasks.userId, userId)))
+        .limit(1);
+      if (owned.length === 0) {
+        return NextResponse.json(
+          { error: 'linkedTaskId is invalid for this user' },
+          { status: 400 },
+        );
+      }
+    }
+
     // For 'this' scope on a virtual recurring instance, the ID is "masterEventId:isoDate"
     // We need to create an exception event instead of updating
     if (editScope === 'this' && typeof id === 'string' && id.includes(':')) {
@@ -307,17 +333,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       patch.linkedDocId = linkedDocId;
     }
 
+    // Ownership was already verified once, at the top of the handler, for
+    // every branch rather than only this one.
     if (linkedTaskId === null) {
       patch.linkedTaskId = null;
     } else if (typeof linkedTaskId === 'string' && linkedTaskId.trim()) {
-      const linkedTaskRows = await db
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(and(eq(tasks.id, linkedTaskId), eq(tasks.userId, userId)))
-        .limit(1);
-      if (linkedTaskRows.length === 0) {
-        return NextResponse.json({ error: 'linkedTaskId is invalid for this user' }, { status: 400 });
-      }
       patch.linkedTaskId = linkedTaskId;
     }
 
@@ -483,7 +503,16 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         .where(and(eq(eventRecurrence.eventId, id), eq(eventRecurrence.userId, userId)))
         .limit(1);
 
-      if (recRows.length > 0) {
+      // P2-2: `recRows.length === 0` fell straight through to
+      // `{ ok: true }` below — so "delete this and everything after" against
+      // an event the user does not own, or one with no recurrence rule,
+      // reported success and truncated nothing. The series came back intact on
+      // the next expand, with no indication anything had gone wrong.
+      if (recRows.length === 0) {
+        return NextResponse.json({ error: 'Recurring event not found' }, { status: 404 });
+      }
+
+      {
         const currentRRule = recRows[0].rrule;
         // Add UNTIL to truncate the series
         const untilStr = cutoffBefore.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');

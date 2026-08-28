@@ -8,6 +8,7 @@ import { fetchMicrosoftExternalEvents } from '@/lib/integrations/microsoft/fetch
 import { getEnabledCalendarIds } from '@/lib/integrations/enabledCalendars';
 import type { ApiExternalEvent } from '@/lib/calendar/externalEventTypes';
 import { integrationErrorCode } from '@/lib/integrations/clientError';
+import { logger } from '@/lib/logger';
 
 const DEFAULT_RANGE_DAYS_PAST   = 30;
 const DEFAULT_RANGE_DAYS_FUTURE = 90;
@@ -91,6 +92,13 @@ export async function GET(req: NextRequest) {
             googleResult.failedCalendarIds = res.failedCalendarIds;
           })
           .catch((err) => {
+            // P3-3 — see `sync/all`. The enum goes to the client; the cause
+            // has to go somewhere.
+            logger.error(
+              'unhandled',
+              { route: 'GET /api/external-events/all', provider: 'google' },
+              err,
+            );
             googleResult.error = integrationErrorCode(err);
           })
       : Promise.resolve(),
@@ -102,6 +110,11 @@ export async function GET(req: NextRequest) {
             msResult.failedCalendarIds = res.failedCalendarIds;
           })
           .catch((err) => {
+            logger.error(
+              'unhandled',
+              { route: 'GET /api/external-events/all', provider: 'microsoft' },
+              err,
+            );
             msResult.error = integrationErrorCode(err);
           })
       : Promise.resolve(),

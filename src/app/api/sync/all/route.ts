@@ -9,6 +9,7 @@ import type { FullSyncResult } from '@/lib/integrations/google/sync';
 import type { MicrosoftSyncResult } from '@/lib/integrations/microsoft/sync';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 import { integrationErrorCode } from '@/lib/integrations/clientError';
+import { logger } from '@/lib/logger';
 
 // TD-5: runs both providers' full syncs in parallel — the heaviest sync path.
 // Give it the Vercel Hobby maximum so a large account can't time out mid-sync.
@@ -84,9 +85,13 @@ export async function POST(req: NextRequest) {
       ? runFullGoogleSync(userId)
           .then((r) => { results.google = { ok: true, result: r }; })
           .catch((err) => {
+            // P3-3: the client gets a safe enum — but `err` used to be
+            // discarded entirely here, so the actual provider failure was
+            // recorded nowhere at all. Half of that finding is not leaking the
+            // detail; the other half is still HAVING it.
+            logger.error('unhandled', { route: 'POST /api/sync/all', provider: 'google' }, err);
             results.google = {
               ok: false,
-              // P3-3: was `err.message` verbatim.
               error: integrationErrorCode(err),
             };
           })
@@ -96,6 +101,7 @@ export async function POST(req: NextRequest) {
       ? runFullMicrosoftSync(userId)
           .then((r) => { results.microsoft = { ok: true, result: r }; })
           .catch((err) => {
+            logger.error('unhandled', { route: 'POST /api/sync/all', provider: 'microsoft' }, err);
             results.microsoft = {
               ok: false,
               error: integrationErrorCode(err),

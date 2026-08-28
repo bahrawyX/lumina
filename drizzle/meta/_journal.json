@@ -183,6 +183,13 @@
       "when": 1775002500000,
       "tag": "0025_session_expiry_index",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1775088900000,
+      "tag": "0026_event_tz_backfill_marker",
+      "breakpoints": true
     }
   ]
 }

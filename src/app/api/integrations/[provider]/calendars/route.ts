@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { importGoogleCalendars, getGoogleCalendarsFromDb } from '@/lib/integrations/google/calendars';
 import { integrationErrorCode } from '@/lib/integrations/clientError';
+import { logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ provider: string }>;
@@ -41,7 +42,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ calendars, count: calendars.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      // P3-3: the raw provider message never reaches the client.
+      // P3-3: the raw provider message never reaches the client — and it is
+      // recorded here rather than only computed and thrown away.
+      logger.error(
+        'unhandled',
+        { route: 'GET /api/integrations/[provider]/calendars', provider: 'google' },
+        err,
+      );
       const code = integrationErrorCode(err, message);
       if (code === 'not_connected' || code === 'reconnect_required') {
         return NextResponse.json({ error: code, provider: 'google' }, { status: 403 });

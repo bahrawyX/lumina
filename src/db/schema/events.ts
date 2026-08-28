@@ -75,6 +75,18 @@ export const events = pgTable(
     linkedDocId: uuid('linked_doc_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * P0-6: set by `scripts/backfill-event-timezones.sql`, which is what makes
+     * that script safe to run twice — every step filters on
+     * `tz_backfilled_at IS NULL`, so a re-run cannot shift the same row again.
+     *
+     * Declared here because the script did `ADD COLUMN IF NOT EXISTS` and
+     * nothing else knew about it. Run the backfill in production and the next
+     * `drizzle-kit generate` would have emitted a `DROP COLUMN` for it — taking
+     * the idempotency guard with it, and reintroducing exactly the
+     * schema-versus-code drift P0-1 was opened to close.
+     */
+    tzBackfilledAt: timestamp('tz_backfilled_at', { withTimezone: true }),
   },
   (table) => [
     index('events_user_start_time_idx').on(table.userId, table.startTime),

@@ -66,7 +66,26 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const [prev] = await db.select({ status: goals.status, timeframe: goals.timeframe }).from(goals)
       .where(and(eq(goals.id, id), eq(goals.userId, userId)));
 
-    await db.update(goals).set(patch).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+    // P2-2: this was a blind write. `db.update(...)` matching zero rows is not
+    // an error in Drizzle, so a PATCH against a goal that does not exist — or
+    // that belongs to somebody else — updated nothing and still answered
+    // `{ ok: true }`. The client had no way to tell a successful edit from an
+    // edit of a deleted goal, and would keep showing the stale row.
+    //
+    // `.returning()` on the UPDATE rather than a check against `prev` above:
+    // the SELECT and the UPDATE are separate statements, so a goal deleted
+    // between them would pass a `prev`-based guard and still write nothing.
+    const updated = await db
+      .update(goals)
+      .set(patch)
+      .where(and(eq(goals.id, id), eq(goals.userId, userId)))
+      .returning({ id: goals.id });
+
+    if (updated.length === 0) {
+      // Deliberately the same 404 for "no such goal" and "not yours": the
+      // route must not confirm the existence of another user's goal.
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     // Award coins on goal completion. Awaited (not fire-and-forget) so the
     // returned newBalance is the post-award DB value — otherwise the client

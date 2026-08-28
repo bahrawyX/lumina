@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS events (
   reminder_sent_at timestamptz,
   linked_doc_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  tz_backfilled_at timestamptz
 );
 CREATE TABLE IF NOT EXISTS integrations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
