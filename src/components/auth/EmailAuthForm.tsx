@@ -44,6 +44,11 @@ export interface EmailAuthFormProps {
   name: string;
   email: string;
   password: string;
+  /**
+   * Called on any field edit, so the caller can dismiss its own page-level
+   * message. Optional: a caller with no page-level message needs nothing.
+   */
+  onFieldChange?: () => void;
   onNameChange: (value: string) => void;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
@@ -99,6 +104,7 @@ export function EmailAuthForm({
   name,
   email,
   password,
+  onFieldChange,
   onNameChange,
   onEmailChange,
   onPasswordChange,
@@ -120,10 +126,21 @@ export function EmailAuthForm({
     fieldErrorsRef.current = errors;
   };
 
+  /**
+   * Clear the field's own error AND the caller's page-level message.
+   *
+   * F3.12: only the field error was cleared. The page-level `error` — "That
+   * email may already be registered", "We couldn't reach Lumina" — is owned by
+   * the caller and outlived the input it was about, so a user who read it,
+   * corrected their address and started typing still had the old failure on
+   * screen next to a form that no longer matched it. `switchMode` cleared it;
+   * editing the very field it referred to did not.
+   */
   const clearErr = (field: string) => {
     const next = { ...fieldErrorsRef.current };
     delete next[field];
     setErrors(next);
+    onFieldChange?.();
   };
 
   /**

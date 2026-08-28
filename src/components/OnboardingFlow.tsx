@@ -6,6 +6,7 @@ import {
   type IntegrationProvider,
 } from '@/hooks/useIntegrationConnect';
 import { logger } from '@/lib/logger';
+import { isEmailVerificationPending } from '@/lib/auth/authErrors';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOnboardingStore, FocusPreference, FocusSessionLength, FocusGoal } from '../store/useOnboardingStore';
@@ -181,6 +182,7 @@ const StepAuth = memo<{
    * the user saw "Signed up successfully." in error red.
    */
   authNotice: string | null;
+  onClearAuthMessage: () => void;
   onAuthNameChange: (value: string) => void;
   onAuthEmailChange: (value: string) => void;
   onAuthPasswordChange: (value: string) => void;
@@ -203,6 +205,7 @@ const StepAuth = memo<{
   authBusy,
   authMessage,
   authNotice,
+  onClearAuthMessage,
   onAuthNameChange,
   onAuthEmailChange,
   onAuthPasswordChange,
@@ -283,6 +286,7 @@ const StepAuth = memo<{
           name={authName}
           email={authEmail}
           password={authPassword}
+          onFieldChange={onClearAuthMessage}
           onNameChange={onAuthNameChange}
           onEmailChange={onAuthEmailChange}
           onPasswordChange={onAuthPasswordChange}
@@ -946,7 +950,8 @@ const OnboardingFlow: React.FC = () => {
         callbackURL: '/onboarding',
       });
       if (result.error) {
-        setAuthMessage(result.error.message ?? 'Sign up failed.');
+        // F3.13: `'Sign up failed.'` named no cause and offered no next step.
+        setAuthMessage(result.error.message ?? "We couldn't create your account. Please try again.");
         return;
       }
 
@@ -961,8 +966,13 @@ const OnboardingFlow: React.FC = () => {
         callbackURL: '/onboarding',
       });
       if (signedIn.error) {
+        // F3.2 (latent) — see the sign-in page. Mapping every failure here to
+        // "already registered" tells every genuine new user their address is
+        // taken as soon as `RESEND_API_KEY` turns email verification on.
         setAuthMessage(
-          'That email may already be registered. Try signing in instead, or use a different address.',
+          isEmailVerificationPending(signedIn.error)
+            ? 'Account created. Check your email for a verification link, then sign in.'
+            : 'That email may already be registered. Try signing in instead, or use a different address.',
         );
         return;
       }
@@ -973,6 +983,13 @@ const OnboardingFlow: React.FC = () => {
         setOnboardingUserInfo(normalizedName, onboardingUserRole);
       }
       setAuthNotice('Signed up successfully.');
+    } catch {
+      // F3.7: there was no catch here — only `try`/`finally`. A dropped
+      // connection or a 500 threw out of `authClient`, `finally` cleared the
+      // spinner, and the user was left looking at an unchanged form with no
+      // error at all: indistinguishable from "nothing happened", so they
+      // pressed the button again. The sign-in page was fixed; this was not.
+      setAuthMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
       setAuthBusy(null);
     }
@@ -1002,12 +1019,19 @@ const OnboardingFlow: React.FC = () => {
         callbackURL: '/onboarding',
       });
       if (result.error) {
-        setAuthMessage(result.error.message ?? 'Sign in failed.');
+        setAuthMessage(
+          isEmailVerificationPending(result.error)
+            ? 'Check your email for a verification link before signing in.'
+            : (result.error.message ?? "That email and password don't match an account."),
+        );
         return;
       }
       await refetchAuthSession();
       await hydrateNameFromSession();
       setAuthNotice('Signed in successfully.');
+    } catch {
+      // F3.7 — see handleAuthSignUp.
+      setAuthMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
       setAuthBusy(null);
     }
@@ -1300,6 +1324,7 @@ const OnboardingFlow: React.FC = () => {
             authBusy={authBusy}
             authMessage={authMessage ?? authSessionError?.message ?? null}
             authNotice={authNotice}
+            onClearAuthMessage={clearAuthMessage}
             onAuthNameChange={setAuthName}
             onAuthEmailChange={setAuthEmail}
             onAuthPasswordChange={setAuthPassword}

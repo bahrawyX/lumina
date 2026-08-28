@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useLuminaAuthClient } from '@/components/AuthProvider';
 import { GoogleProviderIcon } from '@/components/icons';
 import { useGuestStore } from '@/store/useGuestStore';
+import { isEmailVerificationPending } from '@/lib/auth/authErrors';
 import { resolveNextDestination } from '@/lib/auth/nextDestination';
 import { oauthFailureMessage, useOAuthPopup } from '@/hooks/useOAuthPopup';
 import { EmailAuthForm, type AuthMode } from '@/components/auth/EmailAuthForm';
@@ -76,6 +77,12 @@ function SignInPageInner() {
     const normalizedEmail = email.trim().toLowerCase();
 
     setBusy('signup');
+    // F3.15: `finally` runs on the success `return` as well, so the previous
+    // version cleared `busy` on every path while a comment three lines above
+    // asserted it did not. The button re-enabled with its label back to
+    // "Create account" for the hundreds of milliseconds the client transition
+    // takes, and a fast second click fired a second `signUp.email`.
+    let navigating = false;
     try {
       const result = await authClient.signUp.email({
         email: normalizedEmail,
@@ -83,7 +90,11 @@ function SignInPageInner() {
         name: normalizedName,
         callbackURL: destination,
       });
-      if (result.error) { setMessage(result.error.message ?? 'Sign up failed.'); return; }
+      if (result.error) {
+        // F3.13: `'Sign up failed.'` named no cause and offered no next step.
+        setMessage(result.error.message ?? "We couldn't create your account. Please try again.");
+        return;
+      }
 
       // `emailAndPassword.autoSignIn` is now `false` server-side. That is what
       // closes the sign-up enumeration oracle (F3.2): BetterAuth only returns
@@ -102,18 +113,22 @@ function SignInPageInner() {
         callbackURL: destination,
       });
       if (signedIn.error) {
+        // F3.2 (latent): this mapped EVERY post-sign-up sign-in failure to
+        // "that email may already be registered". Harmless only while email is
+        // unconfigured — the moment `RESEND_API_KEY` is set,
+        // `requireEmailVerification` flips on and BetterAuth answers a genuine
+        // new sign-up with `EMAIL_NOT_VERIFIED`, so every real new user would
+        // have been told their address was taken.
         setMessage(
-          'That email may already be registered. Try signing in instead, or use a different address.',
+          isEmailVerificationPending(signedIn.error)
+            ? "Account created. Check your email for a verification link, then sign in."
+            : 'That email may already be registered. Try signing in instead, or use a different address.',
         );
         return;
       }
 
       useGuestStore.getState().clearGuestSession();
-      // F3.15: `busy` is deliberately NOT cleared on success. The client
-      // transition takes hundreds of milliseconds, during which the button was
-      // enabled again with its label back to "Create account" — and a fast
-      // second click fired a second `signUp.email`. It stays disabled until the
-      // navigation replaces this page.
+      navigating = true;
       router.replace(destination);
       return;
     } catch {
@@ -123,7 +138,7 @@ function SignInPageInner() {
       // "nothing happened", so they pressed the button again.
       setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
-      setBusy(null);
+      if (!navigating) setBusy(null);
     }
   }, [authClient, name, email, password, router, destination]);
 
@@ -133,58 +148,82 @@ function SignInPageInner() {
     const normalizedEmail = email.trim().toLowerCase();
 
     setBusy('signin');
+    let navigating = false;
     try {
       const result = await authClient.signIn.email({
         email: normalizedEmail,
         password,
         callbackURL: destination,
       });
-      if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
+      if (result.error) {
+        // F3.13: `'Sign in failed.'` said nothing about what to do next.
+        setMessage(
+          isEmailVerificationPending(result.error)
+            ? 'Check your email for a verification link before signing in.'
+            : (result.error.message ?? "That email and password don't match an account."),
+        );
+        return;
+      }
       useGuestStore.getState().clearGuestSession();
       // F3.15 — see handleSignUp.
+      navigating = true;
       router.replace(destination);
       return;
     } catch {
       // F3.7 — see handleSignUp.
       setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
-      setBusy(null);
+      if (!navigating) setBusy(null);
     }
   }, [authClient, email, password, router, destination]);
+
+  /**
+   * Ask BetterAuth for the provider's authorization URL.
+   *
+   * Named, because the popup-blocked fallback needs the same URL. `callbackURL`
+   * differs: the popup lands on `/auth/popup-complete` so it can `postMessage`
+   * its opener; a full-page redirect has no opener and must land on the real
+   * destination.
+   */
+  const resolveGoogleAuthUrl = useCallback(
+    async (callbackURL: string): Promise<string> => {
+      const socialSignIn = (authClient.signIn as unknown as {
+        social?: (args: Record<string, unknown>) => Promise<{
+          error?: { message?: string };
+          data?: { url?: string };
+          url?: string;
+        }>;
+      })?.social;
+      if (typeof socialSignIn !== 'function') {
+        throw new Error('Google sign-in is unavailable right now.');
+      }
+      const started = await socialSignIn({
+        provider: 'google',
+        callbackURL,
+        disableRedirect: true,
+      });
+      if (started?.error) {
+        throw new Error(started.error.message ?? 'Google sign-in is unavailable right now.');
+      }
+      const url = started?.data?.url ?? started?.url;
+      if (!url || typeof url !== 'string') {
+        throw new Error('Google sign-in is unavailable right now.');
+      }
+      return url;
+    },
+    [authClient],
+  );
 
   const handleGoogleSignIn = useCallback(async () => {
     clearMessage();
     setBusy('google');
+    let navigating = false;
     try {
       const result = await openOAuthPopup({
         provider: 'google',
         // Resolved AFTER the window opens, so the user gesture is not consumed
         // first — that ordering is why iOS Safari blocked this almost always.
-        resolveUrl: async () => {
-          const socialSignIn = (authClient.signIn as unknown as {
-            social?: (args: Record<string, unknown>) => Promise<{
-              error?: { message?: string };
-              data?: { url?: string };
-              url?: string;
-            }>;
-          })?.social;
-          if (typeof socialSignIn !== 'function') {
-            throw new Error('Google sign-in is unavailable right now.');
-          }
-          const started = await socialSignIn({
-            provider: 'google',
-            callbackURL: '/auth/popup-complete?provider=google',
-            disableRedirect: true,
-          });
-          if (started?.error) {
-            throw new Error(started.error.message ?? 'Google sign-in failed.');
-          }
-          const url = started?.data?.url ?? started?.url;
-          if (!url || typeof url !== 'string') {
-            throw new Error('Google sign-in is unavailable right now.');
-          }
-          return url;
-        },
+        resolveUrl: () => resolveGoogleAuthUrl('/auth/popup-complete?provider=google'),
         // F4.2 / F4.3: a `postMessage` with `success !== false` was treated as
         // PROOF of authentication. If the callback set no cookie for any
         // reason, the user was bounced onward, saw the signed-out form again,
@@ -201,8 +240,20 @@ function SignInPageInner() {
         if (result.reason === 'popup-blocked') {
           // Falling back to a full-page redirect is the only actionable
           // response on iOS, where "allow popups" is buried in Settings.
+          //
+          // F4.4: this used to navigate to
+          // `/api/auth/sign-in/social?provider=google&…` — a top-level GET to
+          // an endpoint BetterAuth only serves over POST. The route file next
+          // to it spells out why that cannot work: `signInSocial` answers with
+          // `c.json({url, redirect:true})` at status **200**, and browsers do
+          // not follow `Location` on a 200. The user was shown raw JSON, under
+          // a message promising "We'll try again in this tab."
+          //
+          // Resolve the provider URL the same way the popup does, then
+          // navigate this tab to Google itself.
           setMessage(oauthFailureMessage(result, 'Google'));
-          window.location.href = `/api/auth/sign-in/social?provider=google&callbackURL=${encodeURIComponent(destination)}`;
+          navigating = true;
+          window.location.href = await resolveGoogleAuthUrl(destination);
           return;
         }
         setMessage(oauthFailureMessage(result, 'Google'));
@@ -219,14 +270,15 @@ function SignInPageInner() {
 
       useGuestStore.getState().clearGuestSession();
       // F3.15 — see handleSignUp.
+      navigating = true;
       router.replace(destination);
       return;
     } catch {
       setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
-      setBusy(null);
+      if (!navigating) setBusy(null);
     }
-  }, [openOAuthPopup, authClient, router, destination]);
+  }, [openOAuthPopup, authClient, router, destination, resolveGoogleAuthUrl]);
 
   /* ── Already logged in ─────────────────────────────────── */
   // In an effect, not during render: calling router.replace() inline double-
@@ -277,6 +329,7 @@ function SignInPageInner() {
             name={name}
             email={email}
             password={password}
+            onFieldChange={clearMessage}
             onNameChange={setName}
             onEmailChange={setEmail}
             onPasswordChange={setPassword}
