@@ -982,6 +982,17 @@ const OnboardingFlow: React.FC = () => {
       if (!onboardingUserName.trim()) {
         setOnboardingUserInfo(normalizedName, onboardingUserRole);
       }
+      // F6.4: `clearGuestSession()` was on the sign-in page and on sign-out,
+      // but not on either OnboardingFlow handler — and `/onboarding` does not
+      // mount `PersistenceBootstrap`, so a guest who created an account right
+      // here stayed flagged as a guest for the whole page. The banner kept
+      // telling them their work was local-only while it was being saved to
+      // their new account.
+      //
+      // It keeps the local data (that is what `clearGuestSession` is for, as
+      // opposed to `abandonGuestData`), so the import still finds it on the
+      // next authenticated mount.
+      useGuestStore.getState().clearGuestSession();
       setAuthNotice('Signed up successfully.');
     } catch {
       // F3.7: there was no catch here — only `try`/`finally`. A dropped
@@ -1028,6 +1039,8 @@ const OnboardingFlow: React.FC = () => {
       }
       await refetchAuthSession();
       await hydrateNameFromSession();
+      // F6.4 — see handleAuthSignUp.
+      useGuestStore.getState().clearGuestSession();
       setAuthNotice('Signed in successfully.');
     } catch {
       // F3.7 — see handleAuthSignUp.
