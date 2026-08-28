@@ -216,7 +216,20 @@ function OAuthRedirectToast() {
   return null;
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  initialHasSession,
+}: {
+  children: React.ReactNode;
+  /**
+   * P1-15(a): whether a session existed when the server rendered this.
+   *
+   * The layout is a server component and can read the session cookie before a
+   * single byte reaches the browser, so the shell no longer has to guess while
+   * `useSession()` resolves.
+   */
+  initialHasSession: boolean;
+}) {
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
   const onboardingHydrated = useOnboardingHydrated();
   const isGuest = useGuestStore((s) => s.isGuest);
@@ -240,12 +253,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * F5.6: whether there is anyone to load data FOR.
    *
    * `useSession()` is already mounted below for the expiry watcher; this reads
-   * the same hook so the overlay and the watcher cannot disagree. While the
-   * session is still resolving we treat it as present — the alternative is a
-   * flash of the app before the overlay appears.
+   * the same hook so the overlay and the watcher cannot disagree.
+   *
+   * P1-15(a): while the hook is still resolving this used to assume `true` —
+   * the least-bad guess at the time, because the alternative was a flash of
+   * the app before the overlay appeared. It is no longer a guess. The layout
+   * above is a server component that reads the session cookie during SSR, so
+   * the correct answer is available on the very first paint and the client
+   * hook only has to confirm it.
    */
   const { data: shellSession, isPending: shellSessionPending } = authClient.useSession();
-  const hasSession = shellSessionPending || Boolean(shellSession?.user);
+  const hasSession = shellSessionPending ? initialHasSession : Boolean(shellSession?.user);
 
   const storesHydrated = eventsHydrated && tasksHydrated && focusHydrated;
   const allHydrated = storesHydrated || hydrationTimeoutFired;

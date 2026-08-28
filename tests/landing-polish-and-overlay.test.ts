@@ -220,9 +220,21 @@ describe('F5.6 — the hydration overlay', () => {
     expect(code).toContain('{onboardingCompleted && hasSession && !allHydrated && (');
   });
 
-  it('treats a still-resolving session as present', () => {
-    // The alternative is a flash of the app before the overlay appears.
-    expect(code).toContain('shellSessionPending || Boolean(shellSession?.user)');
+  it('does not have to guess while the session resolves (P1-15a)', () => {
+    // This asserted `shellSessionPending || Boolean(shellSession?.user)` — the
+    // least-bad guess at the time. Assuming "present" avoided a flash of the
+    // app before the overlay, at the cost of briefly showing a signed-out
+    // visitor an overlay meant for someone waiting on their data.
+    //
+    // The layout is now a server component that reads the session cookie
+    // during SSR, so the correct answer is available on the first paint. The
+    // F5.6 property this test was written to protect is better served, not
+    // dropped: a signed-in user still gets the overlay with no flash, and a
+    // signed-out one now never sees it at all.
+    expect(code).toContain(
+      'const hasSession = shellSessionPending ? initialHasSession : Boolean(shellSession?.user);',
+    );
+    expect(code).not.toContain('shellSessionPending || Boolean(shellSession?.user)');
   });
 
   it('says what it is doing', () => {
