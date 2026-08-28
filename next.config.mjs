@@ -19,6 +19,25 @@ const withBundleAnalyzer = bundleAnalyzer({
  *   our own `/api/*`, which then talks to Gemini / Google / Microsoft
  *   server-side). If that changes, extend the list.
  */
+const isDev = process.env.NODE_ENV !== 'production';
+
+/**
+ * P1-5: `'unsafe-eval'` was sent in production as well as development.
+ *
+ * It is genuinely required in dev — Turbopack's HMR and React Refresh evaluate
+ * module code at runtime — and genuinely not required by the production bundle.
+ * Shipping it anyway hands any injected script the one primitive CSP exists to
+ * take away, which matters most on exactly the pages that render user content.
+ *
+ * `'wasm-unsafe-eval'` replaces it in production rather than dropping the line
+ * entirely: the dotLottie renderer instantiates a WebAssembly module, and
+ * WASM compilation is gated behind an eval-family source. That directive
+ * permits WASM and nothing else — no `eval`, no `new Function`.
+ */
+const scriptSrc = isDev
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  : "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'";
+
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -41,7 +60,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      scriptSrc,
       // P1-5 — `connect-src 'self' https:` permitted exfiltration to ANY host
       // on the internet, which is what turns a readable session token into a
       // full account takeover. The only genuine cross-origin fetches are the
