@@ -83,8 +83,20 @@
      `!important`, directly under a comment claiming keyboard users kept their
      outline. They did not: every button, link, input, dialog close button and
      calendar cell in the application had zero visible focus indicator, an
-     app-wide WCAG 2.1 AA 2.4.7 (Focus Visible) failure. */
-  *:focus {
+     app-wide WCAG 2.1 AA 2.4.7 (Focus Visible) failure.
+
+     The `:not(:focus-visible)` is load-bearing, and the first attempt at this
+     fix omitted it. A keyboard-focused element is BOTH `:focus` and
+     `:focus-visible`, so a bare `*:focus { outline: none !important }` also
+     matched it — and an important author declaration wins over a normal one
+     before specificity or layer order is ever consulted. The ring below never
+     painted, under a comment asserting it did.
+
+     `box-shadow` matters just as much as `outline` here: Tailwind's entire
+     ring system compiles to box-shadow, so the blanket rule also silently
+     disabled every `focus-visible:ring-*` utility in the app, including the
+     ones the auth form relies on. */
+  *:focus:not(:focus-visible) {
     outline: none !important;
     box-shadow: none !important;
   }
