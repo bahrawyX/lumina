@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { createUserScopedStorage } from '@/lib/persistence/userScopedStorage';
 
 const MIN_FOCUS_MINUTES = 5;
 const MAX_FOCUS_MINUTES = 240;
@@ -140,6 +141,21 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'lumina-settings',
+      /**
+       * F5.3 (second half): bucketed per account.
+       *
+       * The name was global, so one browser had one settings row no matter how
+       * many people used it — account B hydrated from account A's work hours,
+       * timezone and notification preferences until the cross-user wipe forced
+       * a reload. `partialize` below and the F5.4 restart fix narrowed that;
+       * this closes the window before the reload lands.
+       *
+       * See `userScopedStorage.ts` for why the bucket is resolved inside
+       * get/set rather than via `skipHydration` + a rehydrate: `/onboarding`
+       * reads this store and does not mount `PersistenceBootstrap`, so a
+       * hydration handshake would leave it empty exactly there.
+       */
+      storage: createJSONStorage(createUserScopedStorage),
       version: 1,
       /**
        * F5.3: this had no `partialize`, so the whole slice was written to
