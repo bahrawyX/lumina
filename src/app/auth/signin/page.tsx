@@ -2,64 +2,14 @@
 
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useLuminaAuthClient } from '@/components/AuthProvider';
 import { GoogleProviderIcon } from '@/components/icons';
 import { useGuestStore } from '@/store/useGuestStore';
-import { cn } from '@/lib/utils';
 import { resolveNextDestination } from '@/lib/auth/nextDestination';
 import { oauthFailureMessage, useOAuthPopup } from '@/hooks/useOAuthPopup';
-import {
-  MIN_PASSWORD_LENGTH,
-  getFieldError,
-  nameSchema,
-  emailSchema,
-  passwordCreateSchema,
-  passwordSchema,
-} from '@/lib/validation';
-
-/* ── Constants ──────────────────────────────────────────────── */
-type AuthMode = 'signin' | 'signup';
+import { EmailAuthForm, type AuthMode } from '@/components/auth/EmailAuthForm';
 
 /* ── Helpers ────────────────────────────────────────────────── */
-const AuthField: React.FC<{
-  label: string;
-  htmlFor?: string;
-  error?: string;
-  children: React.ReactNode;
-}> = ({ label, htmlFor, error, children }) => (
-  <div className="flex flex-col gap-1">
-    <label htmlFor={htmlFor} className="text-xs font-medium text-foreground/60 select-none">
-      {label}{' '}
-      <span className="text-destructive/50" aria-hidden="true">*</span>
-    </label>
-    {children}
-    {/* F3.9: the errors were animated text with no programmatic relationship
-        to their input, so a screen reader user submitting the form was told
-        nothing at all. The id is what `aria-describedby` on the input points
-        at, and `role="alert"` is what makes a newly appearing message announce
-        itself.
-
-        FOUND WHILE FIXING THAT: this was an `AnimatePresence` + `motion.p`, and
-        the exit phase never finalises — verified in a browser, the cleared
-        error sat in the DOM at `opacity: 0; height: 0` indefinitely rather than
-        unmounting. Invisible, so it went unnoticed; but with `role="alert"` on
-        it, stale error text would have stayed in the accessibility tree after
-        the user had fixed the field. `AppShell` documents the same React 19 +
-        Framer Motion failure for its hydration overlay and reaches the same
-        conclusion: a plain conditional render removes the node in one frame,
-        and a 140ms tween on an error message is not worth that class of bug. */}
-    {error && (
-      <p
-        id={htmlFor ? `${htmlFor}-error` : undefined}
-        role="alert"
-        className="text-xs text-destructive overflow-hidden leading-tight"
-      >
-        {error}
-      </p>
-    )}
-  </div>
-);
 
 /* ═══════════════════════════════════════════════════════════════
    SIGN IN / SIGN UP PAGE
@@ -78,78 +28,40 @@ function SignInPageInner() {
   const searchParams = useSearchParams();
   const destination = resolveNextDestination(searchParams.get('next'));
 
-  const [authMode, setAuthMode] = useState<AuthMode>('signin');
+  /**
+   * F2.2: the mode was local state with no `useSearchParams`, so
+   * `/auth/signin?mode=signup` did nothing, nobody could be linked straight to
+   * the sign-up form, and pressing Back after tapping "Create account" left the
+   * app entirely instead of returning to Sign in.
+   *
+   * That is *why* marketing routes "Get started" to `/onboarding` — which is
+   * why there were two forms at all (F2.1).
+   */
+  const authMode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
+
+  const switchMode = useCallback(
+    (next: AuthMode) => {
+      setMessage(null);
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === 'signup') params.set('mode', 'signup');
+      else params.delete('mode');
+      // `push`, not `replace`. The audit's complaint is precisely that Back
+      // after tapping "Create account" left the app entirely instead of
+      // returning to Sign in — `replace` keeps that behaviour. The cost is that
+      // toggling the tabs N times costs N Backs to leave the page, which is the
+      // normal trade for putting a view state in the URL, and the reason it is
+      // in the URL at all is so `?mode=signup` can be linked to (F2.3).
+      router.push(`/auth/signin${params.toString() ? `?${params}` : ''}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<'signup' | 'signin' | 'google' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const clearErr = (field: string) =>
-    setFieldErrors((prev) => {
-      const next = { ...prev };
-      delete next[field];
-      fieldErrorsRef.current = next;
-      return next;
-    });
 
   const clearMessage = () => setMessage(null);
-
-  /**
-   * F3.12: the mode toggles cleared only the page-level message. Field errors
-   * survived, so failing sign-in validation and then switching to "Create
-   * account" showed errors about rules that no longer applied — including a
-   * password-length error against the sign-in schema, which has none.
-   */
-  const switchMode = (mode: AuthMode) => {
-    setAuthMode(mode);
-    setMessage(null);
-    setFieldErrors({});
-    fieldErrorsRef.current = {};
-  };
-
-  /**
-   * F3.9: wires each input to its own error text and marks it invalid.
-   * Without this the red border was the ONLY signal, which is invisible to a
-   * screen reader and to anyone who cannot distinguish the colour.
-   */
-  const a11yProps = (field: string, id: string) => ({
-    'aria-invalid': fieldErrors[field] ? (true as const) : undefined,
-    'aria-describedby': fieldErrors[field] ? `${id}-error` : undefined,
-    required: true,
-  });
-
-  const inputCls = (field: string) =>
-    cn(
-      'w-full px-3.5 py-2.5 rounded-lg bg-background border text-sm text-foreground',
-      'outline-none focus-visible:ring-2 transition-colors duration-150 placeholder:text-muted-foreground/40',
-      fieldErrors[field]
-        ? 'border-destructive focus-visible:ring-destructive/20'
-        : 'border-border/60 focus-visible:ring-primary/20 focus-visible:border-primary/50',
-    );
-
-  // `setFieldErrors` is async, so `handleSubmit` cannot read the result of
-  // `validate()` from state in the same tick. The ref mirrors it.
-  const fieldErrorsRef = React.useRef<Record<string, string>>({});
-
-  const validate = (): boolean => {
-    const errors: Record<string, string> = {};
-    if (authMode === 'signup') {
-      const e = getFieldError(nameSchema, name);
-      if (e) errors.name = e;
-    }
-    const ee = getFieldError(emailSchema, email);
-    if (ee) errors.email = ee;
-    const pe = getFieldError(
-      authMode === 'signup' ? passwordCreateSchema : passwordSchema,
-      password,
-    );
-    if (pe) errors.password = pe;
-    setFieldErrors(errors);
-    fieldErrorsRef.current = errors;
-    return Object.keys(errors).length === 0;
-  };
 
   /* ── Auth handlers ─────────────────────────────────────── */
   const handleSignUp = useCallback(async () => {
@@ -197,7 +109,13 @@ function SignInPageInner() {
       }
 
       useGuestStore.getState().clearGuestSession();
+      // F3.15: `busy` is deliberately NOT cleared on success. The client
+      // transition takes hundreds of milliseconds, during which the button was
+      // enabled again with its label back to "Create account" — and a fast
+      // second click fired a second `signUp.email`. It stays disabled until the
+      // navigation replaces this page.
       router.replace(destination);
+      return;
     } catch {
       // F3.7: there was no catch here. A dropped connection or a 500 threw out
       // of `authClient`, `finally` cleared the spinner, and the user was left
@@ -223,7 +141,9 @@ function SignInPageInner() {
       });
       if (result.error) { setMessage(result.error.message ?? 'Sign in failed.'); return; }
       useGuestStore.getState().clearGuestSession();
+      // F3.15 — see handleSignUp.
       router.replace(destination);
+      return;
     } catch {
       // F3.7 — see handleSignUp.
       setMessage("We couldn't reach Lumina. Check your connection and try again.");
@@ -298,27 +218,15 @@ function SignInPageInner() {
       }
 
       useGuestStore.getState().clearGuestSession();
+      // F3.15 — see handleSignUp.
       router.replace(destination);
+      return;
     } catch {
       setMessage("We couldn't reach Lumina. Check your connection and try again.");
     } finally {
       setBusy(null);
     }
   }, [openOAuthPopup, authClient, router, destination]);
-
-  const handleSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!validate()) {
-      // F3.9: a failed submit left focus on the button, so a keyboard or screen
-      // reader user had to hunt for what was wrong. Move to the first field
-      // that failed, in DOM order.
-      const first = ['name', 'email', 'password'].find((f) => fieldErrorsRef.current[f]);
-      if (first) document.getElementById(`auth-${first}`)?.focus();
-      return;
-    }
-    if (authMode === 'signup') handleSignUp();
-    else handleSignIn();
-  };
 
   /* ── Already logged in ─────────────────────────────────── */
   // In an effect, not during render: calling router.replace() inline double-
@@ -356,153 +264,38 @@ function SignInPageInner() {
 
         {/* Card */}
         <div className="rounded-xl border border-border/60 bg-card p-6 shadow-card space-y-5">
-          {/* Tab strip */}
-          <div className="flex p-0.5 rounded-lg border border-border/60 bg-muted/30">
-            <button
-              type="button"
-              onClick={() => switchMode('signin')}
-              disabled={Boolean(busy)}
-              className={cn(
-                'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
-                authMode === 'signin'
-                  ? 'bg-background shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode('signup')}
-              disabled={Boolean(busy)}
-              className={cn(
-                'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
-                authMode === 'signup'
-                  ? 'bg-background shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Create account
-            </button>
-          </div>
-
-          {/* F3.8: there was no `<form>` element. Enter did not submit (an
-              ad-hoc `onKeyDown` was doing it by hand), and password managers
-              never offered to SAVE the credential — they look for a form
-              submission, so a user could autofill on the next visit only if
-              they had saved it some other way. */}
-          <form onSubmit={handleSubmit} noValidate>
-          {/* Fields */}
-          <div className="space-y-3.5">
-            <AnimatePresence initial={false}>
-              {authMode === 'signup' && (
-                <motion.div
-                  key="name-field"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="overflow-hidden"
-                >
-                  <AuthField label="Full name" htmlFor="auth-name" error={fieldErrors.name}>
-                    <input
-                      id="auth-name"
-                      type="text"
-                      value={name}
-                      onChange={(e) => { setName(e.target.value); clearErr('name'); }}
-                      placeholder="Jane Smith"
-                      autoComplete="name"
-                      autoFocus={authMode === 'signup'}
-                      disabled={Boolean(busy)}
-                      {...a11yProps('name', 'auth-name')}
-                      className={inputCls('name')}
-                    />
-                  </AuthField>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AuthField label="Email address" htmlFor="auth-email" error={fieldErrors.email}>
-              <input
-                id="auth-email"
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); clearErr('email'); }}
-                placeholder="you@example.com"
-                autoComplete="email"
-                autoFocus={authMode === 'signin'}
-                disabled={Boolean(busy)}
-                {...a11yProps('email', 'auth-email')}
-                className={inputCls('email')}
-              />
-            </AuthField>
-
-            <AuthField
-              label={authMode === 'signup' ? 'Create password' : 'Password'}
-              htmlFor="auth-password"
-              error={fieldErrors.password}
-            >
-              <input
-                id="auth-password"
-                type="password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); clearErr('password'); }}
-                placeholder={authMode === 'signup' ? `Min. ${MIN_PASSWORD_LENGTH} characters` : '••••••••'}
-                // F3.5 — this was hard-coded to "new-password" in BOTH modes,
-                // with a decoy `name`, `data-lpignore` and `data-1p-ignore`,
-                // justified as stopping anyone on a shared device signing in
-                // without typing.
-                //
-                // That is not a security control. The saved credential is
-                // already gated by the OS or browser profile, and the session
-                // cookie makes the shared-device scenario moot anyway. What it
-                // actually did was force every returning user to hand-type
-                // their password — which pushes people toward short, memorable,
-                // reused passwords, the exact opposite of the stated goal — and
-                // block 1Password and LastPass users outright.
-                //
-                // It also contradicted this app's OTHER form: OnboardingFlow
-                // already did the correct thing, so the same user got different
-                // autofill behaviour on two screens of the same product.
-                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-                name={authMode === 'signup' ? 'new-password' : 'current-password'}
-                disabled={Boolean(busy)}
-                {...a11yProps('password', 'auth-password')}
-                className={inputCls('password')}
-              />
-            </AuthField>
-          </div>
-
-          {authMode === 'signin' && (
-            <p className="text-right">
-              <a
-                href="/auth/forgot-password"
-                className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-              >
-                Forgot your password?
-              </a>
-            </p>
-          )}
-
-          {/* Error */}
-          {message && Object.keys(fieldErrors).length === 0 && (
-            // F3.9: this was a silent `<p>`. `role="alert"` is what makes a
-            // newly rendered message announce itself without stealing focus.
-            <p role="alert" className="text-xs text-destructive -mt-1">{message}</p>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={Boolean(busy)}
-            className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          {/*
+            F2.1: the tab strip, fields, validation, error rendering and submit
+            button that used to live here were a near-verbatim copy of
+            `OnboardingFlow`'s `StepAuth`. They had already drifted — password
+            autofill, the guest-flag reset, and which extras each offered — and
+            every fix had to be made twice. One component now, consumed by both.
+          */}
+          <EmailAuthForm
+            mode={authMode}
+            onModeChange={switchMode}
+            name={name}
+            email={email}
+            password={password}
+            onNameChange={setName}
+            onEmailChange={setEmail}
+            onPasswordChange={setPassword}
+            busy={busy}
+            error={message}
+            onSubmit={(mode) => (mode === 'signup' ? handleSignUp() : handleSignIn())}
+            belowFields={
+              authMode === 'signin' ? (
+                <p className="text-right">
+                  <a
+                    href="/auth/forgot-password"
+                    className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                  >
+                    Forgot your password?
+                  </a>
+                </p>
+              ) : null
+            }
           >
-            {authMode === 'signup'
-              ? (busy === 'signup' ? 'Creating account…' : 'Create account')
-              : (busy === 'signin' ? 'Signing in…' : 'Sign in')}
-          </button>
-          </form>
-
           {/* Divider */}
           <div className="relative">
             <div className="h-px bg-border/50" />
@@ -525,6 +318,7 @@ function SignInPageInner() {
               </>
             )}
           </button>
+          </EmailAuthForm>
         </div>
 
         {/* Back link */}

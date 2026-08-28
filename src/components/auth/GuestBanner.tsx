@@ -8,7 +8,7 @@ import { useGuestStore } from '@/store/useGuestStore';
 /**
  * Slim top-of-content warning shown while the user operates in guest mode.
  * Dismissible — dismissal is persisted so it doesn't reappear on refresh.
- * Links to /onboarding to convert the guest to a registered user.
+ * Links to the shared auth form (sign-up tab) to convert the guest.
  */
 export const GuestBanner: React.FC = () => {
   const isGuest = useGuestStore((s) => s.isGuest);
@@ -51,8 +51,13 @@ export const GuestBanner: React.FC = () => {
               your tasks, events, plan and documents are saved in this browser only.
               They stay here across reloads, but are lost if you sign out, clear
               site data, or switch device or browser.{' '}
+              {/* F2.3: this said "Create an account" and landed on the SIGN IN
+                  tab, while `GuestUpgradeModal`'s equivalent CTA went to
+                  `/onboarding` — same intent, two destinations, two different
+                  forms. Both now open the same form on the tab the copy
+                  promises, which F2.2's `?mode=` makes possible. */}
               <Link
-                href="/auth/signin"
+                href="/auth/signin?mode=signup"
                 className="font-semibold underline underline-offset-2 hover:opacity-70 transition-opacity"
               >
                 Create an account to save permanently →

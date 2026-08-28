@@ -10,8 +10,24 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+/**
+ * F2.1 folded both forms into one component, so these assertions now target it
+ * directly. That is the stronger claim: it proves the fixes are true on BOTH
+ * `/auth/signin` and the onboarding step, which is the whole point — previously
+ * every one of them had been applied to only one of the two.
+ */
 const src = readFileSync(
+  join(process.cwd(), 'src', 'components', 'auth', 'EmailAuthForm.tsx'),
+  'utf8',
+);
+
+const page = readFileSync(
   join(process.cwd(), 'src', 'app', 'auth', 'signin', 'page.tsx'),
+  'utf8',
+);
+
+const onboarding = readFileSync(
+  join(process.cwd(), 'src', 'components', 'OnboardingFlow.tsx'),
   'utf8',
 );
 
@@ -28,12 +44,12 @@ describe('F3.7 — a failed request says so', () => {
     // There was no catch on sign-in or sign-up: a dropped connection threw out
     // of `authClient`, `finally` cleared the spinner, and the user was left
     // looking at an unchanged form — indistinguishable from "nothing happened".
-    const catches = code.match(/\} catch \{[\s\S]*?We couldn't reach Lumina/g) ?? [];
+    const catches = page.match(/\} catch \{[\s\S]*?We couldn't reach Lumina/g) ?? [];
     expect(catches.length).toBeGreaterThanOrEqual(3);
   });
 
   it('the message names the cause and the next action', () => {
-    expect(code).toContain("Check your connection and try again.");
+    expect(page).toContain("Check your connection and try again.");
   });
 });
 
@@ -42,7 +58,7 @@ describe('F3.8 — it is a real form', () => {
     // Password managers look for a form submission before offering to SAVE a
     // credential, so without one a user could never get autofill on the next
     // visit — which is the same outcome F3.5's `data-lpignore` was reverted for.
-    expect(code).toContain('<form onSubmit={handleSubmit} noValidate>');
+    expect(code).toMatch(/<form onSubmit=\{handleSubmit\} noValidate/);
   });
 
   it('the primary button submits it', () => {
@@ -63,7 +79,7 @@ describe('F3.9 — errors are reachable by assistive tech', () => {
   });
 
   it('the error element carries the id that describedby resolves to', () => {
-    expect(code).toContain('id={htmlFor ? `${htmlFor}-error` : undefined}');
+    expect(code).toContain('id={`${htmlFor}-error`}');
   });
 
   it('errors announce themselves', () => {
@@ -86,6 +102,20 @@ describe('F3.9 — errors are reachable by assistive tech', () => {
     // `setFieldErrors` does not settle before `handleSubmit` continues.
     expect(code).toContain('fieldErrorsRef');
   });
+
+  it('BOTH surfaces render the one form', () => {
+    // F2.1: this is the assertion that stops the two implementations diverging
+    // again. Every fix above is now true on the onboarding step too.
+    expect(page).toContain('<EmailAuthForm');
+    expect(onboarding).toContain('<EmailAuthForm');
+  });
+
+  it('neither surface keeps its own copy of the field machinery', () => {
+    for (const [name, text] of [['signin page', page], ['onboarding', onboarding]] as const) {
+      expect(text, name).not.toContain('const inputCls =');
+      expect(text, name).not.toContain('const validate = (): boolean =>');
+    }
+  });
 });
 
 describe('F3.9 — the error node actually unmounts', () => {
@@ -101,7 +131,7 @@ describe('F3.9 — the error node actually unmounts', () => {
     // the slice would silently run to end-of-file.
     const field = code.slice(
       code.indexOf('const AuthField'),
-      code.indexOf('function SignInPageInner'),
+      code.indexOf('export function EmailAuthForm'),
     );
     expect(field).not.toContain('AnimatePresence');
     expect(field).not.toContain('motion.p');
@@ -118,11 +148,16 @@ describe('F3.12 — switching mode clears what no longer applies', () => {
     expect(code).toContain("onClick={() => switchMode('signup')}");
   });
 
-  it('the handler clears field errors and the message', () => {
-    const fn = code.slice(code.indexOf('const switchMode'), code.indexOf('const a11yProps'));
-    expect(fn).toContain('setMessage(null)');
-    expect(fn).toContain('setFieldErrors({})');
-    expect(fn).toContain('fieldErrorsRef.current = {}');
+  it('the handler clears the field errors before switching', () => {
+    const fn = code.slice(code.indexOf('const switchMode'), code.indexOf('const validate'));
+    expect(fn).toContain('setErrors({})');
+    expect(fn).toContain('onModeChange(next)');
+  });
+
+  it('the page-level message is cleared by the caller that owns it', () => {
+    // The form does not own `message` — the surfaces do, because each has its
+    // own set of failure strings.
+    expect(page).toContain('setMessage(null);');
   });
 });
 
@@ -130,15 +165,15 @@ describe('F3.13 — the page states its own task', () => {
   it('has an h1', () => {
     // The largest text was a `<span>` wordmark, so a screen reader's heading
     // list was empty.
-    expect(code).toContain('<h1');
+    expect(page).toContain('<h1');
   });
 
   it('names the task rather than just the product', () => {
-    expect(code).toContain('Sign in to Lumina');
-    expect(code).toContain('Create your Lumina account');
+    expect(page).toContain('Sign in to Lumina');
+    expect(page).toContain('Create your Lumina account');
   });
 
   it('keeps the wordmark visual without reading it twice', () => {
-    expect(code).toContain('<span aria-hidden="true">Lumina</span>');
+    expect(page).toContain('<span aria-hidden="true">Lumina</span>');
   });
 });

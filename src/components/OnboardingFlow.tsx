@@ -17,14 +17,7 @@ import { GoogleProviderIcon, OutlookProviderIcon } from './icons';
 import { useGuestStore } from '../store/useGuestStore';
 import { signOutEverywhere } from '@/lib/auth/signOut';
 import { oauthFailureMessage, useOAuthPopup } from '@/hooks/useOAuthPopup';
-import {
-  MIN_PASSWORD_LENGTH,
-  getFieldError,
-  nameSchema,
-  emailSchema,
-  passwordCreateSchema,
-  passwordSchema,
-} from '../lib/validation';
+import { EmailAuthForm } from '@/components/auth/EmailAuthForm';
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 const TOTAL_STEPS = 7; // 0..6
@@ -227,33 +220,6 @@ StepWelcome.displayName = 'StepWelcome';
 ══════════════════════════════════════════════════════════════════════════════ */
 
 /** Label-above-field wrapper with inline error message. */
-const AuthField: React.FC<{
-  label: string;
-  htmlFor?: string;
-  error?: string;
-  children: React.ReactNode;
-}> = ({ label, htmlFor, error, children }) => (
-  <div className="flex flex-col gap-1">
-    <label htmlFor={htmlFor} className="text-xs font-medium text-foreground/60 select-none">
-      {label}{' '}
-      <span className="text-destructive/50" aria-hidden="true">*</span>
-    </label>
-    {children}
-    <AnimatePresence>
-      {error && (
-        <motion.p
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.14 }}
-          className="text-xs text-destructive overflow-hidden leading-tight"
-        >
-          {error}
-        </motion.p>
-      )}
-    </AnimatePresence>
-  </div>
-);
 
 const StepAuth = memo<{
   authStatus: 'loading' | 'logged out' | 'logged in';
@@ -306,48 +272,12 @@ const StepAuth = memo<{
   onSwitchToSignIn,
   onContinueAsGuest,
 }) => {
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [guestExpanded, setGuestExpanded] = useState(false);
-
-  const clearErr = (field: string) =>
-    setFieldErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
-
-  const validate = (): boolean => {
-    const errors: Record<string, string> = {};
-    if (authMode === 'signup') {
-      const e = getFieldError(nameSchema, authName);
-      if (e) errors.name = e;
-    }
-    const ee = getFieldError(emailSchema, authEmail);
-    if (ee) errors.email = ee;
-    const pe = getFieldError(
-      authMode === 'signup' ? passwordCreateSchema : passwordSchema,
-      authPassword,
-    );
-    if (pe) errors.password = pe;
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = () => {
-    if (!validate()) return;
-    if (authMode === 'signup') onSignUp();
-    else onSignIn();
-  };
-
-  const inputCls = (field: string) =>
-    cn(
-      'w-full px-3.5 py-2.5 rounded-lg bg-background border text-sm text-foreground',
-      'outline-none focus-visible:ring-2 transition-colors duration-150 placeholder:text-muted-foreground/40',
-      fieldErrors[field]
-        ? 'border-destructive focus-visible:ring-destructive/20'
-        : 'border-border/60 focus-visible:ring-primary/20 focus-visible:border-primary/50',
-    );
 
   /* ── Logged-in state ─────────────────────────────────────────────── */
   if (authStatus === 'logged in') {
     const initials = authUserName
-      ? authUserName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+      ? authUserName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
       : (authUserEmail?.[0] ?? '?').toUpperCase();
 
     return (
@@ -395,120 +325,30 @@ const StepAuth = memo<{
       description="Sign in once and your settings follow you across sessions and devices."
     >
       <div className="space-y-5">
-        {/* Mode tab strip */}
-        <div className="flex p-0.5 rounded-lg border border-border/60 bg-muted/30">
-          <button
-            type="button"
-            onClick={onSwitchToSignIn}
-            disabled={Boolean(authBusy)}
-            className={cn(
-              'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
-              authMode === 'signin'
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            onClick={onSwitchToSignUp}
-            disabled={Boolean(authBusy)}
-            className={cn(
-              'flex-1 text-sm py-1.5 px-3 rounded-md font-medium transition-all duration-150',
-              authMode === 'signup'
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Create account
-          </button>
-        </div>
-
-        {/* Fields */}
-        <div className="space-y-3.5">
-          <AnimatePresence initial={false}>
-            {authMode === 'signup' && (
-              <motion.div
-                key="name-field"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.18 }}
-                className="overflow-hidden"
-              >
-                <AuthField label="Full name" htmlFor="auth-name" error={fieldErrors.name}>
-                  <input
-                    id="auth-name"
-                    type="text"
-                    name="onboarding-auth-name"
-                    value={authName}
-                    onChange={(e) => { onAuthNameChange(e.target.value); clearErr('name'); }}
-                    placeholder="Jane Smith"
-                    autoComplete="name"
-                    autoFocus={authMode === 'signup'}
-                    disabled={Boolean(authBusy)}
-                    className={inputCls('name')}
-                  />
-                </AuthField>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AuthField label="Email address" htmlFor="auth-email" error={fieldErrors.email}>
-            <input
-              id="auth-email"
-              type="email"
-              name="onboarding-auth-email"
-              value={authEmail}
-              onChange={(e) => { onAuthEmailChange(e.target.value); clearErr('email'); }}
-              placeholder="you@example.com"
-              autoComplete="email"
-              disabled={Boolean(authBusy)}
-              className={inputCls('email')}
-            />
-          </AuthField>
-
-          <AuthField
-            label={authMode === 'signup' ? 'Create password' : 'Password'}
-            htmlFor="auth-password"
-            error={fieldErrors.password}
-          >
-            <input
-              id="auth-password"
-              type="password"
-              name="onboarding-auth-password"
-              value={authPassword}
-              onChange={(e) => { onAuthPasswordChange(e.target.value); clearErr('password'); }}
-              placeholder={authMode === 'signup' ? `Min. ${MIN_PASSWORD_LENGTH} characters` : '••••••••'}
-              autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-              disabled={Boolean(authBusy)}
-              className={inputCls('password')}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
-            />
-          </AuthField>
-        </div>
-
-        {/* Server-level error (only shown when there are no field-level errors) */}
-        {authMessage && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-xs text-destructive -mt-1">{authMessage}</p>
-        )}
-        {authNotice && !authMessage && (
-          <p role="status" className="text-xs text-muted-foreground -mt-1">{authNotice}</p>
-        )}
-
-        {/* Primary submit */}
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={Boolean(authBusy)}
-          className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        {/*
+          F2.1: everything from the tab strip through the submit button used to
+          be a near-verbatim copy of `/auth/signin`'s. The two had already
+          drifted — password autofill, the guest-flag reset, and which extras
+          each surface offered — and every fix had to be made twice. The shared
+          form also brings the F3.7-F3.13 work (a real `<form>` so Enter submits
+          and password managers offer to save, `aria-describedby`/`aria-invalid`
+          wiring, focus-to-first-error, stale-error clearing) to this screen,
+          which never had it.
+        */}
+        <EmailAuthForm
+          mode={authMode}
+          onModeChange={(next) => (next === 'signup' ? onSwitchToSignUp() : onSwitchToSignIn())}
+          name={authName}
+          email={authEmail}
+          password={authPassword}
+          onNameChange={onAuthNameChange}
+          onEmailChange={onAuthEmailChange}
+          onPasswordChange={onAuthPasswordChange}
+          busy={authBusy}
+          error={authMessage}
+          notice={authNotice}
+          onSubmit={(mode) => (mode === 'signup' ? onSignUp() : onSignIn())}
         >
-          {authMode === 'signup'
-            ? (authBusy === 'signup' ? 'Creating account…' : 'Create account')
-            : (authBusy === 'signin' ? 'Signing in…' : 'Sign in')}
-        </button>
-
         {/* Divider */}
         <div className="relative">
           <div className="h-px bg-border/50" />
@@ -598,6 +438,7 @@ const StepAuth = memo<{
             </AnimatePresence>
           )}
         </div>
+        </EmailAuthForm>
       </div>
     </StepShell>
   );

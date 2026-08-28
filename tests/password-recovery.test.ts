@@ -81,14 +81,15 @@ describe('F3.4 — an email-verification flow exists', () => {
 
 describe('F3.5 — the sign-in form no longer fights password managers', () => {
   const source = readFileSync(
-    join(process.cwd(), 'src', 'app', 'auth', 'signin', 'page.tsx'),
+    join(process.cwd(), 'src', 'components', 'auth', 'EmailAuthForm.tsx'),
     'utf8',
   );
 
   it('uses current-password in sign-in mode', () => {
     // Was hard-coded to "new-password" in BOTH modes, forcing every returning
-    // user to hand-type their password.
-    expect(source).toContain("autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}");
+    // user to hand-type their password. F2.1 moved the field into the shared
+    // form, where `authMode` is simply `mode`.
+    expect(source).toContain("autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}");
   });
 
   it('drops the password-manager blockers', () => {
@@ -100,7 +101,15 @@ describe('F3.5 — the sign-in form no longer fights password managers', () => {
   });
 
   it('links to the reset flow, so it is reachable', () => {
-    expect(source).toContain('/auth/forgot-password');
+    // The link is page chrome — it belongs to `/auth/signin`, which passes it
+    // to the shared form as `belowFields`. Onboarding deliberately does not
+    // show it: you cannot reset a password you have not created yet.
+    const page = readFileSync(
+      join(process.cwd(), 'src', 'app', 'auth', 'signin', 'page.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('/auth/forgot-password');
+    expect(page).toContain('belowFields=');
   });
 });
 

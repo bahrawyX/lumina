@@ -69,8 +69,10 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
 
               {/* Actions */}
               <div className="flex flex-col gap-2 pt-1">
+                {/* F2.3: went to `/onboarding` while `GuestBanner`'s CTA went
+                    to `/auth/signin` — same intent, two destinations. */}
                 <Link
-                  href="/onboarding"
+                  href="/auth/signin?mode=signup"
                   className="w-full text-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
                 >
                   Create free account
