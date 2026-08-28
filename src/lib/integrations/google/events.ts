@@ -2,6 +2,8 @@ import 'server-only';
 import { googleFetch } from './client';
 import { mapGoogleEvent, type GoogleEventsListResponse } from './mapper';
 import { mapWithConcurrency } from '../mapWithConcurrency';
+import { MAX_PROVIDER_PAGES } from '../pagination';
+import { logger } from '@/lib/logger';
 
 // Bound the per-calendar fan-out (TD-5 / #7): a user with many calendars would
 // otherwise fire N simultaneous multi-page fetches. 4 keeps it parallel but modest.
@@ -27,7 +29,11 @@ async function fetchGoogleEventsForCalendar(
   const { timeMin, timeMax } = getSyncWindow();
   const allItems: GoogleEventsListResponse['items'] = [];
   let pageToken: string | undefined;
+  let pages = 0;
 
+  // P1-13: `do … while (pageToken)` had no ceiling. `googleFetch` already
+  // supplies the timeout, the retry and the per-call token resolution, so what
+  // was missing here is only the bound.
   do {
     const params: Record<string, string> = {
       timeMin,
@@ -46,7 +52,17 @@ async function fetchGoogleEventsForCalendar(
 
     allItems.push(...(page.items ?? []));
     pageToken = page.nextPageToken;
-  } while (pageToken);
+    pages += 1;
+  } while (pageToken && pages < MAX_PROVIDER_PAGES);
+
+  if (pageToken) {
+    logger.warn('provider pagination ceiling reached', {
+      provider: 'google',
+      context: `events (sync) for calendar ${googleCalendarId}`,
+      pages,
+      items: allItems.length,
+    });
+  }
 
   return allItems;
 }

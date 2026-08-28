@@ -57,7 +57,12 @@ export async function GET(req: NextRequest, context: RouteContext) {
         ? requestedCalendarIds
         : await getEnabledCalendarIds(session.user.id, provider);
 
-    const events =
+    // P1-13: the provider fetchers now return `{ events, failedCalendarIds }`.
+    // Spreading that whole object into the `events` field would hand clients
+    // `events: { events: [...] }` — and both consumers
+    // (`GoogleCalendarSync.tsx` and `useOutlookSync.ts`) call `.map` on it, so
+    // the calendar would render nothing at all.
+    const result =
       provider === 'google'
         ? await fetchGoogleExternalEvents(
             session.user.id,
@@ -72,7 +77,11 @@ export async function GET(req: NextRequest, context: RouteContext) {
             selectedCalendarIds,
           );
 
-    return NextResponse.json({ ok: true, events });
+    return NextResponse.json({
+      ok: true,
+      events: result.events,
+      failedCalendarIds: result.failedCalendarIds,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : `${provider} fetch failed`;
     logger.error('unhandled', { route: `GET /api/external-events/${provider}` }, message);

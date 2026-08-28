@@ -30,6 +30,8 @@ const SERVER_ONLY_TESTS = [
   'tests/auth-config.test.ts',
   // P1-12/P1-13: imports the provider-error classifier, which is server-only.
   'tests/provider-error.test.ts',
+  // P1-13: imports the bounded pagination helper, which is server-only.
+  'tests/provider-pagination.test.ts',
   // P1-4: imports the tasks PATCH handler, whose tree includes `@/lib/ownership`
   // (server-only — it queries the database).
   'tests/task-award-response.test.ts',

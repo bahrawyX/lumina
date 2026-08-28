@@ -191,18 +191,18 @@ export async function GET(req: NextRequest) {
             return fetchGoogleExternalEvents(userId, startIso, endIso, ids);
           })().catch((err) => {
             logger.error('Google fetch failed', { route: 'GET /api/intelligence' }, err);
-            return [];
+            return { events: [], failedCalendarIds: [] };
           })
-        : Promise.resolve([]),
+        : Promise.resolve({ events: [], failedCalendarIds: [] }),
       hasMicrosoft
         ? (async () => {
             const ids = await getEnabledCalendarIds(userId, 'microsoft');
             return fetchMicrosoftExternalEvents(userId, startIso, endIso, ids);
           })().catch((err) => {
             logger.error('Microsoft fetch failed', { route: 'GET /api/intelligence' }, err);
-            return [];
+            return { events: [], failedCalendarIds: [] };
           })
-        : Promise.resolve([]),
+        : Promise.resolve({ events: [], failedCalendarIds: [] }),
     ]);
 
     // Expand recurring events into virtual instances within the intelligence range
@@ -255,7 +255,7 @@ export async function GET(req: NextRequest) {
     }
 
     const localEvents = mapLocalEvents(localEventRows);
-    const externalGoogle: IntelligenceCalendarEvent[] = googleEvents.map((event) => ({
+    const externalGoogle: IntelligenceCalendarEvent[] = googleEvents.events.map((event) => ({
       id: `google:${event.externalEventId}`,
       title: event.title,
       provider: 'google' as const,
@@ -265,7 +265,7 @@ export async function GET(req: NextRequest) {
       timezone: event.timezone,
       category: 'work',
     }));
-    const externalMicrosoft: IntelligenceCalendarEvent[] = microsoftEvents.map((event) => ({
+    const externalMicrosoft: IntelligenceCalendarEvent[] = microsoftEvents.events.map((event) => ({
       id: `microsoft:${event.externalEventId}`,
       title: event.title,
       provider: 'microsoft' as const,

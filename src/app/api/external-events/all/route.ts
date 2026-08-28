@@ -61,8 +61,14 @@ export async function GET(req: NextRequest) {
     (i) => i.provider === 'microsoft' || i.provider === 'outlook',
   );
 
-  const googleResult: { events: ApiExternalEvent[]; error?: string } = { events: [] };
-  const msResult:     { events: ApiExternalEvent[]; error?: string } = { events: [] };
+  type ProviderResult = {
+    events: ApiExternalEvent[];
+    error?: string;
+    /** P1-13: calendars whose fetch failed, so a partial read is visible. */
+    failedCalendarIds?: string[];
+  };
+  const googleResult: ProviderResult = { events: [] };
+  const msResult:     ProviderResult = { events: [] };
 
   const [googleCalendarIds, microsoftCalendarIds] = await Promise.all([
     requestedGoogleCalendarIds.length > 0
@@ -74,9 +80,16 @@ export async function GET(req: NextRequest) {
   ]);
 
   await Promise.all([
+    // P1-13: `failedCalendarIds` is the difference between "that calendar is
+    // empty" and "we could not read that calendar". Previously a single
+    // calendar 401-ing dropped its events on the floor and this route still
+    // answered `ok: true` with no indication anything was missing.
     hasGoogle
       ? fetchGoogleExternalEvents(userId, startIso, endIso, googleCalendarIds)
-          .then((ev) => { googleResult.events = ev; })
+          .then((res) => {
+            googleResult.events = res.events;
+            googleResult.failedCalendarIds = res.failedCalendarIds;
+          })
           .catch((err) => {
             googleResult.error = integrationErrorCode(err);
           })
@@ -84,7 +97,10 @@ export async function GET(req: NextRequest) {
 
     hasMicrosoft
       ? fetchMicrosoftExternalEvents(userId, startIso, endIso, microsoftCalendarIds)
-          .then((ev) => { msResult.events = ev; })
+          .then((res) => {
+            msResult.events = res.events;
+            msResult.failedCalendarIds = res.failedCalendarIds;
+          })
           .catch((err) => {
             msResult.error = integrationErrorCode(err);
           })

@@ -1,6 +1,7 @@
 import 'server-only';
 import { providerErrorFromResponse, withProviderRetry } from '../providerError';
 import { getMicrosoftAccessToken } from './token';
+import { fetchAllPages } from '../pagination';
 
 export const GRAPH_API = 'https://graph.microsoft.com/v1.0';
 
@@ -54,9 +55,6 @@ export async function graphFetchAll<TItem>(
   path: string,
   params?: Record<string, string>,
 ): Promise<TItem[]> {
-  const accessToken = await getMicrosoftAccessToken(userId);
-  const allItems: TItem[] = [];
-
   const url = new URL(`${GRAPH_API}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -64,32 +62,17 @@ export async function graphFetchAll<TItem>(
     }
   }
 
-  let nextUrl: string | null = url.toString();
-
-  while (nextUrl) {
-    const res = await fetch(nextUrl, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/json',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(
-        `[microsoft/client] Graph API ${res.status}: ${body}`,
-      );
-    }
-
-    const page = (await res.json()) as {
-      value?: TItem[];
-      '@odata.nextLink'?: string;
-    };
-
-    allItems.push(...(page.value ?? []));
-    nextUrl = page['@odata.nextLink'] ?? null;
-  }
-
-  return allItems;
+  // P1-13: this loop had no page ceiling, no timeout, no retry, a generic
+  // Error that `isFatalProviderError` could not classify, and a token resolved
+  // once before the loop. See `../pagination.ts`.
+  return fetchAllPages<TItem>({
+    provider: 'microsoft',
+    context: path,
+    firstUrl: url.toString(),
+    resolveToken: () => getMicrosoftAccessToken(userId),
+    readPage: (json) => {
+      const page = json as { value?: TItem[]; '@odata.nextLink'?: string };
+      return { items: page.value ?? [], nextUrl: page['@odata.nextLink'] ?? null };
+    },
+  });
 }

@@ -1,7 +1,7 @@
 import 'server-only';
 import { fetchMicrosoftProviderEvents } from '@/lib/calendar/providers/microsoft';
 import { normalizeExternalEvents } from '@/lib/calendar/normalize';
-import type { ApiExternalEvent } from '@/lib/calendar/externalEventTypes';
+import type { ExternalEventsResult } from '../google/fetchExternalEvents';
 
 /**
  * Fetches Microsoft Calendar events for all of the user's connected Outlook
@@ -15,13 +15,18 @@ export async function fetchMicrosoftExternalEvents(
   startIso: string,
   endIso: string,
   selectedCalendarIds?: string[],
-): Promise<ApiExternalEvent[]> {
-  const rawEvents = await fetchMicrosoftProviderEvents(
+): Promise<ExternalEventsResult> {
+  // P1-13: see the Google wrapper — `failedCalendarIds` travels with the
+  // events so the route can report a partial read.
+  const { events, failedCalendarIds } = await fetchMicrosoftProviderEvents(
     userId,
     startIso,
     endIso,
     selectedCalendarIds,
   );
 
-  return normalizeExternalEvents('microsoft', rawEvents);
+  return {
+    events: normalizeExternalEvents('microsoft', events),
+    failedCalendarIds,
+  };
 }

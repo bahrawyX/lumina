@@ -1,8 +1,15 @@
 import 'server-only';
+import { logger } from '@/lib/logger';
+import { mapWithConcurrency } from '@/lib/integrations/mapWithConcurrency';
+import {
+  type ProviderEventsResult,
+  CALENDAR_FETCH_CONCURRENCY,
+} from './google';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDatabase } from '@/lib/db';
 import { calendars } from '@/db/schema';
 import { getMicrosoftAccessToken } from '@/lib/integrations/microsoft/token';
+import { fetchAllPages } from '@/lib/integrations/pagination';
 import type { MicrosoftEvent } from '@/lib/integrations/microsoft/mapper';
 
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
@@ -18,8 +25,19 @@ export interface MicrosoftRawEventWithColor {
   color: string;
 }
 
+/**
+ * P1-13: this took a pre-resolved `token` and followed `@odata.nextLink`
+ * forever with a bare `fetch` — no ceiling, no timeout, no retry, and a generic
+ * `Error` that `isFatalProviderError` read as non-fatal while the caller's
+ * catch-all marked the integration dead anyway.
+ *
+ * It now takes `userId` so `fetchAllPages` can re-resolve the token on a page
+ * boundary: a live read of a busy calendar can outlive the token it started
+ * with, and that 401 was being reported to the user as "reconnect your
+ * account".
+ */
 async function fetchCalendarViewRaw(
-  token: string,
+  userId: string,
   calendarViewPath: string,
   startIso: string,
   endIso: string,
@@ -30,57 +48,40 @@ async function fetchCalendarViewRaw(
   url.searchParams.set('$select', SELECT_FIELDS);
   url.searchParams.set('$top', '250');
 
-  const allItems: MicrosoftEvent[] = [];
-  let nextUrl: string | null = url.toString();
-
-  while (nextUrl) {
-    const res = await fetch(nextUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        // H7: request UTC (matches the sync path) — never a hardcoded region.
-        // Graph then returns offset-less UTC wall-clock, which the mapper parses
-        // as UTC; the client renders each instant in the viewer's local tz.
-        Prefer: 'outlook.timezone="UTC"',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`[microsoft/provider] ${res.status}: ${text}`);
-    }
-
-    const page = (await res.json()) as {
-      value?: MicrosoftEvent[];
-      '@odata.nextLink'?: string;
-    };
-
-    allItems.push(...(page.value ?? []));
-    nextUrl = page['@odata.nextLink'] ?? null;
-  }
-
-  return allItems;
+  return fetchAllPages<MicrosoftEvent>({
+    provider: 'microsoft',
+    context: calendarViewPath,
+    firstUrl: url.toString(),
+    resolveToken: () => getMicrosoftAccessToken(userId),
+    // H7: request UTC (matches the sync path) — never a hardcoded region.
+    // Graph then returns offset-less UTC wall-clock, which the mapper parses
+    // as UTC; the client renders each instant in the viewer's local tz.
+    headers: { Prefer: 'outlook.timezone="UTC"' },
+    readPage: (json) => {
+      const page = json as { value?: MicrosoftEvent[]; '@odata.nextLink'?: string };
+      return { items: page.value ?? [], nextUrl: page['@odata.nextLink'] ?? null };
+    },
+  });
 }
 
-async function fetchMicrosoftCalendars(token: string): Promise<MicrosoftCalendarListItem[]> {
-  const res = await fetch(`${GRAPH_API}/me/calendars`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      // H7: no hardcoded region (calendar list carries no datetimes anyway).
-      Prefer: 'outlook.timezone="UTC"',
+async function fetchMicrosoftCalendars(userId: string): Promise<MicrosoftCalendarListItem[]> {
+  // Single page by construction, but it shares the timeout/retry/classification
+  // the rest of the module now has.
+  return fetchAllPages<MicrosoftCalendarListItem>({
+    provider: 'microsoft',
+    context: '/me/calendars',
+    firstUrl: `${GRAPH_API}/me/calendars`,
+    resolveToken: () => getMicrosoftAccessToken(userId),
+    // H7: no hardcoded region (calendar list carries no datetimes anyway).
+    headers: { Prefer: 'outlook.timezone="UTC"' },
+    readPage: (json) => {
+      const page = json as {
+        value?: MicrosoftCalendarListItem[];
+        '@odata.nextLink'?: string;
+      };
+      return { items: page.value ?? [], nextUrl: page['@odata.nextLink'] ?? null };
     },
-    cache: 'no-store',
   });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`[microsoft/calendars] ${res.status}: ${text}`);
-  }
-
-  const data = (await res.json()) as { value?: MicrosoftCalendarListItem[] };
-  return data.value ?? [];
 }
 
 export async function fetchMicrosoftProviderEvents(
@@ -88,8 +89,7 @@ export async function fetchMicrosoftProviderEvents(
   startIso: string,
   endIso: string,
   selectedCalendarIds?: string[],
-): Promise<MicrosoftRawEventWithColor[]> {
-  const token = await getMicrosoftAccessToken(userId);
+): Promise<ProviderEventsResult<MicrosoftRawEventWithColor>> {
   const db = getDatabase();
 
   const msCals = await db
@@ -108,39 +108,61 @@ export async function fetchMicrosoftProviderEvents(
   const validMsCals = msCals.filter((c) => c.externalId !== null);
 
   if (msCals.length === 0 || validMsCals.length === 0) {
-    const calendarsFromGraph = await fetchMicrosoftCalendars(token);
-    if (calendarsFromGraph.length === 0) return [];
+    const calendarsFromGraph = await fetchMicrosoftCalendars(userId);
+    if (calendarsFromGraph.length === 0) return { events: [], failedCalendarIds: [] };
 
-    const all = await Promise.all(
-      calendarsFromGraph.map(async (calendar) => {
+    const discoveredFailures: string[] = [];
+    const all = await mapWithConcurrency(
+      calendarsFromGraph,
+      CALENDAR_FETCH_CONCURRENCY,
+      async (calendar) => {
         try {
           const events = await fetchCalendarViewRaw(
-            token,
+            userId,
             `/me/calendars/${encodeURIComponent(calendar.id)}/calendarView`,
             startIso,
             endIso,
           );
           return events.map((event) => ({ event, color: '#0078D4' }));
-        } catch {
+        } catch (err) {
+          // This branch swallowed errors with a bare `catch {}` — the same
+          // silent-loss shape as the main path below.
+          discoveredFailures.push(calendar.id);
+          logger.error(
+            'provider fetch failed',
+            { provider: 'microsoft', calendarId: calendar.id },
+            err,
+          );
           return [] as MicrosoftRawEventWithColor[];
         }
-      }),
+      },
     );
 
-    return all.flatMap((events) => events);
+    return { events: all.flat(), failedCalendarIds: discoveredFailures };
   }
 
-  const settled = await Promise.allSettled(
-    validMsCals.map(async (c) => {
-      const events = await fetchCalendarViewRaw(
-        token,
-        `/me/calendars/${encodeURIComponent(c.externalId!)}/calendarView`,
-        startIso,
-        endIso,
-      );
-      return events.map((event) => ({ event, color: c.color ?? '#0078D4' }));
-    }),
+  const failedCalendarIds: string[] = [];
+
+  const perCalendar = await mapWithConcurrency(
+    validMsCals,
+    CALENDAR_FETCH_CONCURRENCY,
+    async (c) => {
+      try {
+        const events = await fetchCalendarViewRaw(
+          userId,
+          `/me/calendars/${encodeURIComponent(c.externalId!)}/calendarView`,
+          startIso,
+          endIso,
+        );
+        return events.map((event) => ({ event, color: c.color ?? '#0078D4' }));
+      } catch (err) {
+        // P1-13 — see the Google provider.
+        failedCalendarIds.push(c.id);
+        logger.error('provider fetch failed', { provider: 'microsoft', calendarId: c.id }, err);
+        return [] as MicrosoftRawEventWithColor[];
+      }
+    },
   );
 
-  return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+  return { events: perCalendar.flat(), failedCalendarIds };
 }

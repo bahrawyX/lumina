@@ -2,6 +2,7 @@ import 'server-only';
 import { getMicrosoftAccessToken } from './token';
 import { mapMicrosoftEvent, type MicrosoftEvent } from './mapper';
 import { mapWithConcurrency } from '../mapWithConcurrency';
+import { fetchAllPages } from '../pagination';
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
 
 // Bound the per-calendar fan-out (TD-5 / #7): a user with many calendars would
@@ -26,7 +27,6 @@ async function fetchMicrosoftEventsForCalendar(
   userId: string,
   msCalendarId: string,
 ): Promise<MicrosoftEvent[]> {
-  const token = await getMicrosoftAccessToken(userId);
   const { startDateTime, endDateTime } = getSyncWindow();
 
   const url = new URL(
@@ -40,36 +40,20 @@ async function fetchMicrosoftEventsForCalendar(
   );
   url.searchParams.set('$top', '250');
 
-  const allItems: MicrosoftEvent[] = [];
-  let nextUrl: string | null = url.toString();
-
-  while (nextUrl) {
-    const res = await fetch(nextUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        Prefer: 'outlook.timezone="UTC"',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(
-        `[microsoft/events] calendarView ${res.status} for calendar ${msCalendarId}: ${text}`,
-      );
-    }
-
-    const page = (await res.json()) as {
-      value?: MicrosoftEvent[];
-      '@odata.nextLink'?: string;
-    };
-
-    allItems.push(...(page.value ?? []));
-    nextUrl = page['@odata.nextLink'] ?? null;
-  }
-
-  return allItems;
+  // P1-13: the sync window spans 395 days, which is precisely where an
+  // unbounded page loop bites. Ceiling, timeout, retry and token re-resolution
+  // all live in `fetchAllPages`.
+  return fetchAllPages<MicrosoftEvent>({
+    provider: 'microsoft',
+    context: `calendarView (sync) for calendar ${msCalendarId}`,
+    firstUrl: url.toString(),
+    resolveToken: () => getMicrosoftAccessToken(userId),
+    headers: { Prefer: 'outlook.timezone="UTC"' },
+    readPage: (json) => {
+      const page = json as { value?: MicrosoftEvent[]; '@odata.nextLink'?: string };
+      return { items: page.value ?? [], nextUrl: page['@odata.nextLink'] ?? null };
+    },
+  });
 }
 
 export interface SyncMicrosoftCalendarEventsResult {

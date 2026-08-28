@@ -3,6 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import { getDatabase } from '@/lib/db';
 import { calendars } from '@/db/schema';
 import { googleFetch } from './client';
+import { MAX_PROVIDER_PAGES } from '../pagination';
+import { logger } from '@/lib/logger';
 import {
   mapGoogleCalendar,
   type GoogleCalendarListResponse,
@@ -16,7 +18,9 @@ import {
 async function fetchGoogleCalendarList(userId: string): Promise<MappedGoogleCalendar[]> {
   const results: MappedGoogleCalendar[] = [];
   let pageToken: string | undefined;
+  let pages = 0;
 
+  // P1-13: bounded, for the same reason as the events loop.
   do {
     const params: Record<string, string> = { minAccessRole: 'reader' };
     if (pageToken) params.pageToken = pageToken;
@@ -32,7 +36,17 @@ async function fetchGoogleCalendarList(userId: string): Promise<MappedGoogleCale
     }
 
     pageToken = page.nextPageToken;
-  } while (pageToken);
+    pages += 1;
+  } while (pageToken && pages < MAX_PROVIDER_PAGES);
+
+  if (pageToken) {
+    logger.warn('provider pagination ceiling reached', {
+      provider: 'google',
+      context: 'calendarList',
+      pages,
+      items: results.length,
+    });
+  }
 
   return results;
 }
