@@ -8,7 +8,26 @@
 
 import type { FocusSession } from '@/store/useFocusStore';
 import type { FocusSessionResult } from '@/types';
-import { apiFetch, apiGetList, type FetchResult } from './apiClient';
+import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
+import {
+  GUEST_COLLECTIONS,
+  isGuestUser,
+  readGuest,
+  writeGuest,
+} from './guestStorage';
+
+/**
+ * F6.1: a guest's completed focus sessions were POSTed, 401'd and swallowed —
+ * so the one screen that exists to show "what you actually did" showed nothing
+ * after a reload.
+ */
+function readGuestSessions(): FocusSession[] {
+  return readGuest<FocusSession[]>(GUEST_COLLECTIONS.focus, []);
+}
+
+function writeGuestSessions(sessions: FocusSession[]): void {
+  writeGuest(GUEST_COLLECTIONS.focus, sessions);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +38,7 @@ import { apiFetch, apiGetList, type FetchResult } from './apiClient';
  * user who has never run a focus session.
  */
 export async function fetchAllForCurrentUser(): Promise<FetchResult<FocusSession[]>> {
+  if (isGuestUser()) return ok(readGuestSessions());
   return apiGetList<FocusSession>('/api/focus-sessions');
 }
 
@@ -28,6 +48,21 @@ export async function fetchAllForCurrentUser(): Promise<FetchResult<FocusSession
  * caller can apply them to the relevant stores. Returns null on error.
  */
 export async function createOne(session: FocusSession): Promise<FocusSessionResult | null> {
+  if (isGuestUser()) {
+    writeGuestSessions([...readGuestSessions(), session]);
+    // The session is recorded; the streak and coin fields the server would
+    // return are not invented. A guest has neither — see `guestGate.ts` — and
+    // returning zeros here is what makes the UI honest rather than showing a
+    // streak that will not survive sign-up.
+    return {
+      id: session.id,
+      coinsEarned: 0,
+      newCoins: 0,
+      dailyStreak: 0,
+      sessionStreak: 0,
+      newAchievements: [],
+    };
+  }
   try {
     const res = await apiFetch('/api/focus-sessions', {
       method: 'POST',
@@ -53,6 +88,10 @@ export async function createOne(session: FocusSession): Promise<FocusSessionResu
 
 /** Delete a focus session from history. Fire-and-forget safe. */
 export async function deleteOne(id: string): Promise<void> {
+  if (isGuestUser()) {
+    writeGuestSessions(readGuestSessions().filter((s) => s.id !== id));
+    return;
+  }
   try {
     await apiFetch(`/api/focus-sessions/${id}`, { method: 'DELETE' });
   } catch (err) {

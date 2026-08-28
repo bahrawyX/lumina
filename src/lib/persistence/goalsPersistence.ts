@@ -6,7 +6,26 @@ import { useCoinsStore } from '@/store/useCoinsStore';
 import { useCelebrationStore } from '@/store/useCelebrationStore';
 import { showCoinToast } from '@/lib/coins/showCoinToast';
 import { toast } from 'sonner';
-import { apiFetch, apiGetList, type FetchResult } from './apiClient';
+import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
+import {
+  GUEST_COLLECTIONS,
+  isGuestUser,
+  readGuest,
+  writeGuest,
+} from './guestStorage';
+
+/**
+ * F6.1: every function here went straight to the API. For a guest that meant a
+ * 401, swallowed — so a goal created in guest mode existed in memory only and
+ * was gone on reload, while the banner said their work was kept on the device.
+ */
+function readGuestGoals(): Goal[] {
+  return readGuest<Goal[]>(GUEST_COLLECTIONS.goals, []);
+}
+
+function writeGuestGoals(goals: Goal[]): void {
+  writeGuest(GUEST_COLLECTIONS.goals, goals);
+}
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -17,12 +36,20 @@ const isDev = process.env.NODE_ENV === 'development';
  * user with zero goals.
  */
 export async function fetchAllForCurrentUser(): Promise<FetchResult<Goal[]>> {
+  if (isGuestUser()) return ok(readGuestGoals());
   return apiGetList<Goal>('/api/goals');
 }
 
 export async function createOne(
   goal: Record<string, unknown>,
 ): Promise<{ goalId?: string; targetIds?: string[] } | null> {
+  if (isGuestUser()) {
+    // No coin award: the server owns the economy, and a guest has no ledger.
+    // See `guestGate.ts`.
+    const goalId = (goal.id as string | undefined) ?? crypto.randomUUID();
+    writeGuestGoals([...readGuestGoals(), { ...goal, id: goalId } as unknown as Goal]);
+    return { goalId, targetIds: [] };
+  }
   try {
     const res = await apiFetch('/api/goals', {
       method: 'POST',
@@ -46,6 +73,17 @@ export async function createOne(
 }
 
 export async function updateOne(id: string, patch: Partial<Goal>): Promise<boolean> {
+  if (isGuestUser()) {
+    const goals = readGuestGoals();
+    const index = goals.findIndex((g) => g.id === id);
+    if (index < 0) return false;
+    goals[index] = { ...goals[index], ...patch };
+    writeGuestGoals(goals);
+    // Deliberately no coin toast or celebration on the guest path: nothing was
+    // awarded, so celebrating would be the "+400 coins on a failed save" bug
+    // this function was already fixed for, in a new costume.
+    return true;
+  }
   try {
     const res = await apiFetch(`/api/goals/${id}`, {
       method: 'PATCH',
@@ -98,6 +136,10 @@ export async function updateOne(id: string, patch: Partial<Goal>): Promise<boole
 }
 
 export async function deleteOne(id: string, hard = false): Promise<void> {
+  if (isGuestUser()) {
+    writeGuestGoals(readGuestGoals().filter((g) => g.id !== id));
+    return;
+  }
   try {
     await apiFetch(`/api/goals/${id}${hard ? '?hard=true' : ''}`, { method: 'DELETE' });
   } catch (err) {

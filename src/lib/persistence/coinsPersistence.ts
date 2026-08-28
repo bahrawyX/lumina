@@ -3,13 +3,10 @@
  */
 import type { CoinsData } from '@/types/coins';
 import { DEFAULT_CONSUMABLES } from '@/types/coins';
-import { apiGetJson, type FetchResult } from './apiClient';
+import { apiFetch, apiGetJson, ok, type FetchResult } from './apiClient';
+import { GUEST_UNAVAILABLE, guestGate } from './guestGate';
 
 const isDev = process.env.NODE_ENV === 'development';
-
-function apiBase(): string {
-  return typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_APP_URL ?? '');
-}
 
 /**
  * Fetch the user's wallet, ledger and inventory.
@@ -20,14 +17,25 @@ function apiBase(): string {
  * they earned.
  */
 export async function fetchCoinsData(): Promise<FetchResult<CoinsData>> {
+  // F6.1: a guest has no wallet and cannot have one — the balance comes from
+  // the server's ledger, with the dedupe keys and daily caps P1-3 added
+  // precisely so a client cannot decide what it earned. An empty wallet is the
+  // true answer here, and `guestGate` carries the copy that says why.
+  const gate = guestGate<CoinsData>(defaultCoinsData(), GUEST_UNAVAILABLE.coins);
+  if (gate.kind === 'guest') return ok(gate.value);
   return apiGetJson<CoinsData>('/api/coins');
 }
 
 export async function purchaseItem(itemId: string): Promise<{ success: boolean; newBalance?: number; error?: string }> {
+  const gate = guestGate<null>(null, GUEST_UNAVAILABLE.purchase);
+  if (gate.kind === 'guest') return { success: false, error: gate.reason };
+
   try {
-    const res = await fetch(`${apiBase()}/api/shop/purchase`, {
+    // P0-2: was a private `fetch` around a local `apiBase()`, so a 401 here
+    // never reached `onUnauthorized` and the session-expiry watcher never
+    // learned about it.
+    const res = await apiFetch('/api/shop/purchase', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ itemId }),
     });
     const data = await res.json();
@@ -39,10 +47,11 @@ export async function purchaseItem(itemId: string): Promise<{ success: boolean; 
 }
 
 export async function activateCosmetic(patch: Record<string, unknown>): Promise<boolean> {
+  if (guestGate(null).kind === 'guest') return false;
+
   try {
-    const res = await fetch(`${apiBase()}/api/shop/activate-cosmetic`, {
+    const res = await apiFetch('/api/shop/activate-cosmetic', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
     return res.ok;

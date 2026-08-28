@@ -154,12 +154,30 @@ export function clearGuestData(): void {
   }
 }
 
-/** Collection names, centralised so the migration knows what to look for. */
+/**
+ * Collection names, centralised so the migration knows what to look for.
+ *
+ * F6.1: this listed four collections while the banner promised a guest that
+ * everything they did was kept on the device. Goals, focus sessions and mood
+ * logs went to the API, 401'd, and were swallowed — in-memory only, gone on
+ * reload, with no error shown.
+ *
+ * `coins` and `streak` are deliberately NOT here, and that is not an
+ * oversight. Both are server-authoritative: the balance comes from
+ * `awardCoins`' ledger with its dedupe keys and daily caps, and the streak
+ * from server-side date arithmetic. Letting a guest accrue either locally
+ * would mean importing a self-reported balance on sign-up — a client-side mint
+ * — or discarding it and breaking the promise a second time. They are gated
+ * with an honest message instead. See `guestGate.ts`.
+ */
 export const GUEST_COLLECTIONS = {
   tasks: 'tasks',
   events: 'events',
   planner: 'planner',
   docs: 'docs',
+  goals: 'goals',
+  focus: 'focus',
+  mood: 'mood',
 } as const;
 
 export type GuestCollection = (typeof GUEST_COLLECTIONS)[keyof typeof GUEST_COLLECTIONS];

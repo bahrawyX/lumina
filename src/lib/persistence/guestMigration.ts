@@ -1,6 +1,8 @@
 import type { Task } from '@/types/task';
-import type { CalendarEvent } from '@/types';
+import type { CalendarEvent, MoodLog } from '@/types';
 import type { DocContent } from '@/types/doc';
+import type { Goal } from '@/types/goal';
+import type { FocusSession } from '@/store/useFocusStore';
 import { apiFetch } from './apiClient';
 import {
   GUEST_COLLECTIONS,
@@ -97,6 +99,38 @@ export async function migrateGuestData(): Promise<GuestMigrationResult> {
     // import; dropping it flattens the tree rather than orphaning rows.
     void parentId;
     if (await post('/api/docs', rest)) migrated++;
+    else failed++;
+  }
+
+  // ── Goals ────────────────────────────────────────────────────────────────
+  // F6.1: goals became guest-persistable, so they have to be importable too —
+  // a domain that saves locally and then does not migrate is the same broken
+  // promise one step later.
+  for (const goal of readGuest<Goal[]>(GUEST_COLLECTIONS.goals, [])) {
+    const { id, ...rest } = goal as Goal & { id?: string };
+    void id;
+    if (await post('/api/goals', rest)) migrated++;
+    else failed++;
+  }
+
+  // ── Focus sessions ───────────────────────────────────────────────────────
+  // The server recomputes coins and streaks from its own rules on import; the
+  // guest records carry zeros for those fields (see `focusPersistence`), so
+  // nothing self-reported is being trusted here.
+  for (const session of readGuest<FocusSession[]>(GUEST_COLLECTIONS.focus, [])) {
+    const { id, ...rest } = session as FocusSession & { id?: string };
+    void id;
+    if (await post('/api/focus-sessions', rest)) migrated++;
+    else failed++;
+  }
+
+  // ── Mood logs ────────────────────────────────────────────────────────────
+  for (const log of readGuest<MoodLog[]>(GUEST_COLLECTIONS.mood, [])) {
+    const entry = log as MoodLog & { id?: string; focusSessionId?: string };
+    // `focusSessionId` pointed at a guest-local session id the server has just
+    // re-issued, so sending it would dangle. Same reasoning as `parentId` on
+    // docs above.
+    if (await post('/api/mood-logs', { mood: entry.mood, note: entry.note })) migrated++;
     else failed++;
   }
 
