@@ -44,6 +44,7 @@ import { usePomodoroStore } from '@/store/usePomodoroStore';
 import { authClient } from '@/lib/auth-client';
 import { useGuestStore } from '@/store/useGuestStore';
 import { migrateGuestData } from '@/lib/persistence/guestMigration';
+import { hasGuestData } from '@/lib/persistence/guestStorage';
 import notify from '@/utils/notify';
 import { clearLuminaStorage } from '@/lib/storage';
 import { adoptBrowserTimeZone } from '@/lib/time/adoptBrowserTimeZone';
@@ -162,8 +163,24 @@ export default function PersistenceBootstrap() {
   useEffect(() => {
     if (sessionPending) return;
     if (!session?.user?.id) return;
-    const { isGuest, clearGuestSession } = useGuestStore.getState();
-    if (!isGuest) return;
+
+    // Gated on the DATA, not on the `isGuest` flag.
+    //
+    // The flag version never ran. All three sign-in handlers call
+    // `clearGuestSession()` *before* `router.replace(destination)`, so by the
+    // time this component mounts on the destination route `isGuest` is already
+    // false and the effect returned on its first line — on the exact route both
+    // upgrade CTAs link to. The modal's promise was still unkept.
+    //
+    // Clearing the flag early is right (you stop being a guest the moment you
+    // sign in, and `clearGuestSession` deliberately KEEPS the local data), so
+    // the flag is simply the wrong thing to key on. `hasGuestData()` is true
+    // exactly when there is something to import, which also makes this correct
+    // on the paths that never set the flag in this tab at all: a guest who
+    // signs up from `/onboarding` (which does not mount this component) gets
+    // their import on the next authenticated mount instead of never.
+    if (!hasGuestData()) return;
+    const { clearGuestSession } = useGuestStore.getState();
 
     // The guest just became a real account. `GuestUpgradeModal` promises their
     // data "can be imported" — before this, nothing imported it and the guest

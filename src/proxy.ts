@@ -192,8 +192,28 @@ function hasSessionCookie(req: NextRequest): boolean {
  * signed-in user read the marketing copy without being bounced).
  */
 /**
- * Page routes that require a session. These are the `(app)` route group plus
- * `/onboarding`, which collects profile data against the signed-in user.
+ * Page routes that require a session. These are exactly the `(app)` route
+ * group — nothing else.
+ *
+ * `/onboarding` is deliberately NOT here, and this is the second time that has
+ * had to be decided. It was added on the reasoning that it "collects profile
+ * data against the signed-in user", which is true of steps 2 onward and false
+ * of step 1: step 1 IS the auth step. It offers sign in, sign up, Continue
+ * with Google, and Continue as guest, and `canContinue()` refuses to advance
+ * past it until `authStatus === 'logged in' || isGuest`. The gate lives in the
+ * flow, where it can tell those four cases apart.
+ *
+ * Putting it behind the session cookie broke the front door. All three landing
+ * CTAs — hero, nav, and the closing section — point at `/onboarding`, so every
+ * signed-out visitor who clicked "Get started free" was 307'd to
+ * `/auth/signin?next=/onboarding`, which opens on the **Sign in** tab. A new
+ * user was shown a sign-in form and no way forward: the same wrong-tab problem
+ * F2.3 fixed, re-created one layer down at the proxy.
+ *
+ * It also made guest mode dead code. `enterGuestMode()` has exactly one call
+ * site (`OnboardingFlow.tsx`), reachable only from `/onboarding`, so
+ * `guestStorage.ts`, `guestMigration.ts` and all four guest persistence
+ * branches became unreachable the moment this prefix was added.
  *
  * Kept as an explicit list rather than "everything except X" so that adding a
  * new PUBLIC route can never accidentally end up behind the wall, and adding a
@@ -210,7 +230,6 @@ const PROTECTED_PREFIXES = [
   '/performance',
   '/pomodoro',
   '/shop',
-  '/onboarding',
 ] as const;
 
 function isProtectedPath(pathname: string): boolean {
@@ -302,6 +321,5 @@ export const config = {
     '/performance/:path*',
     '/pomodoro/:path*',
     '/shop/:path*',
-    '/onboarding/:path*',
   ],
 };

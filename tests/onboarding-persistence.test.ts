@@ -111,10 +111,34 @@ describe('F8.1 — hydrateFromServer adopts the account-level record', () => {
     expect(s.timezone).toBe('Europe/Lisbon');
   });
 
-  it('never un-completes a locally-completed flow', () => {
+  it('a server "false" DOES un-complete a stale local flag', () => {
+    // This asserted the opposite, and the opposite was the bug. `completed`
+    // persists to localStorage, so a guest who finished onboarding left
+    // `true` in the browser; signing up for a fresh account then skipped the
+    // flow entirely, because `||` could never let the server say "no".
+    //
+    // The server value is derived from `onboarding_completed_at` on the account
+    // row, so `false` is a fact about this account, not a missing value.
     useOnboardingStore.getState().complete();
     useOnboardingStore.getState().hydrateFromServer({ onboardingCompleted: false });
+    expect(useOnboardingStore.getState().completed).toBe(false);
+  });
+
+  it("and a guest's finished flow does not carry into the account they create", () => {
+    // The end-to-end shape of F8.1's second consequence.
+    useOnboardingStore.getState().complete();
     expect(useOnboardingStore.getState().completed).toBe(true);
+
+    // Sign-up lands, prefs load for a brand-new account.
+    useOnboardingStore.getState().hydrateFromServer({
+      onboardingCompleted: false,
+      userRole: undefined,
+      workStart: undefined,
+      workEnd: undefined,
+      timezone: undefined,
+    });
+
+    expect(useOnboardingStore.getState().completed).toBe(false);
   });
 });
 

@@ -11,6 +11,8 @@
 import { describe, it, expect } from 'vitest';
 import { NextRequest } from 'next/server';
 import { proxy } from '@/proxy';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const SELF = 'http://localhost:3000';
 const SESSION_COOKIE = 'better-auth.session_token';
@@ -33,7 +35,6 @@ const PROTECTED = [
   '/performance',
   '/pomodoro',
   '/shop',
-  '/onboarding',
 ];
 
 describe('F5.1 — app routes require a session cookie', () => {
@@ -46,6 +47,30 @@ describe('F5.1 — app routes require a session cookie', () => {
       expect(location.searchParams.get('next')).toBe(path);
     });
   }
+
+  it('does NOT wall /onboarding — that broke the front door', () => {
+    // `/onboarding` was on this list, and its step 1 IS the auth step: sign in,
+    // sign up, Continue with Google, Continue as guest. Gating it on a session
+    // cookie meant every signed-out visitor who clicked "Get started free" —
+    // the hero CTA, the nav CTA and the closing CTA all point here — was 307'd
+    // to `/auth/signin?next=/onboarding`, which opens on the SIGN IN tab. A new
+    // user got a sign-in form and no way forward.
+    //
+    // It also made guest mode dead code: `enterGuestMode()` has one call site,
+    // inside this route.
+    const res = proxy(req('/onboarding'));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('and the three landing CTAs still point at it', () => {
+    // If these ever move to `/auth/signin`, the test above stops protecting
+    // anything and this one says so.
+    const read = (f: string) =>
+      readFileSync(resolve(process.cwd(), 'src/components/landing', f), 'utf8');
+    for (const file of ['HeroSection.tsx', 'CTASection.tsx', 'LandingNav.tsx']) {
+      expect(read(file), file).toContain('href="/onboarding"');
+    }
+  });
 
   it('preserves the query string in ?next=', () => {
     const res = proxy(req('/tasks?new=true&filter=today'));

@@ -154,9 +154,23 @@ export const useOnboardingStore = create<OnboardingState>()(
           local !== fallback ? local : (server ?? fallback);
 
         set({
-          // The server is authoritative for completion. A device that has never
-          // seen this account still learns the user is onboarded.
-          completed: current.completed || onboardingCompleted,
+          // The server is authoritative for completion, in BOTH directions.
+          //
+          // This used to be `current.completed || onboardingCompleted`, under a
+          // comment claiming server authority — but `||` only ever lets the
+          // server turn completion ON. A stale local `true` could never be
+          // corrected, which is the whole of F8.1's second consequence: a guest
+          // finishes onboarding locally, signs up, and their brand-new account
+          // (`onboarding_completed_at IS NULL`) skips the flow entirely,
+          // because the guest's flag is still sitting in this browser.
+          //
+          // There is no ambiguity to protect against here. The route computes
+          // `onboardingCompleted: row.onboardingCompletedAt !== null` from the
+          // account row, so `false` means "this account has not onboarded",
+          // never "we don't know". And this hydration runs from
+          // `PersistenceBootstrap`, which `/onboarding` does not mount — so it
+          // cannot race a completion the user is performing right now.
+          completed: onboardingCompleted,
           userRole: adopt(current.userRole, '', userRole),
           workStart: adopt(current.workStart, DEFAULT_WORK_START, workStart),
           workEnd: adopt(current.workEnd, DEFAULT_WORK_END, workEnd),
