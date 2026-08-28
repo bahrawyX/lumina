@@ -9,7 +9,7 @@ import { userDayBounds } from '@/lib/time/userDay';
 import { utcToZonedWallClock } from '@/lib/time/zonedTime';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { checkLinkedOwnership } from '@/lib/ownership';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
@@ -262,8 +262,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true, newBalance, coinsEarned });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/tasks/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/tasks/[id]', err);
   }
 }
 
@@ -293,7 +292,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'DELETE /api/tasks/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/tasks/[id]', err);
   }
 }

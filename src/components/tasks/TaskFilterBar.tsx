@@ -8,6 +8,7 @@ import { hasActiveFilters } from '@/utils/taskFilters';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
+import { CheckIcon } from '@/components/icons/CheckIcons';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -26,12 +27,6 @@ const XIcon: React.FC<{ size?: number }> = ({ size = 12 }) => (
 const ChevronDown: React.FC = () => (
   <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="m6 9 6 6 6-6" />
-  </svg>
-);
-
-const CheckIcon: React.FC = () => (
-  <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 6 9 17l-5-5" />
   </svg>
 );
 
@@ -76,7 +71,7 @@ const Checkbox: React.FC<{ checked: boolean; onChange: () => void; label: string
     <span className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
       checked ? 'bg-primary border-primary text-primary-foreground' : 'border-border'
     }`}>
-      {checked && <CheckIcon />}
+      {checked && <CheckIcon size={10} strokeWidth={3} />}
     </span>
     {dot && <span className={`flex-shrink-0 w-2 h-2 rounded-full ${dot}`} />}
     <span className="flex-1 text-xs text-foreground">{label}</span>
@@ -285,7 +280,7 @@ export const TaskFilterBar: React.FC = () => {
               }`}
             >
               <span className="flex-1 text-left">{opt.label}</span>
-              {dueDateFilter === opt.value && <CheckIcon />}
+              {dueDateFilter === opt.value && <CheckIcon size={10} strokeWidth={3} />}
             </button>
           ))}
         </PopoverContent>
@@ -398,7 +393,7 @@ export const TaskFilterBar: React.FC = () => {
                 }`}
               >
                 <span className="flex-1 text-left">{opt.label}</span>
-                {dueDateFilter === opt.value && <CheckIcon />}
+                {dueDateFilter === opt.value && <CheckIcon size={10} strokeWidth={3} />}
               </button>
             ))}
           </div>

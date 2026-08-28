@@ -3,6 +3,7 @@ import type { Task, TaskDifficulty } from '../../types/task';
 import type { PlannedTaskItem } from '../../store/useDailyPlanStore';
 import { formatTimeRange, durationMinutes, formatMinutes } from '../../utils/dailyPlanUtils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { CheckIcon } from '@/components/icons/CheckIcons';
 
 interface PlannedTaskCardProps {
   planItem: PlannedTaskItem;
@@ -32,12 +33,6 @@ const GripIcon: React.FC = () => (
 const XIcon: React.FC = () => (
   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
-const CheckIcon: React.FC = () => (
-  <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
@@ -79,7 +74,7 @@ export const PlannedTaskCard: React.FC<PlannedTaskCardProps> = React.memo(({ pla
           }`}
           aria-label={isDone ? 'Mark task as not done' : 'Mark task as done'}
         >
-          <CheckIcon />
+          <CheckIcon size={10} strokeWidth={3} />
         </button>
 
         {/* Grip */}

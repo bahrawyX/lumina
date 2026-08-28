@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { goalCompleteAwards } from '@/lib/coins/earnRules';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
@@ -111,8 +111,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true, newBalance, coinsEarned });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/goals/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/goals/[id]', err);
   }
 }
 
@@ -153,7 +152,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'DELETE /api/goals/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/goals/[id]', err);
   }
 }

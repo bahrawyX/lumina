@@ -24,6 +24,7 @@ import { useGuestStore } from '../store/useGuestStore';
 import { signOutEverywhere } from '@/lib/auth/signOut';
 import { oauthFailureMessage, useOAuthPopup } from '@/hooks/useOAuthPopup';
 import { EmailAuthForm } from '@/components/auth/EmailAuthForm';
+import { CheckIcon } from '@/components/icons/CheckIcons';
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 const TOTAL_STEPS = 7; // 0..6
@@ -577,12 +578,6 @@ StepSessionLength.displayName = 'StepSessionLength';
    STEP 5 — Calendar Sync
    Both providers are independent — connecting one never affects the other.
 ══════════════════════════════════════════════════════════════════════════════ */
-
-const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-  </svg>
-);
 
 const StepCalendarSync = memo<{
   googleConnected: boolean;

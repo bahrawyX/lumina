@@ -14,7 +14,7 @@ import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { getUserTimeZone } from '@/lib/time/eventTimeZone';
 import { parseRange } from '@/lib/dateRange';
 import { listHeaders, parseLimit } from '@/lib/listLimits';
@@ -88,8 +88,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped, { headers: listHeaders(rows.length, limit) });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/focus-sessions' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/focus-sessions', err);
   }
 }
 
@@ -407,7 +406,6 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/focus-sessions' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/focus-sessions', err);
   }
 }

@@ -6,7 +6,7 @@ import { and, eq, inArray, sum, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 
 function parseLinkedTaskIds(raw: string | null): string[] {
@@ -152,8 +152,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/goals' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/goals', err);
   }
 }
 
@@ -267,19 +266,13 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ...result, newBalance }, { status: 201 });
   } catch (err) {
-    // Log the full error chain to Vercel logs AND surface it in the response
-    // body during development. The previous opaque "Internal server error"
-    // made the actual cause (drizzle constraint, enum mismatch, transaction
-    // failure, etc.) impossible to diagnose from the client.
+    // Log the full error chain to Vercel logs. `code` and `detail` are the
+    // Postgres specifics — a drizzle constraint, an enum mismatch, a failed
+    // transaction — that an opaque 500 alone makes impossible to diagnose.
     const e = err as Error & { code?: string; cause?: unknown; detail?: string };
     // The logger serialises name/message/stack/cause from the Error itself, so
     // the hand-built object is redundant; `code` and `detail` are Postgres
     // specifics worth keeping as explicit context.
-    logger.error('unhandled', {
-      route: 'POST /api/goals',
-      pgCode: e?.code,
-      pgDetail: e?.detail,
-    }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/goals', err, { pgCode: e?.code, pgDetail: e?.detail });
   }
 }

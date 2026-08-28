@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks } from '@/db/schema';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * PATCH /api/tasks/reorder — apply a new order to several tasks atomically.
@@ -82,7 +82,6 @@ export async function PATCH(req: NextRequest) {
     // rather than silently diverge from.
     return NextResponse.json({ ok: true, updated: updated.length, requested: items.length });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/tasks/reorder', userId }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/tasks/reorder', err, { userId });
   }
 }

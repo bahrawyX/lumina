@@ -6,7 +6,7 @@ import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { firstDocEverAward } from '@/lib/coins/earnRules';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 
 /** GET /api/docs — return flat list of DocTreeNode[] for sidebar (no content field). */
 export async function GET(req: NextRequest) {
@@ -55,8 +55,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/docs' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/docs', err);
   }
 }
 
@@ -198,7 +197,6 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/docs' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/docs', err);
   }
 }

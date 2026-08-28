@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { checkLinkedOwnership, wouldCreateDocCycle } from '@/lib/ownership';
 import { docStaleGuard, nextDocUpdatedAt } from '@/lib/docs/staleWrite';
@@ -60,8 +60,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
       updatedAt: row.updatedAt.toISOString(),
     });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/docs/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/docs/[id]', err);
   }
 }
 
@@ -216,8 +215,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       newBalance,
     });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/docs/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/docs/[id]', err);
   }
 }
 
@@ -291,7 +289,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'DELETE /api/docs/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/docs/[id]', err);
   }
 }

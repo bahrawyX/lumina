@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence } from '@/db/schema';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { utcToZonedWallClock } from '@/lib/time/zonedTime';
 
 /**
@@ -218,7 +218,6 @@ export async function GET(req: NextRequest) {
     // were complete.
     return NextResponse.json({ instances, truncated });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/events/expand' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/events/expand', err);
   }
 }

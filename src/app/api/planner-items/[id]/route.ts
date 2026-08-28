@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { plannerItems } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -81,8 +81,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/planner-items/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/planner-items/[id]', err);
   }
 }
 
@@ -117,7 +116,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'DELETE /api/planner-items/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/planner-items/[id]', err);
   }
 }

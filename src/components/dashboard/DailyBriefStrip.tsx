@@ -10,6 +10,7 @@ import { useGoalsStore } from '@/store/useGoalsStore';
 import { useDailyBriefStore } from '@/store/useDailyBriefStore';
 import { useCalendarStore } from '@/store/useCalendarStore';
 import { CoinsBadge } from '@/components/coins/CoinsBadge';
+import { ClipboardCheckIcon } from '@/components/icons/CheckIcons';
 
 // ── Tiny inline icons (12px) ──────────────────────────────────────────────
 
@@ -28,12 +29,6 @@ const TargetIcon = () => (
 const FlameIcon = () => (
   <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 2c1 4-2 7-2 10a4 4 0 0 0 8 0c0-3-1-4-2-6-1 2-3 3-4 3s1-4 0-7z" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
   </svg>
 );
 
@@ -144,7 +139,7 @@ export const DailyBriefStrip: React.FC = () => {
 
       {focusText && <Chip icon={<ClockIcon />} value={focusText} label="focus" accent="text-primary" />}
 
-      {stats.dueToday > 0 && <Chip icon={<CheckIcon />} value={stats.dueToday} label="due" href="/tasks" />}
+      {stats.dueToday > 0 && <Chip icon={<ClipboardCheckIcon size={12} />} value={stats.dueToday} label="due" href="/tasks" />}
 
       <CoinsBadge variant="chip" />
 
@@ -152,7 +147,7 @@ export const DailyBriefStrip: React.FC = () => {
 
       {dailyStreak > 0 && <Chip icon={<FlameIcon />} value={dailyStreak} label="streak" accent="text-amber-500" />}
 
-      {stats.completedToday > 0 && <Chip icon={<CheckIcon />} value={stats.completedToday} label="done today" accent="text-emerald-500" />}
+      {stats.completedToday > 0 && <Chip icon={<ClipboardCheckIcon size={12} />} value={stats.completedToday} label="done today" accent="text-emerald-500" />}
     </div>
   );
 };

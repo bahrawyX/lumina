@@ -6,7 +6,7 @@ import { users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { applyCoinDelta, DuplicateAwardRace } from '@/lib/coins/awardCoins';
 import { SHOP_ITEM_MAP } from '@/config/shopItems';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /** POST /api/shop/purchase — purchase a shop item */
 export async function POST(req: NextRequest) {
@@ -97,7 +97,6 @@ export async function POST(req: NextRequest) {
       // back (no charge). That's "already owned", not a server error.
       return NextResponse.json({ error: 'Already owned' }, { status: 409 });
     }
-    logger.error('unhandled', { route: 'POST /api/shop/purchase' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/shop/purchase', err);
   }
 }

@@ -17,7 +17,7 @@ import { detectFocusWindows } from '@/lib/intelligence/focusWindows';
 import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import type { IntelligenceCalendarEvent, IntelligencePlannedItem } from '@/lib/intelligence/types';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 
 // The cached daily-brief path is cheap. The `?refresh=true` path re-runs
 // the Gemini narrative generation, which costs real money and seconds of
@@ -454,7 +454,6 @@ Write 2 sentences that:
 
     return NextResponse.json(brief);
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/daily-brief' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/daily-brief', err);
   }
 }

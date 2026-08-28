@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import type { PlanSummary, FreeBlock } from '../../utils/dailyPlanUtils';
 import { formatMinutes, formatTimeRange } from '../../utils/dailyPlanUtils';
+import { CheckIcon } from '@/components/icons/CheckIcons';
 
 interface FreeTimePanelProps {
   summary: PlanSummary;
@@ -11,12 +12,6 @@ interface FreeTimePanelProps {
 const ClockIcon: React.FC = () => (
   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
-const CheckIcon: React.FC = () => (
-  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
@@ -69,7 +64,7 @@ export const FreeTimePanel: React.FC<FreeTimePanelProps> = React.memo(({ summary
       {/* Stats */}
       <div className="rounded-xl border border-border/50 bg-muted/20 px-3 divide-y-0">
         <StatRow
-          icon={<CheckIcon />}
+          icon={<CheckIcon size={13} />}
           label="Planned"
           value={`${plannedCount} task${plannedCount === 1 ? '' : 's'}`}
           valueClass={plannedCount > 0 ? 'text-primary' : 'text-muted-foreground'}

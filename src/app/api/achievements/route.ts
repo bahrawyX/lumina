@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { achievements } from '@/db/schema';
 import { getDatabase } from '@/lib/db';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 import { z } from 'zod';
 
 /** A UI "mark these as seen" batch — bounded, and every entry a real uuid. */
@@ -41,8 +41,7 @@ export async function GET(req: NextRequest) {
       }))
     );
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/achievements' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/achievements', err);
   }
 }
 
@@ -86,7 +85,6 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/achievements' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/achievements', err);
   }
 }

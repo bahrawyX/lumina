@@ -3,7 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars } from '@/db/schema';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
@@ -62,7 +62,6 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true, calendar: updated });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/integrations/calendars/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/integrations/calendars/[id]', err);
   }
 }

@@ -9,7 +9,7 @@ import {
   contactEmailSchema,
 } from '@/lib/validation';
 import { clientIp, createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * `/api/contact` is the only unauthenticated write endpoint in the app, so it
@@ -104,7 +104,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/contact' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/contact', err);
   }
 }

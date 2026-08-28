@@ -21,7 +21,7 @@ import {
   users,
 } from '@/db/schema';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * GET /api/users/me/export — everything this account holds, as one JSON file.
@@ -206,7 +206,6 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/users/me/export', userId }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/users/me/export', err, { userId });
   }
 }

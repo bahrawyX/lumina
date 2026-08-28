@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { getFieldError, contextNameSchema } from '../lib/validation';
+import { CheckIcon } from '@/components/icons/CheckIcons';
 
 interface CustomContextDialogProps {
   open: boolean;
@@ -28,12 +29,6 @@ const PRESET_COLORS = [
   '#EC4899',
   '#A855F7',
 ];
-
-const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
 
 const CustomContextDialog: React.FC<CustomContextDialogProps> = ({
   open,
@@ -131,7 +126,7 @@ const CustomContextDialog: React.FC<CustomContextDialogProps> = ({
                   >
                     {isSelected && (
                       <span className="absolute inset-0 flex items-center justify-center">
-                        <CheckIcon className="text-white drop-shadow-sm" />
+                        <CheckIcon size={10} strokeWidth={3} className="text-white drop-shadow-sm" />
                       </span>
                     )}
                   </button>

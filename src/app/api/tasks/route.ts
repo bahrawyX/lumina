@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks, events, docs, goals } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { listHeaders, parseLimit } from '@/lib/listLimits';
 
@@ -99,8 +99,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped, { headers: listHeaders(rows.length, limit) });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/tasks' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/tasks', err);
   }
 }
 
@@ -225,7 +224,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: row.id }, { status: 201 });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/tasks' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/tasks', err);
   }
 }

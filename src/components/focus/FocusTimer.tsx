@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useFocusStore } from '../../store/useFocusStore';
 import { useTaskBoardStore } from '../../store/useTaskBoardStore';
 import { FocusProgress } from './FocusProgress';
+import { CheckIcon } from '@/components/icons/CheckIcons';
 
 const PauseIcon: React.FC = () => (
   <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor">
@@ -17,12 +18,6 @@ const PauseIcon: React.FC = () => (
 const PlayIcon: React.FC = () => (
   <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor">
     <polygon points="5 3 19 12 5 21 5 3" />
-  </svg>
-);
-
-const CheckIcon: React.FC = () => (
-  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
@@ -139,7 +134,7 @@ export const FocusTimer: React.FC<FocusTimerProps> = ({ onRequestInterruption })
           onClick={handleFinish}
           className="flex items-center gap-2 px-7 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.97] transition-all"
         >
-          <CheckIcon />
+          <CheckIcon size={18} strokeWidth={2.5} />
           Finish session
         </button>
       </div>

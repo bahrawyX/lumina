@@ -10,14 +10,9 @@ import { useDailyBriefStore } from '@/store/useDailyBriefStore';
 import { useCalendarStore } from '@/store/useCalendarStore';
 import { Skeleton as SkeletonPrimitive } from '@/components/ui/skeleton';
 import { Skeleton } from '@/components/ui/LoadingBoundary';
+import { ClipboardCheckIcon } from '@/components/icons/CheckIcons';
 
 // ── Icons ───────────────────────────────────────────────────────────────────
-
-const CheckIcon: React.FC = () => (
-  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-  </svg>
-);
 
 const CalendarIcon: React.FC = () => (
   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -165,7 +160,7 @@ export const TodaySummaryWidget: React.FC = () => {
           </div>
           <div className="p-3 flex flex-col items-start gap-1">
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <CheckIcon />
+              <ClipboardCheckIcon size={14} />
               <span className="text-[11px]">Completed</span>
             </div>
             <span className="text-2xl font-bold tabular-nums text-foreground">{stats.completedToday}</span>

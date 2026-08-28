@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { moodLogs, focusSessions } from '@/db/schema';
 import { moodSchema } from '@/lib/validation';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -35,8 +35,7 @@ export async function GET(req: NextRequest) {
       })),
     );
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/mood-logs' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/mood-logs', err);
   }
 }
 
@@ -89,7 +88,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: row.id }, { status: 201 });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/mood-logs' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/mood-logs', err);
   }
 }

@@ -4,7 +4,7 @@ import { getDatabase } from '@/lib/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { spendStreakShield } from '@/lib/streaks/spendStreakShield';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /** POST /api/streaks/recover — use streak shield consumable to recover streak */
 export async function POST(req: NextRequest) {
@@ -59,7 +59,6 @@ export async function POST(req: NextRequest) {
       remainingShields: remaining,
     });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/streaks/recover' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/streaks/recover', err);
   }
 }

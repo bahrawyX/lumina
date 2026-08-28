@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { tasks } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -76,7 +76,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
       updatedAt: row.updatedAt.toISOString(),
     }, { status: 201 });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/tasks/[id]/duplicate' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/tasks/[id]/duplicate', err);
   }
 }

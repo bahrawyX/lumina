@@ -7,7 +7,7 @@ import {
   MAX_SUBSCRIPTIONS_PER_USER,
   pushSubscriptionSchema,
 } from '@/lib/push/validation';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * POST — register this device for push notifications.
@@ -101,8 +101,7 @@ export async function POST(req: Request) {
         },
       });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/push/subscribe', userId }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/push/subscribe', err, { userId });
   }
 
   return NextResponse.json({ ok: true });
@@ -138,8 +137,7 @@ export async function DELETE(req: Request) {
         ),
       );
   } catch (err) {
-    logger.error('unhandled', { route: 'DELETE /api/push/subscribe' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/push/subscribe', err);
   }
 
   return NextResponse.json({ ok: true });

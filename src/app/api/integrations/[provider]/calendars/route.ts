@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { importGoogleCalendars, getGoogleCalendarsFromDb } from '@/lib/integrations/google/calendars';
 import { integrationErrorCode } from '@/lib/integrations/clientError';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 
 interface RouteContext {
   params: Promise<{ provider: string }>;
@@ -20,8 +20,10 @@ export async function GET(req: NextRequest, context: RouteContext) {
     try {
       const calendars = await getGoogleCalendarsFromDb(session.user.id);
       return NextResponse.json({ calendars });
-    } catch {
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    } catch (err) {
+      // P3-3/P3-4: a bare `catch {}` — the error was not bound, so it could
+      // not be logged even in principle. The client still gets the opaque 500.
+      return apiError('GET /api/integrations/[provider]/calendars (db)', err);
     }
   }
 

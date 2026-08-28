@@ -5,7 +5,7 @@ import { events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { eq, and, sql } from 'drizzle-orm';
 import type { EditScope } from '@/types';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 import { utcToZonedWallClock, zonedWallClockToUtc } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 import { checkLinkedOwnership } from '@/lib/ownership';
@@ -436,8 +436,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'PATCH /api/events/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('PATCH /api/events/[id]', err);
   }
 }
 
@@ -564,7 +563,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    logger.error('unhandled', { route: 'DELETE /api/events/[id]' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/events/[id]', err);
   }
 }

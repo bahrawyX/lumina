@@ -3,7 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars } from '@/db/schema';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * GET /api/integrations/calendars
@@ -37,7 +37,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ calendars: rows });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/integrations/calendars' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/integrations/calendars', err);
   }
 }

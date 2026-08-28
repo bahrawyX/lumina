@@ -4,7 +4,7 @@ import { sendPushToUser } from '@/lib/push/sendPushNotification';
 import type { PushPayload } from '@/lib/push/sendPushNotification';
 import { MAX_PUSH_PAYLOAD_BYTES, pushPayloadSchema } from '@/lib/push/validation';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * P1-14: there was NO rate limit here at all, so one account could pump
@@ -65,8 +65,7 @@ export async function POST(req: Request) {
     // Self-only: the caller's id, never one from the body.
     await sendPushToUser(userId, parsed.data as PushPayload);
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/push/send', userId }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/push/send', err, { userId });
   }
 
   return NextResponse.json({ ok: true });

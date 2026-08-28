@@ -15,7 +15,7 @@ import type {
   IntelligencePlannedItem,
   IntelligenceTask,
 } from '@/lib/intelligence/types';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { MAX_PROVIDER_RANGE_DAYS, parseRange } from '@/lib/dateRange';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 
@@ -312,7 +312,6 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/intelligence' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/intelligence', err);
   }
 }

@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
-import { logger } from '@/lib/logger';
+import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import {
   isValidTimeZone,
@@ -186,8 +186,7 @@ export async function GET(req: NextRequest) {
       { headers: listHeaders(rows.length, limit) },
     );
   } catch (err) {
-    logger.error('unhandled', { route: 'GET /api/events' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('GET /api/events', err);
   }
 }
 
@@ -384,7 +383,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: row.id, event: mapRowToApiEvent(row), recurrence: recurrenceData }, { status: 201 });
   } catch (err) {
-    logger.error('unhandled', { route: 'POST /api/events' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/events', err);
   }
 }

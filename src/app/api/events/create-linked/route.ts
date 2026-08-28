@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 import { zonedWallClockToUtc } from '@/lib/time/zonedTime';
 import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 import { resolvePrimaryLocalCalendarId } from '@/lib/calendars/primaryLocal';
@@ -225,7 +225,6 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
-    logger.error('unhandled', { route: 'POST /api/events/create-linked' }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('POST /api/events/create-linked', err);
   }
 }

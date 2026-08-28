@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/logger';
 
 /**
  * DELETE /api/users/me — erase the account and everything in it.
@@ -75,7 +75,6 @@ export async function DELETE(req: NextRequest) {
         { status: 400 },
       );
     }
-    logger.error('unhandled', { route: 'DELETE /api/users/me', userId: session.user.id }, err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiError('DELETE /api/users/me', err, { userId: session.user.id });
   }
 }
