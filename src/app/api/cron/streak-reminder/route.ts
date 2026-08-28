@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { eq, gt } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm';
 import { verifyCronSecret } from '@/lib/cronAuth';
 import { getDatabase } from '@/lib/db';
 import { users, pushSubscriptions } from '@/db/schema';
 import { sendPushToUser } from '@/lib/push/sendPushNotification';
 import { mapWithConcurrency } from '@/lib/integrations/mapWithConcurrency';
-import { claimNotification, isLocalHour, releaseClaim } from '@/lib/notifications/claim';
+import { claimNotification, releaseClaim } from '@/lib/notifications/claim';
+import { dueTimeZoneFilter, resolveDueTimeZones } from '@/lib/notifications/dueTimeZones';
 import { zonedToday } from '@/lib/time/zonedTime';
 import { logger } from '@/lib/logger';
 
@@ -37,6 +38,15 @@ export async function GET(req: Request) {
 
   // One joined query. This was "select distinct subscribers" followed by a
   // separate SELECT per user inside a sequential loop.
+  // The local-hour filter runs BEFORE the row cap — see `dueTimeZones.ts` and
+  // the daily-brief route. Applied after, as it was, `.limit(500)` over an
+  // unordered `selectDistinct` meant most users were never reminded at all.
+  const due = await resolveDueTimeZones(REMINDER_LOCAL_HOUR, now);
+  const dueFilter = dueTimeZoneFilter(due);
+  if (dueFilter === null) {
+    return NextResponse.json({ sent: 0, considered: 0 });
+  }
+
   const candidates = await db
     .selectDistinct({
       id: users.id,
@@ -47,7 +57,7 @@ export async function GET(req: Request) {
     })
     .from(users)
     .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
-    .where(gt(users.dailyStreak, 0))
+    .where(and(gt(users.dailyStreak, 0), dueFilter))
     .limit(MAX_USERS_PER_RUN);
 
   const dueNow = candidates.filter((u) => {
@@ -55,7 +65,6 @@ export async function GET(req: Request) {
     if (!prefs?.streakReminder) return false;
 
     const tz = u.timezone || 'UTC';
-    if (!isLocalHour(tz, REMINDER_LOCAL_HOUR, now)) return false;
 
     // Already focused today, in the user's own timezone — nothing at risk.
     // Previously compared against a UTC date string, so a user west of

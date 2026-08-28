@@ -5,7 +5,12 @@ import { getDatabase } from '@/lib/db';
 import { users, pushSubscriptions, events, tasks, sessions } from '@/db/schema';
 import { sendPushToUser } from '@/lib/push/sendPushNotification';
 import { mapWithConcurrency } from '@/lib/integrations/mapWithConcurrency';
-import { claimNotification, isLocalHour, releaseClaim } from '@/lib/notifications/claim';
+import {
+  claimNotification,
+  releaseClaim,
+  sweepOldNotificationSends,
+} from '@/lib/notifications/claim';
+import { dueTimeZoneFilter, resolveDueTimeZones } from '@/lib/notifications/dueTimeZones';
 import { zonedDayBounds, zonedToday } from '@/lib/time/zonedTime';
 import { logger } from '@/lib/logger';
 import { sweepExpiredRateLimits } from '@/lib/rateLimit';
@@ -73,6 +78,22 @@ export async function GET(req: Request) {
   const db = getDatabase();
   const now = new Date();
 
+  // P1-2: the cron ran at a fixed `0 8 * * *` UTC while `getGreeting(userTz)`
+  // computed a label from the user's timezone — so a Tokyo user got their
+  // "morning brief" at 17:00 local, correctly greeted "Good evening". It now
+  // runs HOURLY and each user is picked up in the hour that is 08:00 for them.
+  //
+  // The timezone filter has to run BEFORE the row cap, not after it. It used to
+  // be a `.filter()` over an unordered `selectDistinct(…).limit(500)`, so past
+  // 500 push subscribers the database returned an arbitrary — and, unordered,
+  // in practice the same — 500 rows every hour. Everyone outside that slice was
+  // never briefed at any hour on any day. See `dueTimeZones.ts`.
+  const due = await resolveDueTimeZones(BRIEF_LOCAL_HOUR, now);
+  const dueFilter = dueTimeZoneFilter(due);
+  if (dueFilter === null) {
+    return NextResponse.json({ sent: 0, considered: 0 });
+  }
+
   // P1-2: one joined query instead of "select distinct subscribers, then a
   // separate SELECT per user". Previously 1 + N round-trips before any send.
   const candidates = await db
@@ -84,16 +105,15 @@ export async function GET(req: Request) {
     })
     .from(users)
     .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
+    .where(dueFilter)
     .limit(MAX_USERS_PER_RUN);
 
-  // P1-2: the cron ran at a fixed `0 8 * * *` UTC while `getGreeting(userTz)`
-  // computed a label from the user's timezone — so a Tokyo user got their
-  // "morning brief" at 17:00 local, correctly greeted "Good evening". It now
-  // runs HOURLY and each user is picked up in the hour that is 08:00 for them.
+  // The hour is already settled in SQL; only the opt-in remains. It stays in JS
+  // because `notificationPreferences` is JSONB whose shape the column type does
+  // not constrain.
   const dueNow = candidates.filter((u) => {
     const prefs = u.notificationPreferences as { dailyBrief?: boolean } | null;
-    if (!prefs?.dailyBrief) return false;
-    return isLocalHour(u.timezone || 'UTC', BRIEF_LOCAL_HOUR, now);
+    return Boolean(prefs?.dailyBrief);
   });
 
   if (dueNow.length === 0) {
@@ -228,6 +248,26 @@ export async function GET(req: Request) {
   }
 
   /**
+   * Prune old notification claims — the exact same "sweep exists, nothing
+   * calls it" shape the rate-limit block above was written to fix, in a
+   * function added by the same change.
+   *
+   * `sweepOldNotificationSends` had one reference in the whole repo, in
+   * `tests/notification-claim.test.ts`. Its own docstring says the table "grows
+   * by (users x kinds) every day", and nothing else deletes from it, so
+   * `notification_sends` grew without bound for as long as the crons ran.
+   *
+   * Best-effort, for the same reason as above: a failed sweep is storage, not
+   * a reason to fail people's daily brief.
+   */
+  let notificationClaimsPruned: number | null = null;
+  try {
+    notificationClaimsPruned = await sweepOldNotificationSends();
+  } catch (err) {
+    logger.error('unhandled', { route: 'cron/daily-brief claim sweep' }, err);
+  }
+
+  /**
    * F5.9: expired session rows were never deleted.
    *
    * BetterAuth's only cleanup is lazy and owner-triggered — `get-session`
@@ -273,6 +313,7 @@ export async function GET(req: Request) {
     dueNow: dueNow.length,
     skippedAlreadySent,
     rateLimitRowsPruned,
+    notificationClaimsPruned,
     expiredSessionsPruned,
     // A run that hits the ceiling is visible rather than silently partial.
     truncated: candidates.length >= MAX_USERS_PER_RUN,
