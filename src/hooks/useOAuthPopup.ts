@@ -75,7 +75,14 @@ export type OAuthPopupResult =
   | { kind: 'ok' }
   | {
       kind: 'error';
-      reason: 'popup-blocked' | 'closed' | 'timeout' | 'message-error' | 'start-failed';
+      reason:
+        | 'popup-blocked'
+        | 'closed'
+        | 'timeout'
+        /** The user pressed Cancel on the consent screen. Not a fault. */
+        | 'cancelled'
+        | 'message-error'
+        | 'start-failed';
       /** The provider's own error, when it sent one. Never invented. */
       error?: string;
     };
@@ -100,6 +107,34 @@ export interface OAuthPopupOptions {
   /** Overridable for tests. */
   timeoutMs?: number;
   pollIntervalMs?: number;
+}
+
+/**
+ * The OAuth error codes that mean "the user said no", per RFC 6749 §4.1.2.1
+ * and the providers' own additions. Matched exactly rather than by substring:
+ * the previous check also fired on any error merely CONTAINING 'browser' or
+ * 'secure', which is why an ordinary decline was reported as a compatibility
+ * failure.
+ */
+const USER_CANCELLED_CODES = new Set([
+  'access_denied',
+  'consent_required',
+  'user_cancelled_login',
+  'user_cancelled_authorize',
+  // Microsoft's code for "user cancelled at the consent prompt".
+  'aadsts65004',
+]);
+
+/** True when the provider's error means the user declined. */
+export function isUserCancellation(error?: string | null): boolean {
+  if (!error) return false;
+  const normalized = error.trim().toLowerCase();
+  if (USER_CANCELLED_CODES.has(normalized)) return true;
+  // Providers sometimes send `error=access_denied&error_description=…`; match
+  // the code token rather than anywhere in free text.
+  return [...USER_CANCELLED_CODES].some((code) =>
+    new RegExp(`(^|[^a-z0-9_])${code}([^a-z0-9_]|$)`).test(normalized),
+  );
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -178,6 +213,16 @@ export function useOAuthPopup() {
           if (data.provider !== provider) return;
 
           if (data.success === false) {
+            // F4.5: `access_denied` is exactly what an OAuth provider sends
+            // when the user presses Cancel. Both integration copies matched it
+            // against a list that also included the substrings 'browser' and
+            // 'secure', and answered with "Google blocked browser/app context.
+            // OAuth failed." — telling someone who deliberately declined that
+            // their browser is broken.
+            if (isUserCancellation(data.error)) {
+              finish({ kind: 'error', reason: 'cancelled', error: data.error });
+              return;
+            }
             // F4.1: the provider's own error is CARRIED, not discarded. The
             // boolean return is what made every failure read as "cancelled".
             finish({ kind: 'error', reason: 'message-error', error: data.error });
@@ -286,6 +331,10 @@ export function oauthFailureMessage(
       return `Your browser blocked the ${providerLabel} sign-in window. We'll try again in this tab.`;
     case 'closed':
       return `The ${providerLabel} window closed before sign-in finished.`;
+    case 'cancelled':
+      // F4.5: a decline is a choice, not an error. No "try a regular browser
+      // window", no "OAuth failed" — nothing went wrong.
+      return `${providerLabel} sign-in was cancelled.`;
     case 'timeout':
       return `Still waiting on ${providerLabel}. Finish in the other window, or start over.`;
     case 'message-error':

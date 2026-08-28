@@ -1,6 +1,11 @@
 'use client';
 
 import React, { useState, useCallback, memo } from 'react';
+import {
+  useIntegrationConnect,
+  type IntegrationProvider,
+} from '@/hooks/useIntegrationConnect';
+import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOnboardingStore, FocusPreference, FocusSessionLength, FocusGoal } from '../store/useOnboardingStore';
@@ -39,74 +44,11 @@ const TRANSITION = {
   ease: [0.4, 0, 0.2, 1] as [number, number, number, number],
 };
 
-type IntegrationProvider = 'google' | 'microsoft';
-type IntegrationPopupFailureReason =
-  | 'closed'
-  | 'timeout'
-  | 'message-error'
-  | 'popup-blocked'
-  | 'status-false';
-type IntegrationPopupResult =
-  | { ok: true }
-  | { ok: false; reason: IntegrationPopupFailureReason; error?: string | null };
 type AuthMode = 'signin' | 'signup';
 
-function getIntegrationLabel(provider: IntegrationProvider): string {
-  return provider === 'google' ? 'Google Calendar' : 'Outlook';
-}
-
-function isGoogleBlockedContextError(error?: string | null): boolean {
-  if (!error) return false;
-  const normalized = error.toLowerCase();
-  return (
-    normalized.includes('access_denied')
-    || normalized.includes('oauth_error')
-    || normalized.includes('browser')
-    || normalized.includes('secure')
-  );
-}
-
-function getIntegrationFailureMessage(
-  provider: IntegrationProvider,
-  result: IntegrationPopupResult,
-): string {
-  if (result.ok) {
-    return `${getIntegrationLabel(provider)} connection was not completed. Try again in a regular browser window.`;
-  }
-
-  const failedResult = result as Extract<IntegrationPopupResult, { ok: false }>;
-
-  if (
-    provider === 'google' && (
-      failedResult.reason === 'timeout'
-      || failedResult.reason === 'status-false'
-      || (
-        failedResult.reason === 'message-error'
-        && isGoogleBlockedContextError(failedResult.error)
-      )
-    )
-  ) {
-    return 'Google blocked browser/app context. OAuth failed. Connection was not completed. Try again in a regular browser window.';
-  }
-
-  if (failedResult.reason === 'popup-blocked') {
-    return 'Popup blocked. Connection was not completed. Try again in a regular browser window.';
-  }
-
-  if (failedResult.reason === 'closed') {
-    return `${getIntegrationLabel(provider)} popup was closed before completion. Connection was not completed.`;
-  }
-
-  if (failedResult.reason === 'timeout') {
-    return `${getIntegrationLabel(provider)} popup timed out. OAuth failed. Connection was not completed. Try again in a regular browser window.`;
-  }
-
-  if (failedResult.reason === 'status-false') {
-    return `${getIntegrationLabel(provider)} OAuth finished but status stayed disconnected. Connection was not completed. Try again in a regular browser window.`;
-  }
-
-  return `${getIntegrationLabel(provider)} OAuth failed. Connection was not completed. Try again in a regular browser window.`;
-}
+// F4.5-F4.8 / P3-9: the duplicate `IntegrationPopupResult` types, the
+// blocked-context heuristic and the failure-message switch that lived here
+// were a second copy of `Sidebar.tsx`'s. Both are `useIntegrationConnect` now.
 
 /* ─── Reusable primitives ────────────────────────────────────────────────────── */
 
@@ -1123,79 +1065,6 @@ const OnboardingFlow: React.FC = () => {
     }
   }, [clearAuthMessage, refetchAuthSession]);
 
-  /**
-   * Opens the integration OAuth popup for a given provider.
-   * Navigates to our connect endpoint which redirects to the provider's
-   * OAuth screen with the appropriate calendar scopes, then stores tokens
-   * in the DB before handing off to /auth/popup-complete.
-   */
-  const openIntegrationPopup = useCallback(
-    async (provider: IntegrationProvider): Promise<IntegrationPopupResult> => {
-      const url = `/api/integrations/${provider}/connect`;
-      const width = 520;
-      const height = 700;
-      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-
-      const popup = window.open(
-        url,
-        `lumina-integration-${provider}`,
-        `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`,
-      );
-
-      if (!popup) {
-        return { ok: false, reason: 'popup-blocked' };
-      }
-      popup.focus();
-
-      return new Promise<IntegrationPopupResult>((resolve) => {
-        let settled = false;
-        const cleanup = () => {
-          window.removeEventListener('message', onMessage);
-          window.clearInterval(pollId);
-          window.clearTimeout(timeoutId);
-        };
-        const onMessage = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
-          const data = event.data;
-          if (!data || typeof data !== 'object') return;
-          if ((data as { type?: string }).type !== 'lumina:oauth-complete') return;
-          if ((data as { provider?: string }).provider !== provider) return;
-          if ((data as { success?: boolean }).success === false) {
-            const error = (data as { error?: unknown }).error;
-            settled = true;
-            cleanup();
-            resolve({
-              ok: false,
-              reason: 'message-error',
-              error: typeof error === 'string' ? error : null,
-            });
-            return;
-          }
-          settled = true;
-          cleanup();
-          resolve({ ok: true });
-        };
-        const pollId = window.setInterval(() => {
-          if (!settled && popup.closed) {
-            settled = true;
-            cleanup();
-            resolve({ ok: false, reason: 'closed' });
-          }
-        }, 350);
-        const timeoutId = window.setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          try { popup.close(); } catch { /* noop */ }
-          resolve({ ok: false, reason: 'timeout' });
-        }, 3 * 60 * 1000);
-        window.addEventListener('message', onMessage);
-      });
-    },
-    [],
-  );
-
   const syncIntegrationState = useCallback(async () => {
     try {
       const res = await fetch('/api/integrations/status', { cache: 'no-store' });
@@ -1236,18 +1105,15 @@ const OnboardingFlow: React.FC = () => {
     }
   }, [plannerStore, store]);
 
-  const confirmIntegration = useCallback(async (provider: IntegrationProvider) => {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+  const isIntegrationConnected = useCallback(
+    async (provider: IntegrationProvider) => {
       const status = await syncIntegrationState();
-      const connected = provider === 'google' ? status.google : status.microsoft;
-      if (connected) return true;
-      if (attempt < 2) {
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
-      }
-    }
+      return provider === 'google' ? status.google : status.microsoft;
+    },
+    [syncIntegrationState],
+  );
 
-    return false;
-  }, [syncIntegrationState]);
+  const connectIntegration = useIntegrationConnect({ isConnected: isIntegrationConnected });
 
   // ── Outlook / Microsoft connect (independent of Google) ─────────────────
   const handleOnboardingMicrosoftConnect = useCallback(async () => {
@@ -1265,30 +1131,19 @@ const OnboardingFlow: React.FC = () => {
     setOutlookLoading(true);
     setAuthBusy('microsoft');
     try {
-      const popupResult = await openIntegrationPopup('microsoft');
+      const result = await connectIntegration('microsoft');
 
-      if (!popupResult.ok) {
+      if (result.kind === 'error') {
         await syncIntegrationState();
-        setIntegrationMessage(getIntegrationFailureMessage('microsoft', popupResult));
-        return;
-      }
-
-      const confirmed = await confirmIntegration('microsoft');
-      if (!confirmed) {
-        setIntegrationMessage(
-          getIntegrationFailureMessage('microsoft', {
-            ok: false,
-            reason: 'status-false',
-          }),
-        );
+        setIntegrationMessage(result.message);
         return;
       }
 
       setIntegrationMessage(null);
     } catch (err: unknown) {
-      console.error('[Onboarding Outlook]', err);
+      logger.error('outlook connect failed', { component: 'OnboardingFlow' }, err);
       await syncIntegrationState();
-      setIntegrationMessage('Outlook OAuth failed. Connection was not completed. Try again in a regular browser window.');
+      setIntegrationMessage("We couldn't finish connecting Outlook. Please try again.");
     } finally {
       setAuthBusy(null);
       setOutlookLoading(false);
@@ -1296,8 +1151,7 @@ const OnboardingFlow: React.FC = () => {
   }, [
     clearAuthMessage,
     clearIntegrationMessage,
-    confirmIntegration,
-    openIntegrationPopup,
+    connectIntegration,
     store.microsoftConnected,
     syncIntegrationState,
   ]);
@@ -1318,30 +1172,19 @@ const OnboardingFlow: React.FC = () => {
     setGoogleLoading(true);
     setAuthBusy('google');
     try {
-      const popupResult = await openIntegrationPopup('google');
+      const result = await connectIntegration('google');
 
-      if (!popupResult.ok) {
+      if (result.kind === 'error') {
         await syncIntegrationState();
-        setIntegrationMessage(getIntegrationFailureMessage('google', popupResult));
-        return;
-      }
-
-      const confirmed = await confirmIntegration('google');
-      if (!confirmed) {
-        setIntegrationMessage(
-          getIntegrationFailureMessage('google', {
-            ok: false,
-            reason: 'status-false',
-          }),
-        );
+        setIntegrationMessage(result.message);
         return;
       }
 
       setIntegrationMessage(null);
     } catch (err: unknown) {
-      console.error('[Onboarding Google]', err);
+      logger.error('google connect failed', { component: 'OnboardingFlow' }, err);
       await syncIntegrationState();
-      setIntegrationMessage('Google OAuth failed. Connection was not completed. Try again in a regular browser window.');
+      setIntegrationMessage("We couldn't finish connecting Google Calendar. Please try again.");
     } finally {
       setAuthBusy(null);
       setGoogleLoading(false);
@@ -1349,8 +1192,7 @@ const OnboardingFlow: React.FC = () => {
   }, [
     clearAuthMessage,
     clearIntegrationMessage,
-    confirmIntegration,
-    openIntegrationPopup,
+    connectIntegration,
     store.googleConnected,
     syncIntegrationState,
   ]);

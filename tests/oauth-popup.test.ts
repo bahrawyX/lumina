@@ -118,12 +118,47 @@ describe('F4.1 — outcomes are distinguishable', () => {
         type: 'lumina:oauth-complete',
         provider: 'google',
         success: false,
-        error: 'access_denied',
+        error: 'invalid_scope',
       });
       await Promise.resolve();
     });
     // The boolean return discarded `data.error` entirely.
-    expect(get()).toEqual({ kind: 'error', reason: 'message-error', error: 'access_denied' });
+    expect(get()).toEqual({ kind: 'error', reason: 'message-error', error: 'invalid_scope' });
+  });
+
+  it('F4.5 — access_denied is a CANCELLATION, not a provider fault', async () => {
+    // This example used to assert `message-error`, which was correct for the
+    // hook and wrong about the world: `access_denied` is exactly what an OAuth
+    // provider sends when the user presses Cancel on the consent screen.
+    const get = await startFlow();
+    await act(async () => {
+      postComplete({
+        type: 'lumina:oauth-complete',
+        provider: 'google',
+        success: false,
+        error: 'access_denied',
+      });
+      await Promise.resolve();
+    });
+    expect(get()).toEqual({ kind: 'error', reason: 'cancelled', error: 'access_denied' });
+  });
+
+  it('and the cancellation match is on the code, not any substring', async () => {
+    // The old heuristic matched a message merely CONTAINING 'browser' or
+    // 'secure', which is how an ordinary decline became "Google blocked
+    // browser/app context."  A real fault that happens to mention a browser
+    // must stay a fault.
+    const get = await startFlow();
+    await act(async () => {
+      postComplete({
+        type: 'lumina:oauth-complete',
+        provider: 'google',
+        success: false,
+        error: 'unsupported_browser_configuration',
+      });
+      await Promise.resolve();
+    });
+    expect((get() as { reason: string }).reason).toBe('message-error');
   });
 
   it('success is success', async () => {
@@ -254,14 +289,26 @@ describe('F4.7 — listeners do not outlive the component', () => {
 describe('F4.1 / F3.13 — the copy names the cause', () => {
   it('never says "cancelled" for a provider error or a timeout', () => {
     const messageError = oauthFailureMessage(
-      { kind: 'error', reason: 'message-error', error: 'access_denied' },
+      { kind: 'error', reason: 'message-error', error: 'invalid_scope' },
       'Google',
     );
     const timeout = oauthFailureMessage({ kind: 'error', reason: 'timeout' }, 'Google');
 
-    expect(messageError).toContain('access_denied');
+    expect(messageError).toContain('invalid_scope');
     expect(messageError.toLowerCase()).not.toContain('cancel');
     expect(timeout.toLowerCase()).not.toContain('cancel');
+  });
+
+  it('F4.5 — and a real cancellation says so, without blaming the browser', () => {
+    // The string this replaces: "Google blocked browser/app context. OAuth
+    // failed. Connection was not completed. Try again in a regular browser
+    // window." — four clauses, three of them false, for someone who chose to
+    // decline.
+    const cancelled = oauthFailureMessage({ kind: 'error', reason: 'cancelled' }, 'Google Calendar');
+    expect(cancelled.toLowerCase()).toContain('cancel');
+    expect(cancelled.toLowerCase()).not.toContain('browser');
+    expect(cancelled).not.toContain('OAuth');
+    expect(cancelled.toLowerCase()).not.toContain('failed');
   });
 
   it('uses a display label, not the raw provider id', () => {
@@ -272,7 +319,7 @@ describe('F4.1 / F3.13 — the copy names the cause', () => {
   });
 
   it('does not use developer vocabulary', () => {
-    for (const reason of ['popup-blocked', 'closed', 'timeout', 'start-failed'] as const) {
+    for (const reason of ['popup-blocked', 'closed', 'timeout', 'cancelled', 'start-failed'] as const) {
       const msg = oauthFailureMessage({ kind: 'error', reason }, 'Google');
       expect(msg).not.toContain('OAuth');
     }
