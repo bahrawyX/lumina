@@ -1555,4 +1555,13 @@ ALTER TABLE "verifications" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with
 -- column, which is why the script does not attempt it.
 -- --------------------------------------------------------------------------
 
+-- ── 0026 · events.tz_backfilled_at ────────────────────────────────────────
+-- Added after this script was first written, so it is appended rather than
+-- woven in. `scripts/backfill-event-timezones.sql` creates this column itself
+-- with ADD COLUMN IF NOT EXISTS and filters every step on it being NULL —
+-- that filter is the only thing making the backfill safe to run twice. It is
+-- declared in the Drizzle schema and in drizzle/0026 so the two agree.
+ALTER TABLE "events"
+  ADD COLUMN IF NOT EXISTS "tz_backfilled_at" timestamptz;
+
 COMMIT;
