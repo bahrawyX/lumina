@@ -43,7 +43,7 @@ const FOCUS_SYNC_MIN_INTERVAL_MS = 30 * 1000;
  * content before the user adds their own events.  Stored session-only in
  * usePlannerStore.demoLocalEvents — never written to the DB.
  */
-function createContextDemoEvents(): CalendarEvent[] {
+export function createContextDemoEvents(): CalendarEvent[] {
   const today = new Date();
   const dayOffset = (n: number): string => {
     const d = new Date(today);
@@ -69,7 +69,13 @@ function createContextDemoEvents(): CalendarEvent[] {
 
   return contexts.map((ctx) => ({
     id: `demo_ctx_${ctx.name.toLowerCase()}_001`,
-    title: `${ctx.name} — demo event`,
+    // "Test" leads so the word survives truncation. A month cell clips a title
+    // to a couple of words, and `Critical — demo event` clipped to "Critical",
+    // which is indistinguishable from a real event the user forgot making —
+    // the exact confusion that got these reported as "events I didn't create".
+    // Leading with the disposable word means the giveaway is the part that
+    // always renders, and the context stays visible when there is room.
+    title: `Test (${ctx.name})`,
     description: `Example ${ctx.name} event. Create your own to get started.`,
     date: dayOffset(ctx.days),
     startTime: ctx.start,
