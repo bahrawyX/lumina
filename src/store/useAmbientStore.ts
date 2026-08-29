@@ -3,6 +3,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { playTrack, stopTrack, setTrackVolume } from '@/lib/audio/noiseGenerator';
+import { apiFetch } from '@/lib/persistence/apiClient';
+import { logger } from '@/lib/logger';
 import type { AmbientTrack } from '@/types';
 
 const VALID_TRACKS: AmbientTrack[] = ['brown', 'rainfall', 'forest', 'ocean'];
@@ -40,25 +42,28 @@ export const useAmbientStore = create<AmbientState & AmbientActions>()(
           playTrack(track, get().volume);
           set({ isPlaying: true, activeTrack: track });
         }
-        void fetch('/api/users/preferences', {
+        // P0-2: `apiFetch`, not a bare `fetch` — a 401 here never reached the
+        // unauthorized interceptor, so a dead session went unnoticed on this
+        // surface.
+        //
+        // And a failed SAVE no longer stops the SOUND. Reverting the audio
+        // made a preference-persistence problem indistinguishable from the
+        // feature being broken: press play, hear a moment of audio, silence.
+        // The track keeps playing; only the remembered preference is dropped,
+        // which is the thing that actually failed.
+        void apiFetch('/api/users/preferences', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ambientTrack: track }),
         })
           .then((res) => {
             if (!res.ok) {
-              // Server rejected — revert UI + audio to the prior selection so
-              // local state matches the DB.
-              stopTrack();
-              if (previous.activeTrack) playTrack(previous.activeTrack, get().volume);
-              set(previous);
+              logger.warn('ambient track preference not saved', { status: res.status });
             }
           })
           .catch(() => {
-            stopTrack();
-            if (previous.activeTrack) playTrack(previous.activeTrack, get().volume);
-            set(previous);
+            logger.warn('ambient track preference not saved', { reason: 'network' });
           });
+        void previous;
       },
 
       setVolume: (v) => {

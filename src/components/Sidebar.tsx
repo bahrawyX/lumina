@@ -12,6 +12,7 @@ import { useTaskBoardStore } from '../store/useTaskBoardStore';
 import { clearProvider, clearAll } from '../lib/calendar/externalEventsCache';
 import { focusModeFromMinutes } from '../lib/focusSettings';
 import CustomContextDialog from './CustomContextDialog';
+import { SidebarContexts } from './sidebar/SidebarContexts';
 import {
   PlusIcon,
   ChevronLeftIcon,
@@ -222,6 +223,7 @@ const AppSidebar: React.FC = () => {
   const openModal           = useCalendarStore((s) => s.openModal);
   const activeFilters       = useCalendarStore((s) => s.activeFilters);
   const toggleFilter        = useCalendarStore((s) => s.toggleFilter);
+  const clearFilters        = useCalendarStore((s) => s.clearFilters);
   const profile             = useCalendarStore((s) => s.profile);
   const insights            = useCalendarStore((s) => s.insights);
   const activeFocusSession  = useCalendarStore((s) => s.activeFocusSession);
@@ -250,7 +252,6 @@ const AppSidebar: React.FC = () => {
   const [accountDataOpen, setAccountDataOpen] = useState(false);
   const [editingContextName, setEditingContextName] = useState<string | null>(null);
   const [contextPendingDelete, setContextPendingDelete] = useState<string | null>(null);
-  const [openContextMenu, setOpenContextMenu] = useState<string | null>(null);
 
   // Suppress tooltips during collapse transition to prevent flash
   const [tooltipsReady, setTooltipsReady] = useState(isSidebarCollapsed);
@@ -730,7 +731,13 @@ const AppSidebar: React.FC = () => {
         <SidebarSeparator />
 
         {/* ── Content ────────────────────────────────────────────── */}
-        <SidebarContent className="px-2 py-3 gap-1 no-scrollbar">
+        {/* `thin-scrollbar`, not `no-scrollbar`. The nav scrolls, and hiding
+            the scrollbar meant nothing on screen said so — the list simply
+            looked like it ended at the last visible item, with Ambient
+            Sounds, Notifications and Contact invisible below the fold.
+            The bar is themed from `--muted-foreground`, so showing it no
+            longer means showing an OS-grey bar in a dark sidebar. */}
+        <SidebarContent className="px-2 py-3 gap-1 thin-scrollbar">
           {/* Insights */}
           {!isSidebarCollapsed && insights.length > 0 && (
             <SidebarGroup className="px-2 mb-2">
@@ -907,88 +914,21 @@ const AppSidebar: React.FC = () => {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {/* Contexts */}
-          <SidebarGroup className="px-2 mt-1" data-tutorial="contexts">
-            {!isSidebarCollapsed && (
-              <div className="flex items-center justify-between px-2 mb-2">
-                <SidebarGroupLabel className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50">Contexts</SidebarGroupLabel>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => setCustomContextDialogOpen(true)}
-                      aria-label="Add custom context"
-                      className="p-1 rounded-md hover:bg-accent/50 transition-colors"
-                    >
-                      <PlusIcon size={12} className="text-muted-foreground" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">Add Custom Context</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
+          {/* Contexts — one row that opens the full set, rather than one row
+              per context. See `SidebarContexts` for why. */}
+          <SidebarGroup className="px-2 mt-1">
             <SidebarGroupContent>
-              <SidebarMenu>
-                {allCategories.map((cat) => (
-                  <SidebarMenuItem key={cat.name}>
-                    <div className="group relative flex items-center">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <SidebarMenuButton
-                            onClick={() => toggleFilter(cat.name)}
-                            isActive={activeFilters.includes(cat.name)}
-                            className={`h-7 ${isSidebarCollapsed ? 'justify-center' : 'pr-9'}`}
-                          >
-                            <div
-                              className={`flex-shrink-0 w-1.5 h-1.5 rounded-full transition-transform ${activeFilters.includes(cat.name) ? 'scale-150 ring-2 ring-current/10' : ''}`}
-                              style={{ backgroundColor: cat.color, opacity: activeFilters.includes(cat.name) ? 1 : 0.7 }}
-                            />
-                            {!isSidebarCollapsed && (
-                              <span className={`font-sans text-[13px] truncate ${activeFilters.includes(cat.name) ? 'text-foreground' : 'text-muted-foreground/80'}`}>{cat.name}</span>
-                            )}
-                          </SidebarMenuButton>
-                        </TooltipTrigger>
-                        {tooltipsReady && (
-                          <TooltipContent side="right">{cat.name}</TooltipContent>
-                        )}
-                      </Tooltip>
-
-                      {!isSidebarCollapsed && customCategories.some((context) => context.name === cat.name) && (
-                        <div className={`absolute right-1 top-1/2 -translate-y-1/2 transition-opacity ${openContextMenu === cat.name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <DropdownMenu
-                            open={openContextMenu === cat.name}
-                            onOpenChange={(open) => setOpenContextMenu(open ? cat.name : null)}
-                          >
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label={`Manage ${cat.name} context`}
-                              >
-                                <MoreIcon size={13} />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44" sideOffset={6}>
-                              <DropdownMenuItem onClick={() => { setOpenContextMenu(null); setEditingContextName(cat.name); }}>
-                                <EditIcon size={13} />
-                                Edit Context
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => { setOpenContextMenu(null); handleDeleteContext(cat.name); }}
-                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                              >
-                                <TrashIcon size={13} />
-                                Delete Context
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      )}
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
+              <SidebarContexts
+                allCategories={allCategories}
+                customCategories={customCategories}
+                activeFilters={activeFilters}
+                collapsed={isSidebarCollapsed}
+                onToggleFilter={(name) => toggleFilter(name as Parameters<typeof toggleFilter>[0])}
+                onClearFilters={clearFilters}
+                onAddContext={() => setCustomContextDialogOpen(true)}
+                onEditContext={(name) => setEditingContextName(name)}
+                onDeleteContext={handleDeleteContext}
+              />
             </SidebarGroupContent>
           </SidebarGroup>
 
@@ -997,7 +937,12 @@ const AppSidebar: React.FC = () => {
         </SidebarContent>
 
         {/* ── Utility actions ───────────────────────────────────── */}
-        <SidebarGroup className="px-2 mt-auto mb-0">
+        {/* The rule sits ABOVE this group, not below it. Below, it read as the
+            top edge of the profile footer and left Ambient Sounds /
+            Notifications / Contact looking like three more nav items that had
+            drifted to the bottom. Above, it says where the nav ends. */}
+        <SidebarSeparator className="mt-auto" />
+        <SidebarGroup className="px-2 mb-0">
           <SidebarMenu>
             <SidebarMenuButton
               onClick={() => useAmbientStore.getState().openDrawer()}
@@ -1033,7 +978,9 @@ const AppSidebar: React.FC = () => {
         </SidebarGroup>
 
         {/* ── Footer: profile dropdown ─────────────────────────── */}
-        <SidebarSeparator />
+        {/* No separator here: `border-t` below already draws one, and two
+            rules 1px apart was the reason the boundary read as being in the
+            wrong place. */}
         <SidebarFooter className="p-2 border-t border-border/40">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

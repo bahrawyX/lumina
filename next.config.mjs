@@ -68,6 +68,15 @@ const securityHeaders = [
       // allowlist is those hosts and nothing else. (Self-hosting those assets
       // would let this collapse to a bare 'self' — see the landing-page work.)
       "connect-src 'self' https://lottie.host https://assets-v2.lottiefiles.com https://cdn.jsdelivr.net https://unpkg.com",
+      // Ambient sounds stream from archive.org and jsdelivr. There was no
+      // `media-src`, so it fell back to `default-src 'self'` and every track
+      // was blocked outright — which is why Ambient Sounds "did not work".
+      // The `<audio>` element failed, the Web Audio fallback kicked in, and
+      // "rainfall" became synthesised noise.
+      //
+      // archive.org redirects downloads to `ia###.us.archive.org`, hence the
+      // wildcard. `blob:`/`data:` cover locally generated audio.
+      "media-src 'self' blob: data: https://cdn.jsdelivr.net https://archive.org https://*.archive.org",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "object-src 'none'",

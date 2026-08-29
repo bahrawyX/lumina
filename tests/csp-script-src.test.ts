@@ -23,9 +23,21 @@ const rawConfig = readFileSync(resolve(process.cwd(), 'next.config.mjs'), 'utf8'
  * reports the fix as the defect.
  */
 const config = rawConfig
-  .replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n')
-  .filter((l) => !l.trim().startsWith('//'))
+  // Whole comment lines only.
+  //
+  // Stripping `/* ... */` with a regex over the raw file was wrong: the CSP
+  // contains `https://*.archive.org`, whose `/*` reads as a block-comment
+  // opener, so everything up to the next `*/` — `worker-src`, `manifest-src`,
+  // `object-src` and the closing brace — vanished. The test then reported
+  // those directives as missing while they were sitting right there.
+  //
+  // Every comment in this file is on its own line, so dropping comment LINES
+  // is both sufficient and immune to whatever appears inside a string.
+  .filter((l) => {
+    const t = l.trim();
+    return !t.startsWith('//') && !t.startsWith('/*') && !t.startsWith('*');
+  })
   .join('\n');
 
 /** Rebuild the `script-src` the config would emit for a given NODE_ENV. */

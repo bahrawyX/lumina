@@ -74,6 +74,8 @@ interface CalendarState {
   setCurrentDate: (date: Date) => void;
   setSearchQuery: (searchQuery: string) => void;
   toggleFilter: (category: EventCategory) => void;
+  /** Drop every context filter at once. */
+  clearFilters: () => void;
   setTab: (tab: 'calendar' | 'profile') => void;
   updateProfile: (profile: Partial<UserProfile>) => void;
 
@@ -254,6 +256,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       ? state.activeFilters.filter(f => f !== category)
       : [...state.activeFilters, category]
   })),
+  clearFilters: () => set({ activeFilters: [] }),
   setTab: (currentTab) => set({ currentTab }),
   setFocusMode: (isFocusMode) => set({ isFocusMode }),
   setSidebarCollapsed: (isSidebarCollapsed) => set({ isSidebarCollapsed }),
