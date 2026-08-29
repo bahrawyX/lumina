@@ -148,6 +148,16 @@ const MORE_MENU_ITEMS = [
     ),
   },
   {
+    href: '/board',
+    label: 'Board',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M8 15c1.5-4 3-6 4.5-4S15 15 16 11"/>
+      </svg>
+    ),
+  },
+  {
     href: '/docs',
     label: 'Docs',
     icon: (

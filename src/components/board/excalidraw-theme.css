@@ -108,17 +108,37 @@
 }
 
 /**
- * Excalidraw applies a CSS `filter` to invert its whole UI in dark mode. Our
- * variables above are already the correct dark values, so leaving the filter on
- * would invert them a second time and produce a washed-out light chrome inside
- * a dark app.
+ * `--theme-filter` is deliberately left alone.
  *
- * The canvas itself is not affected: it is drawn from the scene's own colours,
- * which this does not touch.
+ * An earlier version of this file set it to `none` here, on the premise that
+ * "Excalidraw applies a CSS filter to invert its whole UI in dark mode, and our
+ * variables are already the correct dark values, so the filter would invert
+ * them a second time". Both halves of that were wrong, and it broke the board.
+ *
+ * The chrome does not use the filter at all. Exactly eight selectors in
+ * Excalidraw's stylesheet consume it, and none of them is an island, a toolbar
+ * or a popup — those are driven entirely by the variables above, which is why
+ * the chrome still themes correctly with the filter left on:
+ *
+ *     .excalidraw .excalidraw-eye-dropper-preview
+ *     .excalidraw .color-picker__button          (+ :hover:after, .active outline)
+ *     .excalidraw .color-picker-swatch
+ *     .excalidraw .color-picker-label-swatch
+ *     .excalidraw .library-unit__dragger > svg
+ *     .excalidraw.theme--dark canvas
+ *
+ * Every one of those is a colour-bearing surface authored in LIGHT values and
+ * inverted at paint time. Killing the filter therefore:
+ *
+ *   - left the canvas literally white inside a dark app, because
+ *     `.excalidraw.theme--dark canvas` is what darkens it; and
+ *   - rendered the canvas-background presets as their raw values —
+ *     #ffffff, #f8f9fa, #f5faff, #fffce8, #fdf8f6 — five near-identical whites,
+ *     so choosing a background appeared to do nothing whichever you picked.
+ *
+ * That second one is the reported "I can't change the background colour". It
+ * was not the picker failing; it was every option resolving to white.
  */
-.excalidraw.theme--dark {
-  --theme-filter: none;
-}
 
 /* The scrollbars inside Excalidraw's panels, matched to the app's. */
 .excalidraw ::-webkit-scrollbar {
