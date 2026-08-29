@@ -17,6 +17,8 @@
  * small sizes.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   PRIORITY_META,
   DIFFICULTY_META,
@@ -82,5 +84,35 @@ describe('shape backs up the colour rule', () => {
     // cannot tell the colours apart at all.
     expect(PRIORITY_SHAPE).not.toBe(DIFFICULTY_SHAPE);
     expect(PRIORITY_SHAPE).toBe('rounded-full');
+  });
+});
+
+describe('undo/redo do not impersonate a reload button', () => {
+  /**
+   * These live on the calendar toolbar and nowhere else, because undo/redo is
+   * a calendar-only feature. They were drawn with a 9-radius arc sweeping most
+   * of a circle and animated with `rotate` on hover — the two things that make
+   * a control read as refresh/reload/sync. It was reported as exactly that:
+   * "the reload icon on the calendar".
+   *
+   * The arc geometry is a judgement call and not worth pinning to an exact
+   * path string. The rotation is not: spinning motion is refresh's signature,
+   * and reintroducing it would undo this regardless of the glyph.
+   */
+  const src = readFileSync(
+    join(process.cwd(), 'src', 'components', 'icons', 'UndoRedoIcons.tsx'),
+    'utf8',
+  );
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('does not animate by rotating', () => {
+    expect(code).not.toMatch(/\brotate\s*:/);
+  });
+
+  it('nudges along the axis of travel instead, in opposite directions', () => {
+    // Undo goes left, redo goes right; a pair moving the same way reads as
+    // one control repeated rather than as a direction.
+    expect(code).toMatch(/x:\s*-HOVER_NUDGE/);
+    expect(code).toMatch(/x:\s*HOVER_NUDGE/);
   });
 });
