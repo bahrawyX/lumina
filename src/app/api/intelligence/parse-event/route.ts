@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 import { logger } from '@/lib/logger';
+import { GEMINI_MODEL } from '@/lib/ai/geminiModel';
 
 // 20 parses per minute per user. Gemini calls cost money and latency —
 // without a cap any authenticated user could run the bill up via a script.
@@ -131,7 +132,7 @@ Rules:
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_MODEL,
       contents: `${systemPrompt}\n\nUser input: "${input}"`,
       config: {
         maxOutputTokens: 500,

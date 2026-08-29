@@ -18,6 +18,7 @@ import { and, eq } from 'drizzle-orm';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 import { apiError } from '@/lib/logger';
+import { GEMINI_MODEL } from '@/lib/ai/geminiModel';
 
 const apiKey = process.env.GEMINI_API_KEY ?? '';
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
@@ -128,7 +129,7 @@ Suggest 3–5 concrete, actionable tasks the user should add to their task board
 Return ONLY a JSON object of the form { "tasks": [string, ...] }. Nothing else.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         maxOutputTokens: 400,

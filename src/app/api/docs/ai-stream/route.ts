@@ -6,6 +6,7 @@ import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { aiInDocsAward } from '@/lib/coins/earnRules';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 import { logger } from '@/lib/logger';
+import { GEMINI_MODEL } from '@/lib/ai/geminiModel';
 
 // Durable, cross-instance. The previous hand-rolled `Map` was per-lambda
 // memory, so the effective ceiling was 10 x (warm instances) rather than 10.
@@ -18,7 +19,8 @@ const perDayLimiter = createRateLimiter('aiStreamDaily', {
   max: 200,
 });
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Re-exported from the shared module: this string was duplicated in four
+// route files, so one Google deprecation broke four features at once.
 
 /** Hard ceiling on the response. Previously there was no `config` at all. */
 const MAX_OUTPUT_TOKENS = 1024;

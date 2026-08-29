@@ -18,6 +18,7 @@ import { expandRecurrence } from '@/lib/recurrence/rruleEngine';
 import type { IntelligenceCalendarEvent, IntelligencePlannedItem } from '@/lib/intelligence/types';
 import { createRateLimiter, rateLimitedResponse } from '@/lib/rateLimit';
 import { apiError, logger } from '@/lib/logger';
+import { GEMINI_MODEL } from '@/lib/ai/geminiModel';
 
 // The cached daily-brief path is cheap. The `?refresh=true` path re-runs
 // the Gemini narrative generation, which costs real money and seconds of
@@ -399,7 +400,7 @@ Write 2 sentences that:
 2. Give one clear recommendation for what to focus on first`;
 
           const result = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: GEMINI_MODEL,
             contents: prompt,
             config: { maxOutputTokens: 200, temperature: 0.7 },
           });
