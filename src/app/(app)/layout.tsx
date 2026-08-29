@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { getDatabase } from "@/lib/db";
+import { users } from "@/db/schema";
 import { AppShell } from "./AppShell";
 
 export const metadata: Metadata = {
@@ -38,7 +41,44 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     .getSession({ headers: await headers() })
     .catch(() => null);
 
+  /**
+   * Whether this ACCOUNT has finished onboarding, resolved on the server.
+   *
+   * The redirect gate in `AppShell` used to decide this from localStorage
+   * alone, which is wrong twice over for a returning user on a clean browser:
+   *
+   *  - localStorage says `completed: false` (there is nothing in it), so they
+   *    were bounced to `/onboarding` despite having onboarded long ago;
+   *  - and because the gate only waits for the localStorage read, the redirect
+   *    fired after the calendar had already painted — the flash of the app
+   *    before being thrown into onboarding.
+   *
+   * `onboarding_completed_at` is the account-level record. Reading it here
+   * makes the answer available before the first byte, so there is nothing to
+   * flash and nobody to misroute.
+   */
+  let onboardingCompleted = false;
+  if (session?.user?.id) {
+    try {
+      const [row] = await getDatabase()
+        .select({ at: users.onboardingCompletedAt })
+        .from(users)
+        .where(eq(users.id, session.user.id))
+        .limit(1);
+      onboardingCompleted = row?.at != null;
+    } catch {
+      // A failed read must not wall the app off. `false` sends them to
+      // onboarding, which is recoverable; throwing here is not.
+      onboardingCompleted = false;
+    }
+  }
+
   return (
-    <AppShell initialHasSession={Boolean(session?.user)}>{children}</AppShell>
+    <AppShell
+      initialHasSession={Boolean(session?.user)}
+      initialOnboardingCompleted={onboardingCompleted}
+    >
+      {children}
+    </AppShell>
   );
 }

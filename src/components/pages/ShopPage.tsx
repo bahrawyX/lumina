@@ -99,7 +99,10 @@ const ShopItemCard: React.FC<{
           disabled={!canAfford}
           className="text-[11px] h-7 rounded-lg"
         >
-          {item.consumable ? 'Buy' : 'Purchase'}
+          {/* One verb. A consumable said "Buy" and a cosmetic said
+              "Purchase" for the same action, which reads as two different
+              transactions rather than one. */}
+          Buy
         </Button>
       )}
     </div>

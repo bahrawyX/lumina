@@ -10,22 +10,39 @@
  */
 import { toast } from 'sonner';
 
+interface NotifyOptions {
+  /**
+   * Stable id. A later call with the same id REPLACES the toast instead of
+   * stacking a second one beneath it.
+   *
+   * This exists because optimistic writes announce success and then, on a
+   * failed save, announce failure — leaving the user reading
+   * "Event created: team standup" directly above
+   * "Couldn't save \"team standup\" — please try again."
+   * Two toasts, opposite meanings, both true at different moments and
+   * contradictory on screen.
+   */
+  id?: string;
+  /** Renders as an error toast. */
+  error?: boolean;
+}
+
 const notify = (
   message: string,
   undoFn?: () => void,
-  duration = 3500
+  duration = 3500,
+  options: NotifyOptions = {},
 ): void => {
+  const config: Parameters<typeof toast>[1] = { duration };
+  if (options.id) config.id = options.id;
   if (undoFn) {
-    toast(message, {
-      duration,
-      action: {
-        label: 'Undo',
-        onClick: undoFn,
-      },
-    });
-  } else {
-    toast(message, { duration });
+    config.action = { label: 'Undo', onClick: undoFn };
   }
+  if (options.error) {
+    toast.error(message, config);
+    return;
+  }
+  toast(message, config);
 };
 
 export default notify;

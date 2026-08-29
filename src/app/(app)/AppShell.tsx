@@ -219,6 +219,7 @@ function OAuthRedirectToast() {
 export function AppShell({
   children,
   initialHasSession,
+  initialOnboardingCompleted,
 }: {
   children: React.ReactNode;
   /**
@@ -229,6 +230,11 @@ export function AppShell({
    * `useSession()` resolves.
    */
   initialHasSession: boolean;
+  /**
+   * Whether this ACCOUNT has onboarded, read from `onboarding_completed_at` on
+   * the server. Authoritative, and known before the first paint.
+   */
+  initialOnboardingCompleted: boolean;
 }) {
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
   const onboardingHydrated = useOnboardingHydrated();
@@ -360,12 +366,36 @@ export function AppShell({
     // for a single frame even when onboarding was already done.
     if (!onboardingHydrated) return;
 
-    if (!onboardingCompleted && pathname !== "/onboarding") {
+    /**
+     * The account record wins, and it is known before the first paint.
+     *
+     * This used to read `onboardingCompleted` — localStorage — alone. On a
+     * clean browser that is `false` for everyone, so a returning user who
+     * onboarded months ago was thrown into `/onboarding` after the calendar
+     * had already rendered.
+     *
+     * The local flag still counts, but only in the ON direction: it is how a
+     * user who finishes the flow in THIS tab stops being redirected back into
+     * it, before the server round-trip that records it has landed.
+     */
+    const done = initialOnboardingCompleted || onboardingCompleted;
+
+    if (!done && pathname !== "/onboarding") {
       router.replace("/onboarding");
-    } else if (onboardingCompleted && pathname === "/onboarding") {
+    } else if (initialOnboardingCompleted && pathname === "/onboarding") {
+      // Deliberately gated on the SERVER value, not `done`. A guest carries a
+      // stale local `completed: true` into the sign-up they perform on this
+      // very page; bouncing them to /calendar on the strength of that flag
+      // would eject them from the flow they are in the middle of.
       router.replace("/calendar");
     }
-  }, [onboardingHydrated, onboardingCompleted, pathname, router]);
+  }, [
+    onboardingHydrated,
+    onboardingCompleted,
+    initialOnboardingCompleted,
+    pathname,
+    router,
+  ]);
 
   useEffect(() => {
     let gPending = false;

@@ -63,8 +63,39 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     // Get pre-update status for comparison
-    const [prev] = await db.select({ status: goals.status, timeframe: goals.timeframe }).from(goals)
+    const [prev] = await db
+      .select({
+        status: goals.status,
+        timeframe: goals.timeframe,
+        startDate: goals.startDate,
+        endDate: goals.endDate,
+      })
+      .from(goals)
       .where(and(eq(goals.id, id), eq(goals.userId, userId)));
+
+    /**
+     * The date range has to stay ordered.
+     *
+     * `POST /api/goals` rejects `end <= start`; this handler only checked that
+     * each date PARSED. So a goal could be edited into "Aug 24 - Aug 10", which
+     * the UI then renders as permanently Overdue with a negative span — and
+     * `differenceInCalendarDays(endDate, startDate)` in `GoalDetailSheet` goes
+     * negative, so every progress figure derived from it is meaningless.
+     *
+     * Validated against the RESULTING range, not just the submitted fields: a
+     * PATCH that moves only `endDate` has to be checked against the stored
+     * `startDate`, or half an edit slips through.
+     */
+    if (prev) {
+      const nextStart = (patch.startDate as Date | undefined) ?? prev.startDate;
+      const nextEnd = (patch.endDate as Date | undefined) ?? prev.endDate;
+      if (nextStart && nextEnd && nextEnd <= nextStart) {
+        return NextResponse.json(
+          { error: 'endDate must be after startDate' },
+          { status: 400 },
+        );
+      }
+    }
 
     // P2-2: this was a blind write. `db.update(...)` matching zero rows is not
     // an error in Drizzle, so a PATCH against a goal that does not exist — or

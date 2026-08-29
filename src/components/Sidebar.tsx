@@ -571,13 +571,21 @@ const AppSidebar: React.FC = () => {
       // Width is animated by the variants above (288px expanded / 72px
       // collapsed). The inner Sidebar must NOT be its own visibility gate or
       // it would never render in the mobile drawer overlay.
-      className="relative flex flex-col h-full bg-background border-r border-border/60 z-40 overflow-hidden"
+      // `overflow-visible`, not `overflow-hidden`. The collapse toggle below is
+      // deliberately positioned at `-right-3` so it straddles the border, and
+      // clipping it here cut the button in half — the sidebar's own edge sliced
+      // straight through it. The width animation still needs clipping, so that
+      // moved onto the inner wrapper, which is what actually holds the content
+      // that would otherwise spill during the transition.
+      className="relative flex flex-col h-full bg-background border-r border-border/60 z-40 overflow-visible"
     >
       {/* Collapse toggle */}
       <Button
         variant="outline"
         size="icon"
         onClick={() => setSidebarCollapsed(!isSidebarCollapsed)}
+        aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         className="absolute -right-3 top-12 h-6 w-6 min-h-6 min-w-6 p-0 rounded-full border border-border/80 bg-background shadow-sm z-50 hover:bg-accent/50 transition-colors flex items-center justify-center"
       >
         {isSidebarCollapsed ? (
@@ -587,7 +595,7 @@ const AppSidebar: React.FC = () => {
         )}
       </Button>
 
-      <Sidebar className="h-full">
+      <Sidebar className="h-full overflow-hidden">
         {/* ── Header ────────────────────────────────────────────── */}
         <SidebarHeader className="px-4 pt-8 pb-4 gap-4">
           {/* Logo row */}

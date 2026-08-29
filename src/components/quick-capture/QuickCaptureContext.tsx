@@ -15,6 +15,16 @@ import {
 import { useGoalsStore } from '@/store/useGoalsStore';
 import type { CaptureType } from './classifier';
 
+/**
+ * Sentinel for "no goal linked".
+ *
+ * Radix reserves `''` to mean "nothing selected", so a `SelectItem` may not use
+ * it — doing so throws and unmounts the modal. This value never leaves the
+ * component: it is translated to `null` in `onValueChange`.
+ */
+const NO_GOAL = '__no_goal__';
+
+
 interface ContextProps {
   type: CaptureType;
   taskDueDate: Date | null;
@@ -108,14 +118,21 @@ export function QuickCaptureContext(props: ContextProps) {
               </Select>
               {activeGoals.length > 0 && (
                 <Select
-                  value={props.goalId ?? ''}
-                  onValueChange={(v) => props.setGoalId(v || null)}
+                  // Radix reserves the empty string for "no selection", so an
+                  // item cannot use it as a value — rendering one threw
+                  //   A <Select.Item /> must have a value prop that is not an
+                  //   empty string
+                  // and took the whole Quick Capture modal down on Ctrl+K.
+                  // `NO_GOAL` is the sentinel; it maps back to null on the way
+                  // out, so the stored shape is unchanged.
+                  value={props.goalId ?? NO_GOAL}
+                  onValueChange={(v) => props.setGoalId(v === NO_GOAL ? null : v)}
                 >
                   <SelectTrigger className="h-7 text-xs w-auto min-w-[140px] max-w-[200px]">
                     <SelectValue placeholder="Link to goal" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No goal</SelectItem>
+                    <SelectItem value={NO_GOAL}>No goal</SelectItem>
                     {activeGoals.map((g) => (
                       <SelectItem key={g.id} value={g.id}>
                         {g.title}

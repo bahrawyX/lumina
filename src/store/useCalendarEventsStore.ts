@@ -135,7 +135,11 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
     const timeRange = event.startTime && event.endTime ? ` (${event.startTime}–${event.endTime})` : '';
-    notify(`Event created: ${event.title}${timeRange}`);
+    // One toast id for the whole create, so a failed save REPLACES the
+    // optimistic "created" message rather than stacking a contradiction
+    // underneath it.
+    const toastId = `event-create-${event.id}`;
+    notify(`Event created: ${event.title}${timeRange}`, undefined, 3500, { id: toastId });
     // DB persistence with rollback on failure — matches the error-handling
     // pattern used by the recurring-'this' update/delete paths.
     eventsPersistence.createOne(event)
@@ -155,7 +159,10 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
         });
         triggerIntelligence();
         void prevEvents; // reserved for future full-state rollback if needed
-        notify(`Couldn't save "${event.title}" — please try again.`);
+        notify(`Couldn't save "${event.title}" — please try again.`, undefined, 5000, {
+          id: toastId,
+          error: true,
+        });
       })
       .catch(() => {
         const current = get();
@@ -168,7 +175,12 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
           historyIndex: prevHistoryIndex,
         });
         triggerIntelligence();
-        notify(`Couldn't save "${event.title}" — check your connection and try again.`);
+        notify(
+          `Couldn't save "${event.title}" — check your connection and try again.`,
+          undefined,
+          5000,
+          { id: toastId, error: true },
+        );
       });
   },
 

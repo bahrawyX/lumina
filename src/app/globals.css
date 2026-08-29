@@ -395,6 +395,55 @@ html.transitioning-theme *::after {
   }
 }
 
+/* ─── App-wide scrollbar ──────────────────────────────────────────────────
+   Every scrollable surface that had not opted into `.thin-scrollbar` or
+   `.no-scrollbar` was rendering the OS default — a light-grey Windows bar
+   inside a dark dialog, which is the first thing the eye goes to in the Add
+   Event modal.
+
+   Styled with the theme's own tokens rather than fixed greys, so it follows
+   light/dark like everything else. `scrollbar-width`/`scrollbar-color` cover
+   Firefox; the `::-webkit-` rules cover Chrome, Edge and Safari.
+
+   Scoped to `body` and its descendants rather than `*` so an element that
+   deliberately hides its scrollbar still wins. */
+body {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+
+body ::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body ::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body ::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.28);
+  border-radius: 9999px;
+  /* A transparent border with background-clip keeps the thumb visually
+     narrower than its hit area, so it stays easy to grab. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+body ::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+  background-clip: content-box;
+}
+
+body ::-webkit-scrollbar-corner,
+body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ─── Thin scrollbar (time picker columns) ───────────────────────────────── */
 .thin-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(120,120,140,0.35) transparent; }
 .thin-scrollbar::-webkit-scrollbar { width: 4px; }
