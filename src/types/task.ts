@@ -15,6 +15,17 @@ export interface Task {
   updatedAt: string;
   dueDate?: string | null;
   linkedEventId?: string | null;
+  /**
+   * RRULE for a repeating task, e.g. `FREQ=WEEKLY;BYDAY=TU`.
+   *
+   * Next-occurrence, not expansion: a recurring task exists once, and
+   * completing it spawns the next. See `src/lib/tasks/recurrence.ts`.
+   */
+  recurrenceRule?: string | null;
+  /** Stop repeating after this instant. Null = indefinitely. */
+  recurrenceEnd?: string | null;
+  /** The first task in the series; null for one-offs and for the original. */
+  recurrenceParentId?: string | null;
   scheduledStart?: string | null;
   scheduledEnd?: string | null;
   remainingFocusTime?: number | null;

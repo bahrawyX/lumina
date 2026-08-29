@@ -28,6 +28,13 @@ beforeAll(async () => {
       due_date timestamptz,
       parent_task_id uuid,
       priority varchar(10),
+      estimated_minutes integer NOT NULL DEFAULT 30,
+      goal_id uuid,
+      position integer NOT NULL DEFAULT 0,
+      description text,
+      recurrence_rule text,
+      recurrence_end timestamptz,
+      recurrence_parent_id uuid,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS goal_targets (

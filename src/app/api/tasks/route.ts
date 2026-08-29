@@ -6,6 +6,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { listHeaders, parseLimit } from '@/lib/listLimits';
+import { validateRRule } from '@/lib/recurrence/rruleEngine';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -89,6 +90,9 @@ export async function GET(req: NextRequest) {
       remainingFocusTime: row.remainingFocusTime ?? null,
       order: row.position,
       context: null,
+      recurrenceRule: row.recurrenceRule ?? null,
+      recurrenceEnd: row.recurrenceEnd ? row.recurrenceEnd.toISOString() : null,
+      recurrenceParentId: row.recurrenceParentId ?? null,
       linkedEventId: row.linkedEventId ?? null,
       parentTaskId: row.parentTaskId ?? null,
       depth: row.depth ?? 0,
@@ -118,12 +122,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId, goalId } = body as {
+  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId, goalId, recurrenceRule, recurrenceEnd } = body as {
     title?: string;
     description?: string;
     status?: string;
     priority?: string;
     difficulty?: string;
+    recurrenceRule?: string | null;
+    recurrenceEnd?: string | null;
     dueDate?: string | null;
     durationMinutes?: number;
     scheduledStart?: string | null;
@@ -193,10 +199,31 @@ export async function POST(req: NextRequest) {
       if (!g) return NextResponse.json({ error: 'goalId not found' }, { status: 404 });
     }
 
+    /**
+     * Recurrence, validated against the same engine events use — so a task
+     * cannot express a rule the rest of the app would reject (no sub-daily
+     * frequencies, bounded COUNT and INTERVAL).
+     */
+    let normalizedRecurrence: string | null = null;
+    if (typeof recurrenceRule === 'string' && recurrenceRule.trim()) {
+      const anchor = dueDate && !isNaN(new Date(dueDate).getTime()) ? new Date(dueDate) : new Date();
+      const valid = validateRRule(recurrenceRule.trim(), anchor);
+      if (!valid.ok) {
+        return NextResponse.json({ error: `Invalid recurrence: ${valid.reason}` }, { status: 400 });
+      }
+      normalizedRecurrence = recurrenceRule.trim();
+    }
+    const normalizedRecurrenceEnd =
+      typeof recurrenceEnd === 'string' && !isNaN(new Date(recurrenceEnd).getTime())
+        ? new Date(recurrenceEnd)
+        : null;
+
     const [row] = await db
       .insert(tasks)
       .values({
         userId,
+        recurrenceRule: normalizedRecurrence,
+        recurrenceEnd: normalizedRecurrenceEnd,
         title: title.trim(),
         description: description ?? null,
         status: normalizeTaskStatusForDb(status),

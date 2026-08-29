@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   parent_task_id uuid,
   depth integer NOT NULL DEFAULT 0,
   position integer NOT NULL DEFAULT 0,
+  recurrence_rule text,
+  recurrence_end timestamptz,
+  recurrence_parent_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
