@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
+// After Excalidraw's own stylesheet, so our variable overrides win on source
+// order without needing `!important`.
+import './excalidraw-theme.css';
 import { boardStorageKey, loadBoard, saveBoard, type BoardScene } from '@/lib/board/boardStorage';
 
 /**
@@ -46,7 +48,7 @@ if (typeof window !== 'undefined') {
 const SAVE_DEBOUNCE_MS = 800;
 
 export default function ExcalidrawBoard({ userId }: { userId: string | null }) {
-  const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
+  const [dark, setDark] = useState(false);
   const [initial, setInitial] = useState<BoardScene | null | undefined>(undefined);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<BoardScene | null>(null);
@@ -57,6 +59,18 @@ export default function ExcalidrawBoard({ userId }: { userId: string | null }) {
   useEffect(() => {
     setInitial(loadBoard(userId));
   }, [userId]);
+
+  // `next-themes` toggles `.dark` on <html>, so watch the attribute rather
+  // than subscribing to the theme library — this keeps the board decoupled
+  // from whichever provider is in use.
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setDark(root.classList.contains('dark'));
+    sync();
+    const mo = new MutationObserver(sync);
+    mo.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => mo.disconnect();
+  }, []);
 
   const flush = useCallback(() => {
     if (saveTimer.current) {
@@ -119,21 +133,16 @@ export default function ExcalidrawBoard({ userId }: { userId: string | null }) {
   return (
     <div className="h-full w-full">
       <Excalidraw
-        excalidrawAPI={setApi}
         initialData={
           initial
             ? { elements: initial.elements, appState: initial.appState, files: initial.files }
             : null
         }
         onChange={handleChange}
-        // The app is dark-first; `theme` follows the document so the canvas
-        // does not sit as a white rectangle inside a dark shell.
-        theme={
-          typeof document !== 'undefined' &&
-          document.documentElement.classList.contains('dark')
-            ? 'dark'
-            : 'light'
-        }
+        // Follows the app's theme live. Reading the class once during render
+        // would leave the canvas in whichever mode it mounted in when the user
+        // flips the switch.
+        theme={dark ? 'dark' : 'light'}
         UIOptions={{
           canvasActions: {
             // Excalidraw's own "load from file" replaces the scene wholesale
@@ -151,9 +160,6 @@ export default function ExcalidrawBoard({ userId }: { userId: string | null }) {
           <MainMenu.DefaultItems.Help />
         </MainMenu>
       </Excalidraw>
-
-      {/* Debug affordance kept out of the DOM in production. */}
-      {process.env.NODE_ENV === 'development' && api === null ? null : null}
     </div>
   );
 }

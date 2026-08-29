@@ -1,0 +1,140 @@
+/**
+ * Excalidraw, wearing Lumina's clothes.
+ *
+ * Excalidraw exposes ~126 CSS custom properties on `.excalidraw`, all of which
+ * cascade normally. That makes the entire chrome — islands, buttons, popups,
+ * inputs, the sidebar — restyleable from our own tokens without touching a line
+ * of its source.
+ *
+ * This is worth knowing because the alternative on the table was vendoring the
+ * upstream monorepo into this repo to "make it look like ours". That would have
+ * meant adopting a second package manager (yarn workspaces), a second build
+ * (vite), a second test runner, and owning every future security patch as a
+ * manual merge — to change colours that are already variables.
+ *
+ * Everything below maps an Excalidraw variable to a Lumina token, so the board
+ * follows the app's theme automatically, including the light/dark switch.
+ *
+ * ## What this deliberately does not restyle
+ *
+ * The canvas contents. Element stroke and fill colours are user data saved into
+ * the scene, not chrome — repainting them from our palette would silently
+ * rewrite what someone drew.
+ */
+
+.excalidraw {
+  /* Surfaces — the islands, panels and popups that float over the canvas. */
+  --island-bg-color: hsl(var(--card));
+  --island-bg-color-alt: hsl(var(--card));
+  --default-bg-color: hsl(var(--background));
+  --popup-bg-color: hsl(var(--popover));
+  --popup-secondary-bg-color: hsl(var(--muted));
+  --popup-text-color: hsl(var(--popover-foreground));
+  --overlay-bg-color: hsl(var(--background) / 0.72);
+  --sidebar-bg-color: hsl(var(--card));
+
+  /* Text and icons. */
+  --color-on-surface: hsl(var(--foreground));
+  --icon-fill-color: hsl(var(--foreground));
+  --input-label-color: hsl(var(--muted-foreground));
+  --keybinding-color: hsl(var(--muted-foreground));
+
+  /* Brand — the selected tool, active states, focus rings. */
+  --color-primary: hsl(var(--primary));
+  --color-primary-darker: hsl(var(--primary));
+  --color-primary-darkest: hsl(var(--primary));
+  --color-primary-hover: hsl(var(--primary) / 0.9);
+  --color-primary-light: hsl(var(--primary) / 0.16);
+  --color-primary-light-darker: hsl(var(--primary) / 0.24);
+  --color-brand-hover: hsl(var(--primary) / 0.9);
+  --color-brand-active: hsl(var(--primary));
+  --color-surface-primary-container: hsl(var(--primary) / 0.16);
+  --select-highlight-color: hsl(var(--primary));
+  --focus-highlight-color: hsl(var(--ring) / 0.5);
+  --link-color: hsl(var(--primary));
+  --link-color-hover: hsl(var(--primary) / 0.9);
+
+  /* Neutral surface ramp. Excalidraw layers these for depth, so they have to
+     stay ordered lowest -> high or panels lose their separation. */
+  --color-surface-lowest: hsl(var(--background));
+  --color-surface-low: hsl(var(--muted));
+  --color-surface-mid: hsl(var(--card));
+  --color-surface-high: hsl(var(--accent));
+
+  /* Borders. */
+  --default-border-color: hsl(var(--border));
+  --dialog-border-color: hsl(var(--border));
+  --input-border-color: hsl(var(--border));
+  --color-border-outline: hsl(var(--border));
+  --color-border-outline-variant: hsl(var(--border) / 0.6);
+
+  /* Inputs. */
+  --input-bg-color: hsl(var(--background));
+  --input-hover-bg-color: hsl(var(--accent));
+
+  /* Buttons. */
+  --button-bg: hsl(var(--card));
+  --button-color: hsl(var(--foreground));
+  --button-border: hsl(var(--border));
+  --button-hover-bg: hsl(var(--accent));
+  --button-hover-color: hsl(var(--foreground));
+  --button-hover-border: hsl(var(--border));
+  --button-active-bg: hsl(var(--accent));
+  --button-active-border: hsl(var(--primary));
+  --button-selected-bg: hsl(var(--primary) / 0.16);
+  --button-selected-border: hsl(var(--primary));
+  --button-selected-hover-bg: hsl(var(--primary) / 0.22);
+
+  /* Destructive. */
+  --button-destructive-bg-color: hsl(var(--destructive) / 0.12);
+  --button-destructive-color: hsl(var(--destructive));
+  --color-danger: hsl(var(--destructive));
+  --color-danger-background: hsl(var(--destructive) / 0.12);
+  --color-danger-color: hsl(var(--destructive));
+
+  /* Shadows. Excalidraw's defaults are tuned for a white page and read as grey
+     smudges on a dark one; ours are warm ink at low alpha, matching `.card-lift`. */
+  --shadow-island:
+    0 0 1px 0 hsl(var(--foreground) / 0.10),
+    0 2px 6px -2px hsl(var(--foreground) / 0.08),
+    0 7px 14px -6px hsl(var(--foreground) / 0.06);
+  --shadow-island-stronger:
+    0 0 1px 0 hsl(var(--foreground) / 0.14),
+    0 4px 10px -2px hsl(var(--foreground) / 0.12),
+    0 10px 20px -6px hsl(var(--foreground) / 0.10);
+
+  /* Typography — Excalidraw ships its own UI font stack; match the app's. */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/**
+ * Excalidraw applies a CSS `filter` to invert its whole UI in dark mode. Our
+ * variables above are already the correct dark values, so leaving the filter on
+ * would invert them a second time and produce a washed-out light chrome inside
+ * a dark app.
+ *
+ * The canvas itself is not affected: it is drawn from the scene's own colours,
+ * which this does not touch.
+ */
+.excalidraw.theme--dark {
+  --theme-filter: none;
+}
+
+/* The scrollbars inside Excalidraw's panels, matched to the app's. */
+.excalidraw ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.excalidraw ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.excalidraw ::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.28);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 9999px;
+}
+.excalidraw ::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+  background-clip: content-box;
+}
