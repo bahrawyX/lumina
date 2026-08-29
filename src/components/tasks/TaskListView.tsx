@@ -306,7 +306,7 @@ const TaskListRow: React.FC<{
 
         {/* Priority */}
         <div className="w-20 flex-shrink-0 px-1">
-          <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${PRIORITY_META[task.priority].className}`}>
+          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${PRIORITY_META[task.priority].className}`}>
             {PRIORITY_META[task.priority].label}
           </span>
         </div>

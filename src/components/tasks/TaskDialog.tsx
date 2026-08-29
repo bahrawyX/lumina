@@ -9,6 +9,7 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { DurationField } from './DurationField';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Calendar } from '../ui/calendar';
 import { Input } from '../ui/input';
@@ -324,21 +325,11 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
 
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground">Duration</Label>
-                    <Select value={String(durationMinutes)} onValueChange={(v) => setDurationMinutes(Number(v))}>
-                      <SelectTrigger className="h-10 md:h-9 text-sm rounded-lg">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="15">15 min</SelectItem>
-                        <SelectItem value="30">30 min</SelectItem>
-                        <SelectItem value="45">45 min</SelectItem>
-                        <SelectItem value="60">1 h</SelectItem>
-                        <SelectItem value="90">1 h 30 m</SelectItem>
-                        <SelectItem value="120">2 h</SelectItem>
-                        <SelectItem value="180">3 h</SelectItem>
-                        <SelectItem value="240">4 h</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <DurationField
+                      value={durationMinutes}
+                      onChange={setDurationMinutes}
+                      aria-label="Duration"
+                    />
                   </div>
                 </div>
 

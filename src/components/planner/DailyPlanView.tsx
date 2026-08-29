@@ -43,7 +43,7 @@ import { TaskPoolCard, TaskPoolCardOverlay } from './TaskPoolCard';
 import { FreeTimePanel } from './FreeTimePanel';
 import { PlanningModal } from './PlanningModal';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { DurationField } from '@/components/tasks/DurationField';
 import { Skeleton as SkeletonPrimitive } from '../ui/skeleton';
 import { Skeleton } from '@/components/ui/LoadingBoundary';
 
@@ -60,6 +60,9 @@ interface DailyPlanViewProps {
   onToggleInsights?: () => void;
   insightsOpen?: boolean;
 }
+
+/** The quick-add row is narrow, so it offers fewer presets than the dialog. */
+const QUICK_ADD_DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
 export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, insightsOpen }) => {
   const [mounted, setMounted] = useState(false);
@@ -719,22 +722,17 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({ onToggleInsights, 
                   </div>
                   {/* Row 2: duration + difficulty + actions */}
                   <div className="flex items-center gap-1.5">
-                    <Select value={String(quickAddDuration)} onValueChange={(value) => setQuickAddDuration(Number(value))}>
-                      <SelectTrigger
+                    <div className="flex-none w-[92px]">
+                      <DurationField
+                        compact
+                        value={quickAddDuration}
+                        onChange={setQuickAddDuration}
+                        presets={QUICK_ADD_DURATIONS}
                         aria-label="Task duration"
-                        className="flex-none h-6 w-[56px] rounded-md border-border/40 bg-muted/30 px-1.5 text-[10px] text-muted-foreground"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="w-[72px] border-border bg-popover/95 text-foreground backdrop-blur-md">
-                        <SelectItem className="text-[11px]" value="15">15m</SelectItem>
-                        <SelectItem className="text-[11px]" value="30">30m</SelectItem>
-                        <SelectItem className="text-[11px]" value="45">45m</SelectItem>
-                        <SelectItem className="text-[11px]" value="60">60m</SelectItem>
-                        <SelectItem className="text-[11px]" value="90">90m</SelectItem>
-                        <SelectItem className="text-[11px]" value="120">120m</SelectItem>
-                      </SelectContent>
-                    </Select>
+                        triggerClassName="w-full rounded-md border-border/40 bg-muted/30 px-1.5 text-muted-foreground"
+                        contentClassName="w-[96px] border-border bg-popover/95 text-foreground backdrop-blur-md"
+                      />
+                    </div>
                     <div className="flex-shrink-0 flex items-center rounded-md border border-border/40 bg-muted/30 overflow-hidden">
                       {(['easy', 'medium', 'hard'] as const).map((d) => {
                         const active = quickAddDifficulty === d;

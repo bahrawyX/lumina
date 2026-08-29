@@ -36,7 +36,25 @@ function Toaster({ ...props }: ToasterProps) {
             "bg-muted text-muted-foreground rounded-md text-xs font-medium px-3 py-1.5",
           closeButton:
             "border border-border bg-card text-muted-foreground hover:text-foreground",
-          icon: "w-4 h-4 shrink-0",
+          /**
+           * `relative` is load-bearing, not decoration.
+           *
+           * Sonner's loading spinner is `.sonner-loading-wrapper`, which is
+           * `position: absolute; inset: 0`, and `.sonner-loader` inside it is
+           * `top: 50%; left: 50%; translate(-50%, -50%)`. Its containing block
+           * is supposed to come from Sonner's own rule:
+           *
+           *     [data-sonner-toast][data-styled='true'] [data-icon] {
+           *       position: relative; display: flex; align-items: center; ...
+           *     }
+           *
+           * `unstyled: true` sets `data-styled="false"`, so that selector
+           * never matches and the spinner centred itself against whatever
+           * happened to be positioned further up — landing visibly off-centre
+           * in the toast. Restoring `relative` (and the flex centring the same
+           * rule provided) puts it back in its own 16px box.
+           */
+          icon: "relative flex h-4 w-4 shrink-0 items-center justify-center",
           success: "[&>[data-icon]]:text-emerald-500",
           error: "[&>[data-icon]]:text-destructive",
           warning: "[&>[data-icon]]:text-amber-500",

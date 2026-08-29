@@ -204,7 +204,15 @@ const AppSidebar: React.FC = () => {
   const authClient = useLuminaAuthClient();
   const { data: _session } = authClient.useSession();
   const _userId = _session?.user?.id ?? null;
+  /**
+   * Sign-out is several awaited round-trips, so without a pending state the
+   * menu item just sits there looking inert and gets clicked again — which
+   * fired a second full sign-out on top of the first.
+   */
+  const [signingOut, setSigningOut] = useState(false);
   const handleSignOut = useCallback(async () => {
+    if (signingOut) return;
+    setSigningOut(true);
     // F7.1: `signOut()` used to be fire-and-forget, immediately followed by
     // `window.location.href = '/'`. Unloading the document cancels in-flight
     // fetches, so the request could be aborted before reaching the server —
@@ -220,8 +228,14 @@ const AppSidebar: React.FC = () => {
       usePlannerStore.getState().clearExternalEvents();
     } catch { /* swallow */ }
 
-    await signOutEverywhere({ redirectTo: '/' });
-  }, [_userId]);
+    try {
+      await signOutEverywhere({ redirectTo: '/' });
+    } catch {
+      // A hard navigation normally means we never get here. If it did fail,
+      // release the button rather than stranding the user with a dead menu.
+      setSigningOut(false);
+    }
+  }, [_userId, signingOut]);
   const startTutorial = useTutorialStore((s) => s.startTutorial);
   const focusSessionLength = useSettingsStore((s) => s.focusSessionLength);
   const tasks = useTaskBoardStore((s) => s.tasks);
@@ -1108,6 +1122,8 @@ const AppSidebar: React.FC = () => {
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
+                disabled={signingOut}
+                aria-busy={signingOut}
                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
                 onSelect={(e) => {
                   // Radix dispatches onSelect on the first activation
@@ -1118,8 +1134,15 @@ const AppSidebar: React.FC = () => {
                   handleSignOut();
                 }}
               >
-                <LogOutIcon size={14} />
-                Sign Out
+                {signingOut ? (
+                  <span
+                    aria-hidden
+                    className="size-3.5 rounded-full border-2 border-destructive/30 border-t-destructive animate-spin motion-reduce:animate-none"
+                  />
+                ) : (
+                  <LogOutIcon size={14} />
+                )}
+                {signingOut ? 'Signing out…' : 'Sign Out'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

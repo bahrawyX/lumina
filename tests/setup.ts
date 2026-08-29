@@ -36,3 +36,14 @@ window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
 // Element.scrollIntoView isn't implemented in jsdom either — Tiptap's
 // SlashMenuList scrolls the active item into view on keyboard navigation.
 Element.prototype.scrollIntoView = vi.fn() as unknown as typeof Element.prototype.scrollIntoView;
+
+// The Pointer Capture API isn't implemented in jsdom, and Radix's Select calls
+// `hasPointerCapture` on pointerdown. Without these the dropdown never opens —
+// it throws `target.hasPointerCapture is not a function` and the trigger stays
+// at `data-state="closed"`, so any test that tries to pick an option fails on a
+// missing element rather than on the thing it meant to assert.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = vi.fn(() => false) as unknown as typeof Element.prototype.hasPointerCapture;
+  Element.prototype.setPointerCapture = vi.fn() as unknown as typeof Element.prototype.setPointerCapture;
+  Element.prototype.releasePointerCapture = vi.fn() as unknown as typeof Element.prototype.releasePointerCapture;
+}

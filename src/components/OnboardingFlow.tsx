@@ -1235,10 +1235,18 @@ const OnboardingFlow: React.FC = () => {
     setStep(step + 1);
   }, [enterGuestMode, setStep, step]);
 
-  const canContinue = useCallback((): boolean => {
-    if (step === 1) return authStatus === 'logged in' || isGuest;
-    if (step === 2) return store.userName.trim().length > 0;
-    if (step === 7) return store.focusGoals.length > 0;
+  /**
+   * Takes the step to check rather than closing over it.
+   *
+   * `goNext` has to validate the step it is ACTUALLY leaving, which under a
+   * rapid double-click is not the one this render captured — see the note
+   * there. The no-argument call sites (the button's `disabled`) pass the
+   * rendered step, which is correct for them.
+   */
+  const canContinue = useCallback((forStep: number = step): boolean => {
+    if (forStep === 1) return authStatus === 'logged in' || isGuest;
+    if (forStep === 2) return store.userName.trim().length > 0;
+    if (forStep === 7) return store.focusGoals.length > 0;
     return true;
   }, [step, authStatus, isGuest, store.userName, store.focusGoals.length]);
 
@@ -1270,7 +1278,22 @@ const OnboardingFlow: React.FC = () => {
   }, [setGlobalFocusSessionLength, store]);
 
   const goNext = useCallback(() => {
-    if (!canContinue()) return;
+    /**
+     * The live step from the store, not the one this render closed over.
+     *
+     * `setStep` writes to Zustand synchronously, but React re-renders on its
+     * own schedule, so two clicks landing in the same frame both saw the same
+     * stale `step`. Two things went wrong with that. Both calls computed the
+     * identical `step + 1`, so the second click did nothing and the button
+     * felt dead — and worse, the second click's validation ran against the
+     * step already left behind, so clicking Next twice quickly on step 1 could
+     * land on step 3 without ever satisfying step 2's "name is required".
+     *
+     * Reading `getState()` here makes each activation see the result of the
+     * one before it, whether or not React has caught up.
+     */
+    const step = useOnboardingStore.getState().step;
+    if (!canContinue(step)) return;
     // Step 2 = About You. Persist the entered name to DB so it survives
     // sign-out / new device. Fire-and-forget — failure here only means the
     // localStorage copy is the only source of truth, which the rest of the
@@ -1294,13 +1317,16 @@ const OnboardingFlow: React.FC = () => {
     }
     setDirection(1);
     setStep(step + 1);
-  }, [step, canContinue, store, calStore, router, setStep]);
+  }, [canContinue, store, calStore, router, setStep]);
 
   const goBack = useCallback(() => {
+    // Same reasoning as `goNext`: rapid Back clicks read the live step so the
+    // second one actually moves.
+    const step = useOnboardingStore.getState().step;
     if (step === 0) return;
     setDirection(-1);
     setStep(step - 1);
-  }, [step, setStep]);
+  }, [setStep]);
 
   // Keyboard enter / arrow nav (not on inputs)
   React.useEffect(() => {

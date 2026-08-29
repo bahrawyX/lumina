@@ -145,17 +145,38 @@ export const useNotificationStore = create<NotificationState & NotificationActio
 
       unsubscribe: async () => {
         try {
-          const reg = await navigator.serviceWorker.ready;
-          const sub = await reg.pushManager.getSubscription();
+          /**
+           * `getRegistration()`, NOT `ready`.
+           *
+           * `navigator.serviceWorker.ready` resolves only once there is an
+           * ACTIVE registration — with no service worker it simply never
+           * settles. `signOutEverywhere` awaits this before it touches
+           * `/api/auth/sign-out`, so for anyone without the worker running
+           * (a fresh browser, dev, a hard reload before activation) sign-out
+           * sat on a hung promise until the 4s timeout fired, every time,
+           * before the real request had even been sent. That is the whole of
+           * the "signing out takes forever" complaint.
+           *
+           * `getRegistration()` resolves with `undefined` when there is
+           * nothing registered, so the no-worker path now costs a microtask.
+           */
+          if (!('serviceWorker' in navigator)) {
+            set({ subscription: null });
+            return;
+          }
+          const reg = await navigator.serviceWorker.getRegistration();
+          const sub = await reg?.pushManager.getSubscription();
           if (sub) {
             const endpoint = sub.endpoint;
             await sub.unsubscribe();
 
-            // Remove from server
+            // Remove from server. `keepalive` so the DELETE still lands if the
+            // caller hard-navigates immediately afterwards, which sign-out does.
             await fetch('/api/push/subscribe', {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ endpoint }),
+              keepalive: true,
             });
           }
           set({ subscription: null });
