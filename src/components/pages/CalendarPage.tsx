@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ThemeToggle } from '@/components/theme-toggle';
 import { DailyBriefStrip } from '@/components/dashboard/DailyBriefStrip';
 import { CalendarSyncIndicator } from '@/components/calendar/CalendarSyncIndicator';
+import { CalendarSyncButton } from '@/components/calendar/CalendarSyncButton';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   ChevronLeftIcon, ChevronRightIcon, UndoIcon, RedoIcon,
@@ -155,6 +156,7 @@ const CalendarPage: React.FC = () => {
           <ThemeToggle />
           
           <div className="flex items-center gap-1">
+            <CalendarSyncButton />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={undo} aria-label="Undo (Ctrl+Z)">
