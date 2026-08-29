@@ -1,0 +1,33 @@
+{
+  "cookies": [
+    {
+      "name": "better-auth.session_token",
+      "value": "qhuWgjLe02DYkvl35XVP50tp7WLQMVJl.FSy9Amhu1449TkjDVk7ESuJ%2BFxh1VYI7K4yl3ay8iL8%3D",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1788637608.059,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:3100",
+      "localStorage": [
+        {
+          "name": "lumina-tutorial",
+          "value": "{\"version\":1,\"state\":{\"hasCompletedTutorial\":true,\"hasSeenPrompt\":true}}"
+        },
+        {
+          "name": "lumina-onboarding",
+          "value": "{\"version\":1,\"state\":{\"completed\":true,\"step\":6,\"userName\":\"E2E Tester\",\"userRole\":\"QA\",\"workStart\":\"09:00\",\"workEnd\":\"17:00\",\"timezone\":\"America/Los_Angeles\",\"focusPreference\":\"morning\",\"focusSessionLength\":\"50/10\",\"focusGoals\":[\"deep-work\"]}}"
+        },
+        {
+          "name": "lumina-pwa-snoozed",
+          "value": "1788637607516"
+        }
+      ]
+    }
+  ]
+}
