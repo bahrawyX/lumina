@@ -1593,4 +1593,14 @@ CREATE INDEX IF NOT EXISTS "sessions_expires_at_idx" ON "sessions" USING btree (
 ALTER TABLE "events"
   ADD COLUMN IF NOT EXISTS "tz_backfilled_at" timestamptz;
 
+-- ── 0027 · recurring tasks ────────────────────────────────────────────────
+-- Nullable with no default, so this is safe on a table with rows: existing
+-- tasks simply do not repeat. `recurrence_parent_id` is deliberately not a
+-- foreign key — see drizzle/0027 for why.
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "recurrence_rule" text;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "recurrence_end" timestamptz;
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "recurrence_parent_id" uuid;
+CREATE INDEX IF NOT EXISTS "tasks_recurrence_parent_idx"
+  ON "tasks" ("recurrence_parent_id");
+
 COMMIT;

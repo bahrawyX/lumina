@@ -19,6 +19,12 @@ import { useDocsStore } from '../../store/useDocsStore';
 import { useGoalsStore } from '../../store/useGoalsStore';
 import * as docsPersistence from '../../lib/persistence/docsPersistence';
 import { formatDistanceToNow } from 'date-fns';
+import {
+  REPEAT_OPTIONS,
+  presetForRrule,
+  rruleForPreset,
+  type RepeatPreset,
+} from '@/lib/tasks/repeatPresets';
 
 // ── Close icon ────────────────────────────────────────────────────────────────
 
@@ -86,6 +92,8 @@ export interface TaskDialogPayload {
   dueDate?: string | null;
   startTime?: string | null;
   endTime?: string | null;
+  /** RRULE for a repeating task; null clears the series. */
+  recurrenceRule?: string | null;
 }
 
 interface TaskDialogProps {
@@ -122,6 +130,13 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [difficulty, setDifficulty] = useState<TaskDifficulty | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [dueDate, setDueDate] = useState('');
+  const [repeat, setRepeat] = useState<RepeatPreset>('none');
+  /**
+   * A rule this app did not write (imported, or from a future editor). Kept
+   * verbatim so opening the dialog and pressing Save cannot silently rewrite
+   * someone's schedule into the nearest preset.
+   */
+  const [customRrule, setCustomRrule] = useState<string | null>(null);
   const [titleError, setTitleError] = useState('');
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -136,6 +151,9 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setDifficulty(task?.difficulty ?? null);
       setDurationMinutes(task?.durationMinutes ?? 30);
       setDueDate(normalizeDueDateString(task?.dueDate) ?? '');
+      const detected = presetForRrule(task?.recurrenceRule ?? null);
+      setRepeat(detected ?? 'none');
+      setCustomRrule(detected === null ? (task?.recurrenceRule ?? null) : null);
       setTitleError('');
       setDatePickerOpen(false);
       setEmojiPickerOpen(false);
@@ -161,6 +179,10 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       priority,
       difficulty: difficulty ?? 'medium',
       durationMinutes,
+      // A recognised preset wins; an unrecognised rule is passed through
+      // untouched. `null` clears the series without deleting completed work.
+      recurrenceRule:
+        customRrule ?? rruleForPreset(repeat, dueDate ? new Date(dueDate) : null),
       dueDate: normalizeDueDateString(dueDate),
       startTime: null,
       endTime: null,
@@ -318,6 +340,43 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* Repeat */}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Repeat</Label>
+                  <Select
+                    value={repeat}
+                    onValueChange={(v) => {
+                      setRepeat(v as RepeatPreset);
+                      // Choosing a preset replaces an unrecognised rule — that
+                      // is a deliberate act, unlike merely opening the dialog.
+                      setCustomRrule(null);
+                    }}
+                    disabled={customRrule !== null}
+                  >
+                    <SelectTrigger className="h-10 md:h-9 text-sm rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REPEAT_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {repeat !== 'none' && !dueDate && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Pick a due date — repeats are measured from it, so &ldquo;every week&rdquo;
+                      stays on the same day.
+                    </p>
+                  )}
+                  {customRrule !== null && (
+                    <p className="text-[11px] text-muted-foreground">
+                      This task uses a custom schedule, kept as it is.
+                    </p>
+                  )}
                 </div>
 
                 {/* Due date */}

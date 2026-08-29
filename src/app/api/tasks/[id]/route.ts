@@ -13,6 +13,8 @@ import { apiError, logger } from '@/lib/logger';
 import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { checkLinkedOwnership } from '@/lib/ownership';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
+import { buildSpawnedTask, nextOccurrenceFor } from '@/lib/tasks/recurrence';
+import { validateRRule } from '@/lib/recurrence/rruleEngine';
 
 function normalizeTimeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -79,6 +81,35 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const validDifficulties = ['easy', 'medium', 'hard'];
     if (typeof body.difficulty === 'string' && validDifficulties.includes(body.difficulty)) patch.difficulty = body.difficulty;
     if (typeof body.durationMinutes === 'number') patch.estimatedMinutes = body.durationMinutes;
+
+    /**
+     * Recurrence. `null` clears it — that is how a series is stopped without
+     * deleting the work already done.
+     *
+     * Validated against the SAME engine events use, so a task cannot express a
+     * rule the rest of the app would reject: no sub-daily frequencies (a CPU
+     * bomb with no productivity use), bounded COUNT and INTERVAL.
+     */
+    if (body.recurrenceRule === null) {
+      patch.recurrenceRule = null;
+      patch.recurrenceEnd = null;
+    } else if (typeof body.recurrenceRule === 'string' && body.recurrenceRule.trim()) {
+      const anchor =
+        typeof body.dueDate === 'string' && !isNaN(new Date(body.dueDate).getTime())
+          ? new Date(body.dueDate)
+          : new Date();
+      const valid = validateRRule(body.recurrenceRule.trim(), anchor);
+      if (!valid.ok) {
+        return NextResponse.json({ error: `Invalid recurrence: ${valid.reason}` }, { status: 400 });
+      }
+      patch.recurrenceRule = body.recurrenceRule.trim();
+    }
+    if (body.recurrenceEnd === null) {
+      patch.recurrenceEnd = null;
+    } else if (typeof body.recurrenceEnd === 'string') {
+      const end = new Date(body.recurrenceEnd);
+      if (!isNaN(end.getTime())) patch.recurrenceEnd = end;
+    }
     if (body.scheduledStart === null) patch.scheduledStart = null;
     else if (typeof body.scheduledStart === 'string') {
       const normalizedTime = normalizeTimeString(body.scheduledStart);
@@ -132,13 +163,45 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // C2: capture the prior status so the completion award fires only on a real
     // not-done → done transition — re-completing (done→todo→done) must not re-award.
     let prevTaskStatus: string | undefined;
+    // The same read also feeds the recurrence spawn below, so completing a
+    // repeating task costs one query rather than two.
+    let prevTask:
+      | {
+          status: string;
+          title: string;
+          description: string | null;
+          priority: string;
+          difficulty: string;
+          estimatedMinutes: number;
+          goalId: string | null;
+          position: number;
+          dueDate: Date | null;
+          recurrenceRule: string | null;
+          recurrenceEnd: Date | null;
+          recurrenceParentId: string | null;
+        }
+      | undefined;
     if (patch.status === 'done') {
-      const [prevT] = await db
-        .select({ status: tasks.status })
+      const [row] = await db
+        .select({
+          status: tasks.status,
+          title: tasks.title,
+          description: tasks.description,
+          priority: tasks.priority,
+          difficulty: tasks.difficulty,
+          estimatedMinutes: tasks.estimatedMinutes,
+          goalId: tasks.goalId,
+          position: tasks.position,
+          dueDate: tasks.dueDate,
+          recurrenceRule: tasks.recurrenceRule,
+          recurrenceEnd: tasks.recurrenceEnd,
+          recurrenceParentId: tasks.recurrenceParentId,
+        })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
         .limit(1);
-      prevTaskStatus = prevT?.status;
+      prevTask = row as typeof prevTask;
+      prevTaskStatus = row?.status;
     }
 
     const updatedRows = await db
@@ -260,7 +323,52 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       }
     }
 
-    return NextResponse.json({ ok: true, newBalance, coinsEarned });
+    /**
+     * Spawn the next occurrence of a repeating task.
+     *
+     * Gated on a real not-done -> done transition, using the same
+     * `prevTaskStatus` the coin award uses: re-completing a task
+     * (done -> todo -> done) must not mint a second occurrence any more than it
+     * mints a second award.
+     *
+     * After the response's other work, and non-fatal: a task the user just
+     * ticked off is completed whether or not the follow-up could be created.
+     * Failing the request here would make a successful completion look broken.
+     */
+    let nextOccurrenceId: string | undefined;
+    if (
+      patch.status === 'done' &&
+      prevTaskStatus !== 'done' &&
+      prevTask?.recurrenceRule
+    ) {
+      try {
+        const next = nextOccurrenceFor(prevTask);
+        if (next.kind === 'next') {
+          const [spawned] = await db
+            .insert(tasks)
+            .values({
+              userId,
+              ...buildSpawnedTask({ id, ...prevTask }, next.dueDate),
+            } as typeof tasks.$inferInsert)
+            .returning({ id: tasks.id });
+          nextOccurrenceId = spawned?.id;
+        } else if (next.reason === 'invalid-rule') {
+          // A series that silently stops repeating is worse than a noisy one.
+          logger.warn('recurring task has an unusable rule', {
+            route: 'PATCH /api/tasks/[id]',
+            taskId: id,
+          });
+        }
+      } catch (err) {
+        logger.error(
+          'failed to spawn next occurrence',
+          { route: 'PATCH /api/tasks/[id]', taskId: id },
+          err,
+        );
+      }
+    }
+
+    return NextResponse.json({ ok: true, newBalance, coinsEarned, nextOccurrenceId });
   } catch (err) {
     return apiError('PATCH /api/tasks/[id]', err);
   }

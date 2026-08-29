@@ -24,6 +24,7 @@ import {
 } from '../ui/dropdown-menu';
 import { PRIORITY_META, PRIORITY_OPTIONS, DIFFICULTY_META, DIFFICULTY_OPTIONS } from '../../utils/taskBadges';
 import { DifficultyBadge, SignalBarsIcon, FILLED_BARS } from './DifficultyBadge';
+import { repeatBadgeLabel } from '@/lib/tasks/repeatPresets';
 
 // ── More icon ─────────────────────────────────────────────────────────────────
 
@@ -243,6 +244,7 @@ const InlineAddSubtask: React.FC<{ onAdd: (title: string) => void }> = ({ onAdd 
 };
 
 export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onDifficultyChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false, subtasks = [], allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone }) => {
+  const repeatLabel = repeatBadgeLabel(task.recurrenceRule);
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
   // Stable today string — changes only when the calendar day rolls over (memoised once per mount)
   const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -474,6 +476,33 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
 
           {/* Footer: metadata chips */}
           <div className="flex flex-wrap items-center gap-1.5 pl-[14px]">
+            {/* Repeat. Without this a recurring task looks identical to a
+                one-off until it reappears after being completed — which reads
+                as a bug rather than the feature working. */}
+            {repeatLabel && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                title={`Repeats ${repeatLabel.toLowerCase()}`}
+              >
+                <svg
+                  width={10}
+                  height={10}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M17 2l4 4-4 4" />
+                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                  <path d="M7 22l-4-4 4-4" />
+                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                </svg>
+                {repeatLabel}
+              </span>
+            )}
             {isDragOverlay ? (
               <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${PRIORITY_META[task.priority].className}`}>
                 {PRIORITY_META[task.priority].label}

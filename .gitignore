@@ -64,3 +64,8 @@ next-env.d.ts
 # on postinstall. Generated, 14MB, and reproducible — committing it would put a
 # vendored copy of a dependency in the repo that silently goes stale.
 /public/excalidraw/
+
+# Playwright session for the disposable e2e account, written by global-setup.
+# Regenerated on every run; committing it would check a session token into the
+# repository.
+/tests/e2e/.auth/

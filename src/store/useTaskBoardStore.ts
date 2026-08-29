@@ -161,7 +161,7 @@ interface TaskBoardState {
    * along — and the per-user cache keys are derived from it.
    */
   setUserId: (userId: string | null) => void;
-  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty; dueDate?: string | null; durationMinutes?: number; parentTaskId?: string | null; depth?: number; goalId?: string | null }) => Task | null;
+  addTask: (input: { title: string; description?: string; status: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty; dueDate?: string | null; durationMinutes?: number; parentTaskId?: string | null; depth?: number; goalId?: string | null; recurrenceRule?: string | null }) => Task | null;
   addSubtask: (parentId: string, input: { title: string; status?: TaskStatus; priority?: TaskPriority; difficulty?: TaskDifficulty }) => Task | null;
   duplicateTask: (taskId: string) => Promise<void>;
   /** ID of the task most recently created via duplicate — used for highlight flash animation */
@@ -245,7 +245,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
   },
 
 
-  addTask: ({ title, description, status, priority = 'medium', difficulty = 'medium', dueDate, durationMinutes, parentTaskId = null, depth = 0, goalId = null }) => {
+  addTask: ({ title, description, status, priority = 'medium', difficulty = 'medium', dueDate, durationMinutes, parentTaskId = null, depth = 0, goalId = null, recurrenceRule = null }) => {
     const trimmed = title.trim();
     if (!trimmed) return null;
 
@@ -278,6 +278,7 @@ export const useTaskBoardStore = create<TaskBoardState>((set, get) => ({
       parentTaskId: parentTaskId ?? null,
       depth: depth ?? 0,
       goalId: goalId ?? null,
+      recurrenceRule: recurrenceRule ?? null,
     };
 
     set((state) => {
