@@ -175,7 +175,7 @@ const SubtaskRow: React.FC<{
 
         {/* Priority badge (hidden for depth 2) */}
         {showPriority && (
-          <span className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_META[task.priority].className}`}>
+          <span className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${PRIORITY_META[task.priority].className}`}>
             {task.priority[0]?.toUpperCase()}
           </span>
         )}
@@ -475,7 +475,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
           {/* Footer: metadata chips */}
           <div className="flex flex-wrap items-center gap-1.5 pl-[14px]">
             {isDragOverlay ? (
-              <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${PRIORITY_META[task.priority].className}`}>
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${PRIORITY_META[task.priority].className}`}>
                 {PRIORITY_META[task.priority].label}
               </span>
             ) : (
@@ -488,7 +488,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={`inline-flex items-center min-h-11 rounded-xl border px-3 py-1 text-[11px] font-medium transition-colors md:min-h-0 md:rounded-md md:px-2 md:py-0.5 ${PRIORITY_META[task.priority].className}`}
+                      className={`inline-flex items-center min-h-11 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors md:min-h-0 md:px-2 md:py-0.5 ${PRIORITY_META[task.priority].className}`}
                       aria-label={`${PRIORITY_META[task.priority].label} priority. Click to change`}
                     >
                       {PRIORITY_META[task.priority].label}
@@ -530,7 +530,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriori
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className={`inline-flex items-center gap-1 min-h-11 rounded-xl border px-3 py-1 text-[11px] font-medium transition-colors md:min-h-0 md:rounded-md md:px-2 md:py-0.5 ${DIFFICULTY_META[task.difficulty ?? 'medium'].className}`}
+                      className={`inline-flex items-center gap-1 min-h-11 rounded-md border px-3 py-1 text-[11px] transition-colors md:min-h-0 md:px-2 md:py-0.5 ${DIFFICULTY_META[task.difficulty ?? 'medium'].className}`}
                       aria-label={`${DIFFICULTY_META[task.difficulty ?? 'medium'].label} difficulty. Click to change`}
                     >
                       <SignalBarsIcon filled={FILLED_BARS[task.difficulty ?? 'medium']} />

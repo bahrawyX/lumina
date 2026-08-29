@@ -9,6 +9,7 @@ import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useFocusStore } from '@/store/useFocusStore';
 // Audio lifecycle is managed by useAmbientStore — no direct audio imports needed
 import { LottieAnimation, POMODORO_COMPLETE_LAYER_MAP } from '@/components/ui/LottieAnimation';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AMBIENT_ICONS } from '@/components/ui/AnimatedIcons';
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet';
 import { Slider } from '@/components/ui/slider';
@@ -199,19 +200,33 @@ const SessionConfig: React.FC<SessionConfigProps> = ({
               <Pill key={m} label={`${m}m`} active={workMins === m} disabled={isRunning && phase === 'work'} onClick={() => onWorkChange(m)} />
             ))}
             {isCustomPreferred && (
-              <button
-                type="button"
-                onClick={() => onWorkChange(preferredMins)}
-                disabled={isRunning && phase === 'work'}
-                title="Your preferred session length"
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
-                  workMins === preferredMins
-                    ? 'bg-amber-500/30 border-amber-500/60 text-amber-500 dark:text-amber-400'
-                    : 'bg-amber-500/10 border-amber-500/30 text-amber-500 dark:text-amber-400 hover:bg-amber-500/20'
-                } ${isRunning && phase === 'work' ? 'opacity-40 pointer-events-none' : ''}`}
-              >
-                {preferredMins}m ★
-              </button>
+              /**
+               * A native `title=` here meant the one control on this screen
+               * whose label is a bare number and a star explained itself only
+               * after a ~1s browser-controlled hover delay, in an OS tooltip
+               * that ignores the app's theme and never appears for keyboard
+               * or touch users at all. The shadcn tooltip is themed, shows on
+               * focus as well as hover, and is the pattern used everywhere
+               * else in the app.
+               */
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onWorkChange(preferredMins)}
+                    disabled={isRunning && phase === 'work'}
+                    aria-label={`Your preferred session length, ${preferredMins} minutes`}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
+                      workMins === preferredMins
+                        ? 'bg-amber-500/30 border-amber-500/60 text-amber-500 dark:text-amber-400'
+                        : 'bg-amber-500/10 border-amber-500/30 text-amber-500 dark:text-amber-400 hover:bg-amber-500/20'
+                    } ${isRunning && phase === 'work' ? 'opacity-40 pointer-events-none' : ''}`}
+                  >
+                    {preferredMins}m ★
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Your preferred session length</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>

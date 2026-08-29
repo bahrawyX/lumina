@@ -645,7 +645,12 @@ export function AppShell({
               concludes their data is gone. */}
           <HydrationFailureBanner />
           <GuestBanner />
-          <div className="w-full max-w-[1024px] min-[1800px]:max-w-[1280px] min-[1800px]:mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:px-8 lg:py-1.5 pt-2 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 lg:pb-1.5 relative">
+          {/* `lg:pt-6` after `lg:py-1.5` on purpose: the desktop layout has no
+              top bar (the sticky one above is `lg:hidden`), so page headers
+              began 8px from the top of the scroll container and read as
+              jammed against it. The later utility wins on top only; the tight
+              `lg:pb-1.5` is deliberate and left alone. */}
+          <div className="w-full max-w-[1024px] min-[1800px]:max-w-[1280px] min-[1800px]:mx-auto flex-1 flex flex-col min-h-0 p-3 md:p-4 lg:px-8 lg:py-1.5 pt-2 lg:pt-6 pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-4 lg:pb-1.5 relative">
             <PageTransition>{children}</PageTransition>
           </div>
         </main>

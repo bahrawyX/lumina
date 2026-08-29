@@ -3,8 +3,9 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import type { Task, TaskPriority } from '../../types/task';
+import type { Task } from '../../types/task';
 import { getDueDatePresentation } from '../../utils/taskBoard';
+import { PRIORITY_META, PRIORITY_SHAPE } from '../../utils/taskBadges';
 
 interface TaskPoolCardProps {
   task: Task;
@@ -20,14 +21,29 @@ const GripIcon: React.FC = () => (
 
 // ── Priority chip ─────────────────────────────────────────────────────────────
 
-const PRIORITY_META: Record<TaskPriority, { label: string; className: string }> = {
-  high:   { label: 'High',   className: 'border-red-400/30 bg-red-500/12 text-red-300' },
-  medium: { label: 'Mid',    className: 'border-amber-300/25 bg-amber-400/12 text-amber-300' },
-  low:    { label: 'Low',    className: 'border-cyan-300/25 bg-cyan-400/12 text-cyan-300' },
-};
+/**
+ * The shared `PRIORITY_META` from `taskBadges`, not a local copy.
+ *
+ * There was a third palette here — red/amber/**cyan**, with `text-red-300`
+ * and friends. Two problems. It disagreed with the kanban and list views on
+ * what "low priority" looks like (cyan, against their neutral grey) and on the
+ * label ("Mid" against "Medium"). And the whole set was picked for a dark
+ * background: `text-amber-300` on the light theme's near-white card is close
+ * to unreadable, with no `dark:` variant to switch it.
+ */
 
-const Chip: React.FC<{ children: React.ReactNode; className: string }> = ({ children, className }) => (
-  <span className={`inline-flex items-center rounded border px-1.5 py-px text-[10px] font-medium leading-none ${className}`}>
+/**
+ * `shape` defaults to the priority pill because that is the only chip this card
+ * renders today. It is a parameter rather than a hardcoded class so a
+ * difficulty chip added here later cannot silently inherit the pill and undo
+ * the distinction — see the note in `taskBadges.ts`.
+ */
+const Chip: React.FC<{ children: React.ReactNode; className: string; shape?: string }> = ({
+  children,
+  className,
+  shape = PRIORITY_SHAPE,
+}) => (
+  <span className={`inline-flex items-center border px-1.5 py-px text-[10px] font-medium leading-none ${shape} ${className}`}>
     {children}
   </span>
 );
