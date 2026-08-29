@@ -11,7 +11,7 @@
  * instead and these expectations carry over identically.
  */
 import type { Page } from '@playwright/test';
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 const HARNESS_URL = '/dev-editor-test';
@@ -30,7 +30,7 @@ async function focusEditor(page: Page) {
 }
 
 test.describe('Lumina Editor — Mount & Setup', () => {
-  test('editor mounts without app-level console errors', async ({ guestPage: page }) => {
+  test('editor mounts without app-level console errors', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await gotoEditor(page);
     // Give framer-motion's empty-state hint time to animate in
@@ -38,7 +38,7 @@ test.describe('Lumina Editor — Mount & Setup', () => {
     expect(con.appErrors().map((e) => e.text())).toEqual([]);
   });
 
-  test('placeholder text is visible when editor is empty', async ({ guestPage: page }) => {
+  test('placeholder text is visible when editor is empty', async ({ appPage: page }) => {
     await gotoEditor(page);
     const empty = page.locator('.ProseMirror .is-empty[data-placeholder]').first();
     await expect(empty).toBeVisible({ timeout: 5_000 });
@@ -46,7 +46,7 @@ test.describe('Lumina Editor — Mount & Setup', () => {
     expect(placeholder).toMatch(/write something/i);
   });
 
-  test('empty-state hint appears below editor on a brand-new doc', async ({ guestPage: page }) => {
+  test('empty-state hint appears below editor on a brand-new doc', async ({ appPage: page }) => {
     await gotoEditor(page);
     // Hint has a 500ms entrance delay + 300ms transition; give it room
     await page.waitForTimeout(1200);
@@ -54,7 +54,7 @@ test.describe('Lumina Editor — Mount & Setup', () => {
     await expect(hint).toBeVisible({ timeout: 3_000 });
   });
 
-  test('focus toggle button is visible in metadata bar', async ({ guestPage: page }) => {
+  test('focus toggle button is visible in metadata bar', async ({ appPage: page }) => {
     await gotoEditor(page);
     // The harness's own focus toggle (production DocPage has its own with the same label)
     const focusBtn = page.getByRole('button', { name: /focus:/i });
@@ -63,14 +63,14 @@ test.describe('Lumina Editor — Mount & Setup', () => {
 });
 
 test.describe('Lumina Editor — Typing & Markdown Shortcuts', () => {
-  test('typing characters appears in editor', async ({ guestPage: page }) => {
+  test('typing characters appears in editor', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('Hello Tiptap');
     await expect(editor).toContainText('Hello Tiptap');
   });
 
-  test('# space converts to H1', async ({ guestPage: page }) => {
+  test('# space converts to H1', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('# ');
@@ -79,7 +79,7 @@ test.describe('Lumina Editor — Typing & Markdown Shortcuts', () => {
     await expect(editor.locator('h1')).toContainText('My heading');
   });
 
-  test('H1 uses Clash Display font', async ({ guestPage: page }) => {
+  test('H1 uses Clash Display font', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('# Heading text');
@@ -87,7 +87,7 @@ test.describe('Lumina Editor — Typing & Markdown Shortcuts', () => {
     expect(fontFamily.toLowerCase()).toMatch(/clash/);
   });
 
-  test('- space converts to bullet list', async ({ guestPage: page }) => {
+  test('- space converts to bullet list', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('- ');
@@ -95,7 +95,7 @@ test.describe('Lumina Editor — Typing & Markdown Shortcuts', () => {
     await expect(editor.locator('ul li')).toContainText('first item');
   });
 
-  test('1. space converts to ordered list', async ({ guestPage: page }) => {
+  test('1. space converts to ordered list', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('1. ');
@@ -103,14 +103,14 @@ test.describe('Lumina Editor — Typing & Markdown Shortcuts', () => {
     await expect(editor.locator('ol li')).toContainText('first numbered');
   });
 
-  test('> space converts to blockquote', async ({ guestPage: page }) => {
+  test('> space converts to blockquote', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('> A quote');
     await expect(editor.locator('blockquote')).toBeVisible();
   });
 
-  test('``` Enter converts to code block', async ({ guestPage: page }) => {
+  test('``` Enter converts to code block', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('```');
@@ -120,7 +120,7 @@ test.describe('Lumina Editor — Typing & Markdown Shortcuts', () => {
 });
 
 test.describe('Lumina Editor — Floating Toolbar', () => {
-  test('toolbar appears on text selection', async ({ guestPage: page }) => {
+  test('toolbar appears on text selection', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('Select me to format');
@@ -129,7 +129,7 @@ test.describe('Lumina Editor — Floating Toolbar', () => {
     await expect(page.getByRole('button', { name: 'Bold (⌘B)' })).toBeVisible({ timeout: 3_000 });
   });
 
-  test('all 11 format buttons are present', async ({ guestPage: page }) => {
+  test('all 11 format buttons are present', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('Format toolbar audit');
@@ -140,7 +140,7 @@ test.describe('Lumina Editor — Floating Toolbar', () => {
     }
   });
 
-  test('clicking Bold button bolds the selection', async ({ guestPage: page }) => {
+  test('clicking Bold button bolds the selection', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('bold this');
@@ -149,7 +149,7 @@ test.describe('Lumina Editor — Floating Toolbar', () => {
     await expect(editor.locator('strong')).toBeVisible();
   });
 
-  test('Link button switches to URL input mode', async ({ guestPage: page }) => {
+  test('Link button switches to URL input mode', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('link this');
@@ -160,7 +160,7 @@ test.describe('Lumina Editor — Floating Toolbar', () => {
 });
 
 test.describe('Lumina Editor — Slash Menu', () => {
-  test('"/" opens the slash menu with all 22 items', async ({ guestPage: page }) => {
+  test('"/" opens the slash menu with all 22 items', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/');
@@ -170,7 +170,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(items).toHaveCount(22);
   });
 
-  test('all three group labels render: Basic, Media, Lumina', async ({ guestPage: page }) => {
+  test('all three group labels render: Basic, Media, Lumina', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/');
@@ -180,7 +180,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(tippy.getByText('Lumina', { exact: true })).toBeVisible();
   });
 
-  test('"/h" filters to headings (excludes Paragraph)', async ({ guestPage: page }) => {
+  test('"/h" filters to headings (excludes Paragraph)', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/h');
@@ -191,14 +191,14 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(tippy.getByText('Paragraph', { exact: true })).toHaveCount(0);
   });
 
-  test('"/xyz" shows the empty state', async ({ guestPage: page }) => {
+  test('"/xyz" shows the empty state', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/xyzunknown');
     await expect(page.getByText(/no commands match/i)).toBeVisible({ timeout: 3_000 });
   });
 
-  test('Escape hides the slash menu', async ({ guestPage: page }) => {
+  test('Escape hides the slash menu', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/');
@@ -209,7 +209,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(tippy).not.toBeVisible({ timeout: 2_000 });
   });
 
-  test('selecting Heading 1 inserts an H1', async ({ guestPage: page }) => {
+  test('selecting Heading 1 inserts an H1', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/h1');
@@ -217,7 +217,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(editor.locator('h1')).toBeVisible({ timeout: 3_000 });
   });
 
-  test('selecting Table inserts a 3x3 table with header row', async ({ guestPage: page }) => {
+  test('selecting Table inserts a 3x3 table with header row', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/table');
@@ -228,7 +228,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(editor.locator('td')).toHaveCount(6);
   });
 
-  test('selecting Toggle inserts a collapsible block (open by default)', async ({ guestPage: page }) => {
+  test('selecting Toggle inserts a collapsible block (open by default)', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/toggle');
@@ -242,7 +242,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
     await expect(chevronBtn).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('selecting Math inserts a KaTeX-rendered equation', async ({ guestPage: page }) => {
+  test('selecting Math inserts a KaTeX-rendered equation', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/math');
@@ -253,7 +253,7 @@ test.describe('Lumina Editor — Slash Menu', () => {
 });
 
 test.describe('Lumina Editor — Code Block NodeView', () => {
-  test('CodeBlockNodeView renders with language selector', async ({ guestPage: page }) => {
+  test('CodeBlockNodeView renders with language selector', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/code');
@@ -268,7 +268,7 @@ test.describe('Lumina Editor — Code Block NodeView', () => {
     expect(optionCount).toBe(15);
   });
 
-  test('changing language updates the node attr', async ({ guestPage: page }) => {
+  test('changing language updates the node attr', async ({ appPage: page }) => {
     await gotoEditor(page);
     const editor = await focusEditor(page);
     await editor.type('/code');
@@ -286,7 +286,7 @@ test.describe('Lumina Editor — Code Block NodeView', () => {
 });
 
 test.describe('Lumina Editor — Focus Mode', () => {
-  test('toggling focus mode adds focus-mode-active to the editor wrapper', async ({ guestPage: page }) => {
+  test('toggling focus mode adds focus-mode-active to the editor wrapper', async ({ appPage: page }) => {
     await gotoEditor(page);
     const wrapper = page.locator('.lumina-editor');
     // Initial state from the harness is focus: OFF
@@ -296,7 +296,7 @@ test.describe('Lumina Editor — Focus Mode', () => {
     await expect(wrapper).toHaveClass(/focus-mode-active/);
   });
 
-  test('with focus mode on, the cursor block gets is-focused-block', async ({ guestPage: page }) => {
+  test('with focus mode on, the cursor block gets is-focused-block', async ({ appPage: page }) => {
     await gotoEditor(page);
     // Type a heading then a paragraph so we have two blocks to compare
     const editor = await focusEditor(page);
@@ -313,7 +313,7 @@ test.describe('Lumina Editor — Focus Mode', () => {
 });
 
 test.describe('Lumina Editor — Persistence (JSON round-trip)', () => {
-  test('all custom node types survive HTML round-trip', async ({ guestPage: page }) => {
+  test('all custom node types survive HTML round-trip', async ({ appPage: page }) => {
     await gotoEditor(page);
     // Compose a doc programmatically via the harness's exposed editor and
     // verify we can round-trip via getHTML() → setContent(html) → getJSON().
@@ -361,14 +361,14 @@ test.describe('Lumina Editor — Persistence (JSON round-trip)', () => {
 });
 
 test.describe('Lumina Editor — Mobile @mobile', () => {
-  test('editor uses 16px font at 375px viewport (no iOS zoom)', async ({ guestPage: page }) => {
+  test('editor uses 16px font at 375px viewport (no iOS zoom)', async ({ appPage: page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await gotoEditor(page);
     const fontSize = await page.locator('.ProseMirror').evaluate((el) => getComputedStyle(el).fontSize);
     expect(fontSize).toBe('16px');
   });
 
-  test('drag handle is hidden on mobile', async ({ guestPage: page }) => {
+  test('drag handle is hidden on mobile', async ({ appPage: page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await gotoEditor(page);
     // The handle markup is in the DOM but display:none via media query

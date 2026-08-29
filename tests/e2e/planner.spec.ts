@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Daily Plan (/plan)', () => {
-  test('renders daily plan view', async ({ guestPage: page }) => {
+  test('renders daily plan view', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/plan', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);

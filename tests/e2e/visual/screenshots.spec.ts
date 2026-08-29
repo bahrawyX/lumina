@@ -5,7 +5,7 @@
  *
  * Output: playwright-screenshots/<route>.png  (gitignored)
  */
-import { test } from '../fixtures/guest';
+import { test } from '../fixtures/app';
 import { waitForAppReady } from '../fixtures/helpers';
 import path from 'path';
 import fs from 'fs';
@@ -34,7 +34,7 @@ test.beforeAll(() => {
 
 test.describe('Visual — authenticated app routes', () => {
   for (const route of GUEST_ROUTES) {
-    test(`screenshot ${route}`, async ({ guestPage: page }) => {
+    test(`screenshot ${route}`, async ({ appPage: page }) => {
       await page.goto(route, { waitUntil: 'domcontentloaded' });
       await waitForAppReady(page);
       // Give framer-motion a beat to settle opening transitions.

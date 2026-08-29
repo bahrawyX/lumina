@@ -15,7 +15,7 @@
  * Tagged `@mobile` so the chromium-mobile project's grep filter picks it up.
  */
 import { expect } from '@playwright/test';
-import { test } from './fixtures/guest';
+import { test } from './fixtures/app';
 import { waitForAppReady } from './fixtures/helpers';
 
 const GUEST_ROUTES = [
@@ -33,7 +33,7 @@ const GUEST_ROUTES = [
 
 test.describe('Mobile — no horizontal overflow @mobile', () => {
   for (const route of GUEST_ROUTES) {
-    test(`${route} fits within viewport width @mobile`, async ({ guestPage: page }) => {
+    test(`${route} fits within viewport width @mobile`, async ({ appPage: page }) => {
       await page.goto(route, { waitUntil: 'domcontentloaded' });
       await waitForAppReady(page);
       await page.waitForTimeout(400);
@@ -50,7 +50,7 @@ test.describe('Mobile — no horizontal overflow @mobile', () => {
 });
 
 test.describe('Mobile — task board force-lists @mobile', () => {
-  test('/tasks renders list view on mobile regardless of stored preference @mobile', async ({ guestPage: page }) => {
+  test('/tasks renders list view on mobile regardless of stored preference @mobile', async ({ appPage: page }) => {
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
     await page.waitForTimeout(400);
@@ -67,7 +67,7 @@ test.describe('Mobile — task board force-lists @mobile', () => {
 });
 
 test.describe('Mobile — calendar forces day view @mobile', () => {
-  test('/calendar does NOT render 7-col week grid on mobile @mobile', async ({ guestPage: page }) => {
+  test('/calendar does NOT render 7-col week grid on mobile @mobile', async ({ appPage: page }) => {
     // Seed Week as the preferred view via localStorage before nav so we
     // assert that mobile overrides, not that default happens to be Day.
     await page.addInitScript(() => {
@@ -89,6 +89,15 @@ test.describe('Mobile — calendar forces day view @mobile', () => {
 });
 
 test.describe('Mobile — input zoom prevention @mobile', () => {
+  // Signed OUT: this asserts against `/auth/signin`, and an authenticated
+  // visitor is redirected off it to /calendar — so with the project's session
+  // loaded there is no email input to measure, and the failure looks like a
+  // styling regression rather than a routing one.
+  // An explicitly EMPTY state, not `undefined`. Playwright reads `undefined`
+  // as "no opinion" and falls back to the project's value, so the session was
+  // still loaded and this kept measuring a page the user is redirected off.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test('sign-in page inputs have font-size ≥ 16px @mobile', async ({ page }) => {
     await page.goto('/auth/signin', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
@@ -108,7 +117,7 @@ test.describe('Mobile — input zoom prevention @mobile', () => {
 });
 
 test.describe('Mobile — bottom nav @mobile', () => {
-  test('bottom nav is visible on /tasks and pinned to bottom @mobile', async ({ guestPage: page }) => {
+  test('bottom nav is visible on /tasks and pinned to bottom @mobile', async ({ appPage: page }) => {
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
     await page.waitForTimeout(400);

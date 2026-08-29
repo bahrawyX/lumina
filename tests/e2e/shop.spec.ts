@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Shop (/shop)', () => {
-  test('renders shop page with item cards', async ({ guestPage: page }) => {
+  test('renders shop page with item cards', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/shop', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
@@ -14,7 +14,7 @@ test.describe('Shop (/shop)', () => {
     expect(errs, `Shop console errors:\n${errs.join('\n')}`).toEqual([]);
   });
 
-  test('filter interaction does not crash the page', async ({ guestPage: page }) => {
+  test('filter interaction does not crash the page', async ({ appPage: page }) => {
     await page.goto('/shop', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 

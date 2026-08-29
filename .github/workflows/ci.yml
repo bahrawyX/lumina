@@ -99,3 +99,96 @@ jobs:
           name: eslint-report
           path: eslint-report.json
           if-no-files-found: ignore
+
+  # ── End-to-end ─────────────────────────────────────────────────────────────
+  # Sixteen Playwright specs existed in `tests/e2e` and had never run in CI.
+  # They could not have: they faked guest mode in localStorage on the premise
+  # that routes were not gated server-side, which stopped being true when route
+  # protection moved into `proxy.ts` — and there was no database they were
+  # allowed to talk to, because the Neon serverless driver cannot speak to a
+  # plain Postgres.
+  #
+  # Both are fixed. This runs them against a disposable Postgres, through Neon's
+  # own `wsproxy`, so the app uses the identical driver and transaction
+  # semantics it uses in production.
+  e2e:
+    name: e2e (playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: lumina_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U e2e -d lumina_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # Translates the driver's WebSocket protocol to raw Postgres.
+      wsproxy:
+        image: ghcr.io/neondatabase/wsproxy:latest
+        env:
+          ALLOW_ADDR_REGEX: '.*'
+        ports: ['5433:80']
+
+    env:
+      # `postgres` is the service hostname on the runner network, which is what
+      # wsproxy dials; `NEON_WS_PROXY` is where THIS process finds the proxy.
+      # They are deliberately different — see src/lib/db.ts.
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/lumina_e2e
+      NEON_WS_PROXY: localhost:5433
+      BETTER_AUTH_SECRET: ci-placeholder-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
+      E2E_BASE_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Only Chromium — the suite's three projects are all Chromium-based, and
+      # downloading Firefox and WebKit would add minutes for nothing.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # The same script a human runs against a drifted database. Using it here
+      # means CI exercises it on every push, which is how it stays correct.
+      - name: Apply schema
+        run: psql "postgres://e2e:e2e@localhost:5432/lumina_e2e" -v ON_ERROR_STOP=1 -f scripts/catch-up-schema.sql
+
+      - name: Build
+        run: npx next build
+
+      # `next start`, not `next dev`: e2e should exercise the bundle that ships.
+      - name: Start app
+        run: |
+          npx next start -p 3000 &
+          npx wait-on http://localhost:3000/auth/signin --timeout 120000
+
+      - name: Playwright
+        run: npx playwright test
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Performance (/performance)', () => {
-  test('renders performance header and contribution heatmap', async ({ guestPage: page }) => {
+  test('renders performance header and contribution heatmap', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/performance', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
@@ -22,7 +22,7 @@ test.describe('Performance (/performance)', () => {
     expect(errs, `Performance console errors:\n${errs.join('\n')}`).toEqual([]);
   });
 
-  test('contribution settings popover opens and shows scoring legend', async ({ guestPage: page }) => {
+  test('contribution settings popover opens and shows scoring legend', async ({ appPage: page }) => {
     await page.goto('/performance', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 

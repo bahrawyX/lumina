@@ -12,7 +12,7 @@
  *
  * Tagged `@mobile` so the chromium-mobile project's grep filter picks it up.
  */
-import { test } from '../fixtures/guest';
+import { test } from '../fixtures/app';
 import { waitForAppReady } from '../fixtures/helpers';
 import path from 'path';
 import fs from 'fs';
@@ -42,7 +42,7 @@ test.beforeAll(() => {
 
 test.describe('Mobile visual — authenticated app routes @mobile', () => {
   for (const route of GUEST_ROUTES) {
-    test(`mobile screenshot ${route} @mobile`, async ({ guestPage: page }) => {
+    test(`mobile screenshot ${route} @mobile`, async ({ appPage: page }) => {
       await page.goto(route, { waitUntil: 'domcontentloaded' });
       await waitForAppReady(page);
       await page.waitForTimeout(800);
