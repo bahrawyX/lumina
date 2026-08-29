@@ -7,11 +7,13 @@
  *
  *     useEffect(() => { setDemoLocalEvents(createContextDemoEvents()); }, []);
  *
- * The six are titled "Critical — demo event", "Focus — demo event", "Work",
- * "Social", "Personal", "Health", land on days -1 through +4, and are merged
- * into month, week and day views. They are `readOnly: true`, so **the user
- * cannot delete them**. The audit confirmed all six rendering on the live site
- * for a real account.
+ * The six land on days -1 through +4 and are merged into month, week and day
+ * views. They are `readOnly: true`, so **the user cannot delete them**. The
+ * audit confirmed all six rendering on the live site for a real account.
+ *
+ * They were titled `Critical — demo event`, `Focus — demo event` and so on.
+ * They are now `Test (Critical)`, `Test (Focus)` — see the labelling block at
+ * the bottom of this file for why the word order changed.
  *
  * The gate is now: onboarding not completed AND no events of the user's own
  * from any source AND the event store has actually hydrated. This test exercises
@@ -19,6 +21,7 @@
  * fails here.
  */
 import { describe, it, expect } from 'vitest';
+import { createContextDemoEvents } from '@/hooks/useOutlookSync';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -106,5 +109,62 @@ describe('P1-1 — the implementation still carries every guard', () => {
   it('clears the demos once the user has real data', () => {
     // Otherwise the undeletable examples sit alongside real work forever.
     expect(SOURCE).toContain('setDemoLocalEvents([]);');
+  });
+});
+
+/**
+ * The gate above decides WHETHER they appear. This decides whether someone who
+ * sees one can tell it apart from their own event.
+ *
+ * The old titles put the context first — `Critical — demo event` — and a month
+ * cell has room for about two words, so what actually rendered was "Critical".
+ * That is indistinguishable from a real event, which is how six unremovable
+ * fake entries got reported as "events I didn't create". Leading with "Test"
+ * puts the disposable word in the part that always survives truncation.
+ *
+ * Asserted against the real objects rather than a regex over the source. The
+ * gate tests above read `useOutlookSync.ts` as text because they are checking
+ * the shape of a hook body, which cannot be called outside React — but the
+ * factory is a plain function, so there is no reason to guess at its output
+ * when it can simply be run.
+ */
+describe('a demo event announces itself even when the title is clipped', () => {
+  const events = createContextDemoEvents();
+
+  it('produces one per built-in context', () => {
+    expect(events).toHaveLength(6);
+  });
+
+  it('leads every title with the word that gives it away', () => {
+    // The first word is the one that survives a truncated month cell.
+    for (const e of events) {
+      expect(e.title.split(/[\s(]/)[0], `"${e.title}" does not lead with Test`).toBe('Test');
+    }
+  });
+
+  it('still names the context each one is demonstrating', () => {
+    // Showing what each context looks like is the entire point of having six.
+    expect(events.map((e) => e.title)).toEqual([
+      'Test (Critical)',
+      'Test (Focus)',
+      'Test (Work)',
+      'Test (Social)',
+      'Test (Personal)',
+      'Test (Health)',
+    ]);
+  });
+
+  it('keeps them read-only, which is why the label carries the weight', () => {
+    // A user cannot delete these, so the title is the only thing standing
+    // between "example content" and "why is this in my calendar".
+    for (const e of events) {
+      expect(e.readOnly).toBe(true);
+      expect(e.draggable).toBe(false);
+    }
+  });
+
+  it('gives each one a distinct id and context colour', () => {
+    expect(new Set(events.map((e) => e.id)).size).toBe(6);
+    expect(new Set(events.map((e) => e.color)).size).toBe(6);
   });
 });
