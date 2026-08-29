@@ -118,6 +118,17 @@ describe('P3-2 — field lengths are a 400, not a driver 500', () => {
   });
 
   it('is applied at every route that writes a bounded column', () => {
+    // There are two mechanisms now, and this guard has to accept either or it
+    // fails the moment a route is migrated — which is what it just did.
+    //
+    //   - `checkFieldLengths(...)`, the original imperative helper;
+    //   - `parseBody(req, <schema>)`, where the schema carries `.max()` built
+    //     from the same `FIELD_LIMITS` constants.
+    //
+    // What matters is that the route cannot hand a `varchar(512)` column 600
+    // characters, not which of the two stops it. The schemas' actual bounds
+    // are asserted directly in `api-body-validation.test.ts` — this only
+    // checks that no route is left with neither.
     const read = (...parts: string[]) =>
       readFileSync(join(process.cwd(), 'src', 'app', 'api', ...parts), 'utf8');
     for (const parts of [
@@ -128,7 +139,9 @@ describe('P3-2 — field lengths are a 400, not a driver 500', () => {
       ['goals', '[id]', 'route.ts'],
       ['docs', '[id]', 'route.ts'],
     ]) {
-      expect(read(...parts), parts.join('/')).toContain('checkFieldLengths(');
+      const src = read(...parts);
+      const guarded = src.includes('checkFieldLengths(') || src.includes('parseBody(req,');
+      expect(guarded, `${parts.join('/')} bounds neither via checkFieldLengths nor a parseBody schema`).toBe(true);
     }
   });
 });

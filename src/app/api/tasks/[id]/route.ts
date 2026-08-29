@@ -10,27 +10,15 @@ import { utcToZonedWallClock } from '@/lib/time/zonedTime';
 import { taskCompleteAwards, allSubtasksCompleteAward, dailyTaskBurstAwards, firstTaskOfDayAward } from '@/lib/coins/earnRules';
 import { syncTaskCompletionTargets } from '@/lib/goals/syncTaskCompletionTargets';
 import { apiError, logger } from '@/lib/logger';
-import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
+import { parseBody } from '@/lib/api/parseBody';
+import { updateTaskSchema } from '@/lib/api/schemas';
 import { checkLinkedOwnership } from '@/lib/ownership';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 import { buildSpawnedTask, nextOccurrenceFor } from '@/lib/tasks/recurrence';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 
-function normalizeTimeString(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return /^\d{2}:\d{2}$/.test(trimmed) ? trimmed : null;
-}
 
-function normalizeRemainingFocusTime(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  return Math.max(0, Math.round(value));
-}
 
-function normalizeTaskStatusForDb(status: unknown): 'todo' | 'doing' | 'done' | null {
-  if (status === 'todo' || status === 'doing' || status === 'done') return status;
-  return null;
-}
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -51,84 +39,75 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  const parsed = await parseBody(req, updateTaskSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   try {
     const db = getDatabase();
     const patch: Record<string, unknown> = { updatedAt: new Date() };
 
-    const validPriorities = ['low', 'medium', 'high'];
-
-    // P3-2: `varchar(512)`; an over-long value was a driver 500, not a 400.
-    const tooLong = checkFieldLengths({
-      title: { value: body.title, max: FIELD_LIMITS.title },
-      description: { value: body.description, max: FIELD_LIMITS.description },
-    });
-    if (tooLong) return tooLong;
-
-    if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
-    if (typeof body.description === 'string') patch.description = body.description;
-    if (typeof body.status === 'string') {
-      const normalized = normalizeTaskStatusForDb(body.status);
-      if (normalized) patch.status = normalized;
+    /**
+     * `undefined` leaves the column alone; `null` clears it.
+     *
+     * That distinction is why this is still a hand-built patch object rather
+     * than a spread of the parsed body — only the handler knows which fields
+     * are clearable, and it differs per field. What changed is the failure
+     * mode. Every branch here used to look like
+     *
+     *     const normalizedTime = normalizeTimeString(body.scheduledStart);
+     *     if (normalizedTime !== null) patch.scheduledStart = normalizedTime;
+     *
+     * so `"25:00"` fell through to no assignment at all: the request returned
+     * 200, the client kept its optimistic value, and a reload put the old time
+     * back with nothing to explain it. `updateTaskSchema` turns each of those
+     * into a 400 that names the field.
+     */
+    if (body.title !== undefined) patch.title = body.title;
+    if (body.description !== undefined) patch.description = body.description;
+    if (body.status !== undefined) patch.status = body.status;
+    if (body.priority !== undefined) patch.priority = body.priority;
+    if (body.difficulty !== undefined) patch.difficulty = body.difficulty;
+    if (body.durationMinutes !== undefined) patch.estimatedMinutes = body.durationMinutes;
+    if (body.scheduledStart !== undefined) patch.scheduledStart = body.scheduledStart;
+    if (body.scheduledEnd !== undefined) patch.scheduledEnd = body.scheduledEnd;
+    // Seconds; rounded here, as it always was.
+    if (body.remainingFocusTime !== undefined) {
+      patch.remainingFocusTime =
+        body.remainingFocusTime === null ? null : Math.round(body.remainingFocusTime);
     }
-    if (typeof body.priority === 'string' && validPriorities.includes(body.priority)) patch.priority = body.priority;
-    const validDifficulties = ['easy', 'medium', 'hard'];
-    if (typeof body.difficulty === 'string' && validDifficulties.includes(body.difficulty)) patch.difficulty = body.difficulty;
-    if (typeof body.durationMinutes === 'number') patch.estimatedMinutes = body.durationMinutes;
+    if (body.dueDate !== undefined) {
+      patch.dueDate = body.dueDate === null ? null : new Date(body.dueDate);
+    }
 
     /**
-     * Recurrence. `null` clears it — that is how a series is stopped without
-     * deleting the work already done.
+     * Recurrence. `null` clears the rule — that is how a series is stopped
+     * without deleting the work already done — and clears the end date with
+     * it, because an end date with no rule is inert.
      *
-     * Validated against the SAME engine events use, so a task cannot express a
-     * rule the rest of the app would reject: no sub-daily frequencies (a CPU
-     * bomb with no productivity use), bounded COUNT and INTERVAL.
+     * The split of duties is the same as everywhere else in this handler now:
+     * `updateTaskSchema` establishes SHAPE (a string, a parseable date), and
+     * `validateRRule` judges MEANING against the very engine calendar events
+     * use, so a task cannot express a rule the rest of the app would reject —
+     * no sub-daily frequencies (a CPU bomb with no productivity use), bounded
+     * COUNT and INTERVAL.
      */
-    if (body.recurrenceRule === null) {
-      patch.recurrenceRule = null;
-      patch.recurrenceEnd = null;
-    } else if (typeof body.recurrenceRule === 'string' && body.recurrenceRule.trim()) {
-      const anchor =
-        typeof body.dueDate === 'string' && !isNaN(new Date(body.dueDate).getTime())
-          ? new Date(body.dueDate)
-          : new Date();
-      const valid = validateRRule(body.recurrenceRule.trim(), anchor);
-      if (!valid.ok) {
-        return NextResponse.json({ error: `Invalid recurrence: ${valid.reason}` }, { status: 400 });
+    if (body.recurrenceRule !== undefined) {
+      if (body.recurrenceRule === null) {
+        patch.recurrenceRule = null;
+        patch.recurrenceEnd = null;
+      } else if (body.recurrenceRule.trim()) {
+        const anchor = body.dueDate ? new Date(body.dueDate) : new Date();
+        const valid = validateRRule(body.recurrenceRule.trim(), anchor);
+        if (!valid.ok) {
+          return NextResponse.json({ error: `Invalid recurrence: ${valid.reason}` }, { status: 400 });
+        }
+        patch.recurrenceRule = body.recurrenceRule.trim();
       }
-      patch.recurrenceRule = body.recurrenceRule.trim();
     }
-    if (body.recurrenceEnd === null) {
-      patch.recurrenceEnd = null;
-    } else if (typeof body.recurrenceEnd === 'string') {
-      const end = new Date(body.recurrenceEnd);
-      if (!isNaN(end.getTime())) patch.recurrenceEnd = end;
-    }
-    if (body.scheduledStart === null) patch.scheduledStart = null;
-    else if (typeof body.scheduledStart === 'string') {
-      const normalizedTime = normalizeTimeString(body.scheduledStart);
-      if (normalizedTime !== null) patch.scheduledStart = normalizedTime;
-    }
-    if (body.scheduledEnd === null) patch.scheduledEnd = null;
-    else if (typeof body.scheduledEnd === 'string') {
-      const normalizedTime = normalizeTimeString(body.scheduledEnd);
-      if (normalizedTime !== null) patch.scheduledEnd = normalizedTime;
-    }
-    if (body.remainingFocusTime === null) patch.remainingFocusTime = null;
-    else if (typeof body.remainingFocusTime === 'number') {
-      const normalizedRemaining = normalizeRemainingFocusTime(body.remainingFocusTime);
-      if (normalizedRemaining !== null) patch.remainingFocusTime = normalizedRemaining;
-    }
-    if (body.dueDate === null) patch.dueDate = null;
-    else if (typeof body.dueDate === 'string') {
-      const ts = new Date(body.dueDate);
-      if (!isNaN(ts.getTime())) patch.dueDate = ts;
+    // After the block above, so an explicit end date beats the implicit clear.
+    if (body.recurrenceEnd !== undefined) {
+      patch.recurrenceEnd = body.recurrenceEnd === null ? null : new Date(body.recurrenceEnd);
     }
     // P1-4: POST /api/tasks validates every linked FK against the caller, with
     // a comment explaining that a foreign goalId would otherwise be counted
@@ -146,19 +125,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
-    if (body.linkedEventId === null) patch.linkedEventId = null;
-    else if (typeof body.linkedEventId === 'string' && body.linkedEventId.trim()) {
-      patch.linkedEventId = body.linkedEventId;
-    }
-    if (body.goalId === null) patch.goalId = null;
-    else if (typeof body.goalId === 'string' && body.goalId.trim()) {
-      patch.goalId = body.goalId;
-    }
+    if (body.linkedEventId !== undefined) patch.linkedEventId = body.linkedEventId;
+    if (body.goalId !== undefined) patch.goalId = body.goalId;
     // The handler used to ignore `order` entirely, so every reorder request was
     // a no-op. `order` is the client-side name for `tasks.position`.
-    if (typeof body.order === 'number' && Number.isInteger(body.order)) {
-      patch.position = Math.max(0, Math.min(100_000, body.order));
-    }
+    if (body.order !== undefined) patch.position = body.order;
 
     // C2: capture the prior status so the completion award fires only on a real
     // not-done → done transition — re-completing (done→todo→done) must not re-award.

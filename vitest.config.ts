@@ -34,6 +34,8 @@ const SERVER_ONLY_TESTS = [
   'tests/provider-pagination.test.ts',
   // Imports the server-only recurrence helper.
   'tests/recurring-tasks.test.ts',
+  // Imports parseBody, which is server-only.
+  'tests/api-body-validation.test.ts',
   // P1-2: imports the due-timezone resolver, which is server-only.
   'tests/cron-due-timezones.test.ts',
   // P1-4: imports the tasks PATCH handler, whose tree includes `@/lib/ownership`

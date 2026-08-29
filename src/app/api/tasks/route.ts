@@ -4,29 +4,17 @@ import { getDatabase } from '@/lib/db';
 import { tasks, events, docs, goals } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { apiError, logger } from '@/lib/logger';
-import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
+import { parseBody } from '@/lib/api/parseBody';
+import { createTaskSchema } from '@/lib/api/schemas';
 import { listHeaders, parseLimit } from '@/lib/listLimits';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 
-function normalizeTimeString(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return /^\d{2}:\d{2}$/.test(trimmed) ? trimmed : null;
-}
 
-function normalizeRemainingFocusTime(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  return Math.max(0, Math.round(value));
-}
 
 /** Mirrors `taskStatusEnum`; a bad `?status` is a 400, not a silent full scan. */
 const TASK_STATUSES = ['todo', 'doing', 'done'] as const;
 type TaskStatus = (typeof TASK_STATUSES)[number];
 
-function normalizeTaskStatusForDb(status: unknown): 'todo' | 'doing' | 'done' {
-  if (status === 'doing' || status === 'done') return status;
-  return 'todo';
-}
 
 /** GET /api/tasks — return all tasks for the authenticated user */
 export async function GET(req: NextRequest) {
@@ -115,47 +103,16 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  // `createTaskSchema` carries what four separate blocks used to: the required
+  // title, the `varchar(512)` bound (P3-2 — an over-long title reached Postgres
+  // as a 22001 and came back a 500), the enum membership of status/priority/
+  // difficulty, `HH:mm` on the schedule fields, and uuid-shaped foreign keys.
+  const parsed = await parseBody(req, createTaskSchema);
+  if (!parsed.ok) return parsed.response;
+  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId, goalId, recurrenceRule, recurrenceEnd } = parsed.data;
 
-  const { title, description, status, priority, difficulty, dueDate, durationMinutes, scheduledStart, scheduledEnd, remainingFocusTime, linkedEventId, linkedDocId, parentTaskId, goalId, recurrenceRule, recurrenceEnd } = body as {
-    title?: string;
-    description?: string;
-    status?: string;
-    priority?: string;
-    difficulty?: string;
-    recurrenceRule?: string | null;
-    recurrenceEnd?: string | null;
-    dueDate?: string | null;
-    durationMinutes?: number;
-    scheduledStart?: string | null;
-    scheduledEnd?: string | null;
-    remainingFocusTime?: number | null;
-    linkedEventId?: string | null;
-    linkedDocId?: string | null;
-    parentTaskId?: string | null;
-    goalId?: string | null;
-  };
-
-  if (!title || typeof title !== 'string' || !title.trim()) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 });
-  }
-
-  // P3-2: unbounded. A 100,000-character title went straight into
-  // `varchar(512)` and Postgres raised 22001, so the client got a 500 for a
-  // request it simply got wrong.
-  const tooLong = checkFieldLengths({
-    title: { value: title, max: FIELD_LIMITS.title },
-    description: { value: description, max: FIELD_LIMITS.description },
-  });
-  if (tooLong) return tooLong;
-
-  const validPriorities = ['low', 'medium', 'high'];
-  const validDifficulties = ['easy', 'medium', 'hard'];
+  // A new task starts at the end of the column it lands in.
+  const dbStatus = status ?? 'todo';
 
   try {
     const db = getDatabase();
@@ -164,7 +121,7 @@ export async function POST(req: NextRequest) {
     let resolvedParentTaskId: string | null = null;
     let resolvedDepth = 0;
 
-    if (typeof parentTaskId === 'string' && parentTaskId.trim()) {
+    if (parentTaskId) {
       const [parent] = await db
         .select({ id: tasks.id, depth: tasks.depth })
         .from(tasks)
@@ -183,17 +140,17 @@ export async function POST(req: NextRequest) {
     // Batch 5 (FK ownership on create): linked FKs must belong to the caller.
     // A foreign goalId in particular would otherwise be counted into that other
     // user's goal-progress aggregation.
-    if (typeof linkedEventId === 'string' && linkedEventId.trim()) {
+    if (linkedEventId) {
       const [e] = await db.select({ id: events.id }).from(events)
         .where(and(eq(events.id, linkedEventId), eq(events.userId, userId))).limit(1);
       if (!e) return NextResponse.json({ error: 'linkedEventId not found' }, { status: 404 });
     }
-    if (typeof linkedDocId === 'string' && linkedDocId.trim()) {
+    if (linkedDocId) {
       const [d] = await db.select({ id: docs.id }).from(docs)
         .where(and(eq(docs.id, linkedDocId), eq(docs.userId, userId))).limit(1);
       if (!d) return NextResponse.json({ error: 'linkedDocId not found' }, { status: 404 });
     }
-    if (typeof goalId === 'string' && goalId.trim()) {
+    if (goalId) {
       const [g] = await db.select({ id: goals.id }).from(goals)
         .where(and(eq(goals.id, goalId), eq(goals.userId, userId))).limit(1);
       if (!g) return NextResponse.json({ error: 'goalId not found' }, { status: 404 });
@@ -203,20 +160,23 @@ export async function POST(req: NextRequest) {
      * Recurrence, validated against the same engine events use — so a task
      * cannot express a rule the rest of the app would reject (no sub-daily
      * frequencies, bounded COUNT and INTERVAL).
+     *
+     * `createTaskSchema` has already established that these are a string and a
+     * parseable date if present, so the `typeof` and `isNaN` guards that used
+     * to wrap this are gone. What it cannot judge is whether the rule MEANS
+     * anything, which is what `validateRRule` is for — shape from the schema,
+     * semantics here.
      */
     let normalizedRecurrence: string | null = null;
-    if (typeof recurrenceRule === 'string' && recurrenceRule.trim()) {
-      const anchor = dueDate && !isNaN(new Date(dueDate).getTime()) ? new Date(dueDate) : new Date();
+    if (recurrenceRule?.trim()) {
+      const anchor = dueDate ? new Date(dueDate) : new Date();
       const valid = validateRRule(recurrenceRule.trim(), anchor);
       if (!valid.ok) {
         return NextResponse.json({ error: `Invalid recurrence: ${valid.reason}` }, { status: 400 });
       }
       normalizedRecurrence = recurrenceRule.trim();
     }
-    const normalizedRecurrenceEnd =
-      typeof recurrenceEnd === 'string' && !isNaN(new Date(recurrenceEnd).getTime())
-        ? new Date(recurrenceEnd)
-        : null;
+    const normalizedRecurrenceEnd = recurrenceEnd ? new Date(recurrenceEnd) : null;
 
     const [row] = await db
       .insert(tasks)
@@ -224,27 +184,29 @@ export async function POST(req: NextRequest) {
         userId,
         recurrenceRule: normalizedRecurrence,
         recurrenceEnd: normalizedRecurrenceEnd,
-        title: title.trim(),
+        title,
         description: description ?? null,
-        status: normalizeTaskStatusForDb(status),
-        priority: (validPriorities.includes(priority ?? '') ? priority : 'medium') as 'low' | 'medium' | 'high',
-        difficulty: (validDifficulties.includes(difficulty ?? '') ? difficulty : 'medium') as 'easy' | 'medium' | 'hard',
+        status: dbStatus,
+        priority: priority ?? 'medium',
+        difficulty: difficulty ?? 'medium',
         dueDate: dueDate ? new Date(dueDate) : null,
-        estimatedMinutes: typeof durationMinutes === 'number' ? durationMinutes : 30,
-        scheduledStart: normalizeTimeString(scheduledStart),
-        scheduledEnd: normalizeTimeString(scheduledEnd),
-        remainingFocusTime: normalizeRemainingFocusTime(remainingFocusTime),
-        linkedEventId: typeof linkedEventId === 'string' && linkedEventId.trim() ? linkedEventId : null,
-        linkedDocId: typeof linkedDocId === 'string' && linkedDocId.trim() ? linkedDocId : null,
+        estimatedMinutes: durationMinutes ?? 30,
+        scheduledStart: scheduledStart ?? null,
+        scheduledEnd: scheduledEnd ?? null,
+        // Seconds, and rounded here as it always was — see the note on the
+        // schema field for why it is not forced to an integer upstream.
+        remainingFocusTime: remainingFocusTime == null ? null : Math.round(remainingFocusTime),
+        linkedEventId: linkedEventId ?? null,
+        linkedDocId: linkedDocId ?? null,
         parentTaskId: resolvedParentTaskId,
         depth: resolvedDepth,
-        goalId: typeof goalId === 'string' && goalId.trim() ? goalId : null,
+        goalId: goalId ?? null,
         // Land a new task at the end of its column rather than sharing
         // position 0 with everything else. Computed in SQL so two concurrent
         // creates cannot read the same max.
         position: sql`coalesce((
           select max(t2.position) + 1 from ${tasks} t2
-          where t2.user_id = ${userId} and t2.status = ${normalizeTaskStatusForDb(status)}
+          where t2.user_id = ${userId} and t2.status = ${dbStatus}
         ), 0)`,
       })
       .returning({ id: tasks.id });

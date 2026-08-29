@@ -7,7 +7,8 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { goalCompleteAwards } from '@/lib/coins/earnRules';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { apiError, logger } from '@/lib/logger';
-import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
+import { parseBody } from '@/lib/api/parseBody';
+import { updateGoalSchema } from '@/lib/api/schemas';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
 interface RouteContext {
@@ -27,40 +28,27 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  const parsed = await parseBody(req, updateGoalSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   try {
     const db = getDatabase();
     const patch: Record<string, unknown> = { updatedAt: new Date() };
 
-    const tooLong = checkFieldLengths({
-      title: { value: body.title, max: FIELD_LIMITS.shortTitle },
-      description: { value: body.description, max: FIELD_LIMITS.description },
-    });
-    if (tooLong) return tooLong;
-
-    if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
-    if (typeof body.description === 'string') patch.description = body.description || null;
-    if (typeof body.emoji === 'string') patch.emoji = body.emoji || null;
-    const validColors = ['blue', 'green', 'purple', 'orange', 'red'];
-    if (typeof body.color === 'string' && validColors.includes(body.color)) patch.color = body.color;
-    const validStatuses = ['active', 'completed', 'archived'];
-    if (typeof body.status === 'string' && validStatuses.includes(body.status)) patch.status = body.status;
-    const validTimeframes = ['weekly', 'monthly', 'quarterly', 'yearly', 'custom'];
-    if (typeof body.timeframe === 'string' && validTimeframes.includes(body.timeframe)) patch.timeframe = body.timeframe;
-    if (typeof body.startDate === 'string') {
-      const d = new Date(body.startDate);
-      if (!isNaN(d.getTime())) patch.startDate = d;
-    }
-    if (typeof body.endDate === 'string') {
-      const d = new Date(body.endDate);
-      if (!isNaN(d.getTime())) patch.endDate = d;
-    }
+    // Still built field by field, because "absent" and "null" mean different
+    // things here and only the handler knows which: an absent key leaves the
+    // column alone, an empty string clears it. The schema's job was to
+    // guarantee that whatever IS present has a usable value — so there is no
+    // longer a branch that quietly drops a bad one.
+    if (body.title !== undefined) patch.title = body.title;
+    if (body.description !== undefined) patch.description = body.description || null;
+    if (body.emoji !== undefined) patch.emoji = body.emoji || null;
+    if (body.color !== undefined) patch.color = body.color;
+    if (body.status !== undefined) patch.status = body.status;
+    if (body.timeframe !== undefined) patch.timeframe = body.timeframe;
+    if (body.startDate !== undefined) patch.startDate = new Date(body.startDate);
+    if (body.endDate !== undefined) patch.endDate = new Date(body.endDate);
 
     // Get pre-update status for comparison
     const [prev] = await db
@@ -76,15 +64,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     /**
      * The date range has to stay ordered.
      *
-     * `POST /api/goals` rejects `end <= start`; this handler only checked that
-     * each date PARSED. So a goal could be edited into "Aug 24 - Aug 10", which
-     * the UI then renders as permanently Overdue with a negative span — and
+     * `updateGoalSchema` already rejects a request that carries an inverted
+     * range on its own. This is the half a schema cannot do: a PATCH that
+     * moves only `endDate` has to be compared against the STORED `startDate`,
+     * and the schema has never seen the row.
+     *
+     * Without it a goal could be edited into "Aug 24 - Aug 10", which the UI
+     * renders as permanently Overdue with a negative span — and
      * `differenceInCalendarDays(endDate, startDate)` in `GoalDetailSheet` goes
      * negative, so every progress figure derived from it is meaningless.
-     *
-     * Validated against the RESULTING range, not just the submitted fields: a
-     * PATCH that moves only `endDate` has to be checked against the stored
-     * `startDate`, or half an edit slips through.
      */
     if (prev) {
       const nextStart = (patch.startDate as Date | undefined) ?? prev.startDate;

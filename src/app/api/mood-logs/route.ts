@@ -3,7 +3,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { moodLogs, focusSessions } from '@/db/schema';
-import { moodSchema } from '@/lib/validation';
+import { parseBody } from '@/lib/api/parseBody';
+import { createMoodLogSchema } from '@/lib/api/schemas';
 import { apiError } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
@@ -45,25 +46,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  const parsed = await parseBody(req, createMoodLogSchema);
+  if (!parsed.ok) return parsed.response;
 
-  const moodResult = moodSchema.safeParse(body.mood);
-  if (!moodResult.success) {
-    return NextResponse.json({ error: 'Invalid mood value' }, { status: 400 });
-  }
-
-  const note = typeof body.note === 'string' && body.note.trim()
-    ? body.note.trim().slice(0, 140)
-    : null;
-
-  const focusSessionId = typeof body.focusSessionId === 'string' && body.focusSessionId
-    ? body.focusSessionId
-    : null;
+  /**
+   * The note is no longer silently truncated.
+   *
+   * It used to be `.slice(0, 140)`. `MoodAnalysisCard` lets a person type 200
+   * characters and `mood_logs.note` is an unbounded `text` column, so the last
+   * 60 characters of a reflection were discarded on the way to a database that
+   * would happily have stored them — with a 201 and no indication anything had
+   * been dropped.
+   *
+   * The schema caps at 200 to match the most permissive input in the UI, and
+   * anything longer is now a 400 that says so rather than a quiet trim.
+   */
+  const note = parsed.data.note?.trim() ? parsed.data.note.trim() : null;
+  const focusSessionId = parsed.data.focusSessionId ?? null;
+  const mood = parsed.data.mood;
 
   try {
     const db = getDatabase();
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       .values({
         userId: session.user.id,
         focusSessionId,
-        mood: moodResult.data,
+        mood,
         note,
       })
       .returning({ id: moodLogs.id });

@@ -7,7 +7,8 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { goalCreatedAward } from '@/lib/coins/earnRules';
 import { apiError, logger } from '@/lib/logger';
-import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
+import { parseBody } from '@/lib/api/parseBody';
+import { createGoalSchema } from '@/lib/api/schemas';
 
 function parseLinkedTaskIds(raw: string | null): string[] {
   if (!raw) return [];
@@ -164,55 +165,15 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  // Required-ness, the `varchar(255)` bound on the title, date parseability and
+  // the start-before-end rule are all in `createGoalSchema` now — the same
+  // shape `PATCH` uses, so the two cannot drift apart again.
+  const parsed = await parseBody(req, createGoalSchema);
+  if (!parsed.ok) return parsed.response;
+  const { title, description, emoji, color, timeframe, startDate, endDate, targets } = parsed.data;
 
-  const { title, description, emoji, color, timeframe, startDate, endDate, targets } = body as {
-    title?: string;
-    description?: string;
-    emoji?: string;
-    color?: string;
-    timeframe?: string;
-    startDate?: string;
-    endDate?: string;
-    targets?: Array<{
-      title: string;
-      type: string;
-      targetValue: number;
-      unit?: string;
-      linkedTaskIds?: string[];
-    }>;
-  };
-
-  if (!title || typeof title !== 'string' || !title.trim()) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 });
-  }
-
-  // P3-2: `goals.title` is varchar(255) — a tighter column than tasks/events.
-  const tooLong = checkFieldLengths({
-    title: { value: title, max: FIELD_LIMITS.shortTitle },
-    description: { value: description, max: FIELD_LIMITS.description },
-  });
-  if (tooLong) return tooLong;
-  if (!startDate || !endDate) {
-    return NextResponse.json({ error: 'startDate and endDate are required' }, { status: 400 });
-  }
   const start = new Date(startDate);
   const end = new Date(endDate);
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
-  }
-  if (end <= start) {
-    return NextResponse.json({ error: 'endDate must be after startDate' }, { status: 400 });
-  }
-
-  const validTimeframes = ['weekly', 'monthly', 'quarterly', 'yearly', 'custom'];
-  const validColors = ['blue', 'green', 'purple', 'orange', 'red'];
-  const validTargetTypes = ['number', 'percentage', 'boolean', 'task_completion'];
 
   try {
     const db = getDatabase();
@@ -220,31 +181,30 @@ export async function POST(req: NextRequest) {
     const result = await db.transaction(async (tx) => {
       const [goalRow] = await tx.insert(goals).values({
         userId,
-        title: title.trim(),
+        title,
         description: description ?? null,
         emoji: emoji ?? null,
-        color: validColors.includes(color ?? '') ? color! : null,
-        timeframe: (validTimeframes.includes(timeframe ?? '') ? timeframe : 'custom') as 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom',
+        color: color ?? null,
+        timeframe: timeframe ?? 'custom',
         startDate: start,
         endDate: end,
       }).returning({ id: goals.id });
 
       const createdTargets: string[] = [];
-      if (Array.isArray(targets)) {
-        for (let i = 0; i < targets.length; i++) {
-          const t = targets[i];
-          if (!t.title?.trim() || !validTargetTypes.includes(t.type)) continue;
-          const [targetRow] = await tx.insert(goalTargets).values({
-            goalId: goalRow.id,
-            title: t.title.trim(),
-            type: t.type as 'number' | 'percentage' | 'boolean' | 'task_completion',
-            targetValue: String(t.targetValue ?? (t.type === 'boolean' ? 1 : 100)),
-            unit: t.unit ?? null,
-            linkedTaskIds: Array.isArray(t.linkedTaskIds) ? JSON.stringify(t.linkedTaskIds) : null,
-            order: i,
-          }).returning({ id: goalTargets.id });
-          createdTargets.push(targetRow.id);
-        }
+      // Every target here has already passed `goalTargetSchema`, so the loop
+      // no longer silently skips the ones it dislikes — a bad target is a 400
+      // naming `targets.<n>.<field>` before the transaction ever opens.
+      for (const [i, t] of (targets ?? []).entries()) {
+        const [targetRow] = await tx.insert(goalTargets).values({
+          goalId: goalRow.id,
+          title: t.title,
+          type: t.type,
+          targetValue: String(t.targetValue ?? (t.type === 'boolean' ? 1 : 100)),
+          unit: t.unit ?? null,
+          linkedTaskIds: t.linkedTaskIds ? JSON.stringify(t.linkedTaskIds) : null,
+          order: i,
+        }).returning({ id: goalTargets.id });
+        createdTargets.push(targetRow.id);
       }
 
       return { goalId: goalRow.id, targetIds: createdTargets };
