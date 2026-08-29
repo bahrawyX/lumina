@@ -326,6 +326,108 @@ describe('catch-up heals column drift, not just missing tables', () => {
   }, 240_000);
 });
 
+describe('catch-up on a database that predates the columns its indexes use', () => {
+  it('creates every column BEFORE any index that references one', async () => {
+    // The failure this test exists for, reported verbatim from Neon:
+    //
+    //     ERROR: column "position" does not exist (SQLSTATE 42703)
+    //       at statement 107, CREATE INDEX "tasks_user_status_position_idx"
+    //
+    // `tasks.position` arrives in migration 0022. On a database that stopped at
+    // 0019 the table exists WITHOUT it, so `CREATE TABLE IF NOT EXISTS "tasks"`
+    // — which declares the column — is a no-op, and the index from the 0020
+    // baseline then references a column nothing has added yet.
+    //
+    // The column-heal pass fixes precisely this, and used to run ~400 lines too
+    // late: after the indexes and after the 0021-0026 ALTERs. Every earlier
+    // fixture here started either from an EMPTY database (where CREATE TABLE
+    // really does create the column) or from a `users`-only drift case, so
+    // none of them ever ran an index against a pre-existing table.
+    const pg = new PGlite();
+    try {
+      await pg.exec(`
+        CREATE TABLE users (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          email varchar(255) NOT NULL UNIQUE,
+          name text NOT NULL,
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        -- The pre-0022 shape: no "position", no "linked_event_id".
+        CREATE TABLE tasks (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id uuid NOT NULL,
+          title text NOT NULL,
+          status text NOT NULL DEFAULT 'todo',
+          due_date timestamptz,
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        -- Pre-0020 events: no "timezone", no "linked_task_id".
+        CREATE TABLE events (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id uuid NOT NULL,
+          title varchar(512) NOT NULL,
+          start_time timestamptz NOT NULL,
+          end_time timestamptz NOT NULL,
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+
+      const userId = (
+        await pg.query<{ id: string }>(
+          `INSERT INTO users (email, name) VALUES ($1,$2) RETURNING id`,
+          ['legacy@example.com', 'Legacy'],
+        )
+      ).rows[0].id;
+      await pg.query(`INSERT INTO tasks (user_id, title) VALUES ($1,$2)`, [userId, 'Existing task']);
+
+      // This threw before the reorder. That is the whole test.
+      await pg.exec(SCRIPT);
+
+      expect(await hasColumn(pg, 'tasks', 'position')).toBe(true);
+      expect(await hasIndex(pg, 'tasks_user_status_position_idx')).toBe(true);
+      expect(await hasColumn(pg, 'events', 'timezone')).toBe(true);
+      expect(await hasColumn(pg, 'events', 'tz_backfilled_at')).toBe(true);
+      expect(await hasColumn(pg, 'tasks', 'linked_event_id')).toBe(true);
+
+      // The pre-existing row survived and got the column's default.
+      const rows = await pg.query<{ title: string; position: number }>(
+        `SELECT title, position FROM tasks`,
+      );
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0].title).toBe('Existing task');
+      expect(rows.rows[0].position).toBe(0);
+    } finally {
+      await pg.close();
+    }
+  }, 240_000);
+
+  it('is still idempotent from that starting point', async () => {
+    // The reorder must not have broken re-runnability, which is the property
+    // that makes this script safe to hand someone.
+    const pg = new PGlite();
+    try {
+      await pg.exec(`
+        CREATE TABLE tasks (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id uuid NOT NULL,
+          title text NOT NULL,
+          status text NOT NULL DEFAULT 'todo',
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await pg.exec(SCRIPT);
+      await pg.exec(SCRIPT);
+      expect(await hasColumn(pg, 'tasks', 'position')).toBe(true);
+    } finally {
+      await pg.close();
+    }
+  }, 240_000);
+});
+
 describe('catch-up survives a rate_limits table with duplicate keys', () => {
   it('deduplicates before creating the unique index', async () => {
     // If `rate_limits` exists WITHOUT its unique index — the drift class this
