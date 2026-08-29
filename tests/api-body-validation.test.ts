@@ -191,3 +191,153 @@ describe('the error shape is actionable and safe', () => {
     }
   });
 });
+
+describe('null clears, undefined leaves alone', () => {
+  // The handlers build their patch objects field by field precisely because
+  // these two mean different things, and it differs per field. If the schema
+  // collapsed `null` into "absent", a PATCH meant to clear a due date would
+  // silently do nothing.
+  it('keeps the two distinguishable on the clearable fields', () => {
+    const cleared = updateTaskSchema.parse({
+      dueDate: null,
+      scheduledStart: null,
+      scheduledEnd: null,
+      remainingFocusTime: null,
+      linkedEventId: null,
+      goalId: null,
+    });
+    expect(cleared.dueDate).toBeNull();
+    expect(cleared.scheduledStart).toBeNull();
+    expect(cleared.remainingFocusTime).toBeNull();
+    expect(cleared.goalId).toBeNull();
+
+    const untouched = updateTaskSchema.parse({ title: 'only this' });
+    expect('dueDate' in untouched).toBe(false);
+    expect('goalId' in untouched).toBe(false);
+  });
+
+  it('does not let null through on a field the column cannot clear', () => {
+    // `tasks.status` is NOT NULL. Accepting null here would move the failure
+    // from a 400 to a Postgres 23502 surfaced as a 500.
+    expect(updateTaskSchema.safeParse({ status: null }).success).toBe(false);
+    expect(updateTaskSchema.safeParse({ priority: null }).success).toBe(false);
+  });
+});
+
+describe('remainingFocusTime is seconds, and stays roundable', () => {
+  it('accepts a fractional value rather than rejecting a float timer tick', () => {
+    // PomodoroView sends `remainingSecs`. The handler rounds, as it always
+    // did; forcing .int() here would 400 a perfectly ordinary timer.
+    expect(updateTaskSchema.safeParse({ remainingFocusTime: 137.4 }).success).toBe(true);
+  });
+
+  it('still refuses a negative or non-finite one', () => {
+    expect(updateTaskSchema.safeParse({ remainingFocusTime: -1 }).success).toBe(false);
+    expect(updateTaskSchema.safeParse({ remainingFocusTime: Number.POSITIVE_INFINITY }).success).toBe(false);
+  });
+});
+
+describe('goal targets are no longer silently dropped', () => {
+  it('rejects a blank-titled target instead of skipping it', () => {
+    // The handler used to `continue` past it: three targets in, two saved,
+    // 201 returned, nothing said.
+    const result = createGoalSchema.safeParse({
+      title: 'Ship it',
+      startDate: '2026-08-01T00:00:00.000Z',
+      endDate: '2026-08-31T00:00:00.000Z',
+      targets: [
+        { title: 'Real one', type: 'number', targetValue: 10 },
+        { title: '  ', type: 'number', targetValue: 5 },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('names which target was wrong', () => {
+    const result = createGoalSchema.safeParse({
+      title: 'Ship it',
+      startDate: '2026-08-01T00:00:00.000Z',
+      endDate: '2026-08-31T00:00:00.000Z',
+      targets: [
+        { title: 'Real one', type: 'number', targetValue: 10 },
+        { title: 'Bad type', type: 'vibes', targetValue: 5 },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(['targets', 1, 'type']);
+    }
+  });
+
+  it('accepts a well-formed set', () => {
+    expect(
+      createGoalSchema.safeParse({
+        title: 'Ship it',
+        startDate: '2026-08-01T00:00:00.000Z',
+        endDate: '2026-08-31T00:00:00.000Z',
+        targets: [{ title: 'Ten things', type: 'number', targetValue: 10, unit: 'things' }],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('unknown keys are stripped, never rejected', () => {
+  /**
+   * This is the constraint that makes the whole conversion safe, and it is
+   * worth a test of its own because a later `.strict()` would look like a
+   * tightening and would in fact break task creation everywhere at once.
+   *
+   * `tasksPersistence.createOne` does not build a request body — it spreads
+   * the entire client-side `Task`:
+   *
+   *     const payload = { ...task, status: mapUiStatusToDb(task.status) };
+   *
+   * so `id`, `order`, `context`, `depth`, `dbStatus`, `createdAt` and
+   * `updatedAt` all go over the wire on every create. `guestMigration` does
+   * the same minus `id`. None of those are columns the create handler writes.
+   */
+  const fullClientTask = {
+    id: 'client-side-nanoid-not-a-uuid',
+    title: 'Spread the whole object',
+    description: 'from the board',
+    status: 'todo',
+    dbStatus: 'todo',
+    priority: 'high',
+    difficulty: 'hard',
+    durationMinutes: 60,
+    scheduledStart: '09:00',
+    order: 7,
+    context: null,
+    depth: 0,
+    createdAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  };
+
+  it('accepts the whole client Task object', () => {
+    const result = createTaskSchema.safeParse(fullClientTask);
+    expect(result.success).toBe(true);
+  });
+
+  it('drops the client id, so it can never become the row id', () => {
+    // The audit's mass-assignment probe established that an injected id is
+    // ignored. Stripping keeps that true by construction.
+    const parsed = createTaskSchema.parse(fullClientTask);
+    expect('id' in parsed).toBe(false);
+    expect('context' in parsed).toBe(false);
+    expect('depth' in parsed).toBe(false);
+    expect('createdAt' in parsed).toBe(false);
+  });
+
+  it('keeps every field that IS a column', () => {
+    const parsed = createTaskSchema.parse(fullClientTask);
+    expect(parsed.title).toBe('Spread the whole object');
+    expect(parsed.priority).toBe('high');
+    expect(parsed.difficulty).toBe('hard');
+    expect(parsed.durationMinutes).toBe(60);
+    expect(parsed.scheduledStart).toBe('09:00');
+  });
+
+  it('tolerates the same spread on update', () => {
+    expect(updateTaskSchema.safeParse(fullClientTask).success).toBe(true);
+  });
+});

@@ -60,7 +60,14 @@ export const createTaskSchema = z.object({
   durationMinutes: durationMinutes.optional(),
   scheduledStart: clockTime.nullable().optional(),
   scheduledEnd: clockTime.nullable().optional(),
-  remainingFocusTime: z.number().int().min(0).nullable().optional(),
+  /**
+   * SECONDS, not minutes — `PomodoroView` sends `remainingSecs`. Left
+   * non-integer on purpose: the handler rounds, as it always has, and the
+   * store rounds before it ever gets here. Rejecting a fractional second
+   * would break a timer that happens to tick on a float. The cap only exists
+   * so a junk value cannot overflow the `integer` column.
+   */
+  remainingFocusTime: z.number().finite().min(0).max(100_000).nullable().optional(),
   linkedEventId: z.string().uuid().nullable().optional(),
   linkedDocId: z.string().uuid().nullable().optional(),
   parentTaskId: z.string().uuid().nullable().optional(),
@@ -96,6 +103,25 @@ const orderedRange = <T extends z.ZodRawShape>(shape: z.ZodObject<T>) =>
     { message: 'endDate must be after startDate', path: ['endDate'] },
   );
 
+export const goalTargetType = z.enum(['number', 'percentage', 'boolean', 'task_completion']);
+
+/**
+ * A target attached to a goal at creation time.
+ *
+ * The handler used to `continue` past any target whose title was blank or
+ * whose type was unrecognised — so a person could add three targets, submit,
+ * get a 201, and find one of them missing with nothing said about it. Same
+ * shape of bug as the truncated mood note: a silent partial write.
+ */
+export const goalTargetSchema = z.object({
+  title: shortTitle,
+  description: description.nullable().optional(),
+  type: goalTargetType,
+  targetValue: z.number().finite().optional(),
+  unit: z.string().max(32).nullable().optional(),
+  linkedTaskIds: z.array(z.string().uuid()).max(200).optional(),
+});
+
 export const createGoalSchema = orderedRange(
   z.object({
     title: shortTitle,
@@ -105,7 +131,7 @@ export const createGoalSchema = orderedRange(
     timeframe: goalTimeframe.optional(),
     startDate: isoDate,
     endDate: isoDate,
-    targets: z.array(z.unknown()).max(50).optional(),
+    targets: z.array(goalTargetSchema).max(50).optional(),
   }),
 );
 
