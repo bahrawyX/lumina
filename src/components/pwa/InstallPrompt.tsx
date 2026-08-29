@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { useBottomRightStack, STACK_GAP_PX } from '@/store/useBottomRightStack';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -157,6 +158,36 @@ export default function InstallPrompt() {
     };
   }, []);
 
+  /**
+   * Publish the card's presence and real height to the corner store, so the
+   * tutorial's "?" button can sit above it and drop back down when it leaves.
+   *
+   * Measured, not hardcoded: the iOS Share-sheet body is taller than the
+   * standard prompt, and a fixed offset would be wrong for one of them.
+   * `ResizeObserver` keeps it correct if the content reflows (a narrow viewport
+   * wrapping the description onto a third line, say).
+   */
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const setInstall = useBottomRightStack((s) => s.setInstall);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!show || !el) {
+      setInstall(false, 0);
+      return;
+    }
+    const publish = () => setInstall(true, el.getBoundingClientRect().height + STACK_GAP_PX);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      // On unmount the corner is free again, or the button stays stranded
+      // halfway up the screen.
+      setInstall(false, 0);
+    };
+  }, [show, showIOSGuide, setInstall]);
+
   const handleInstall = useCallback(async () => {
     const bip = deferredBip;
     if (!bip) return;
@@ -189,13 +220,15 @@ export default function InstallPrompt() {
     <AnimatePresence>
       {show && (
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-          className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm"
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          // Fades and settles downward on dismiss rather than snapping away,
+          // so the "?" sliding down into its place reads as one movement.
+          exit={{ opacity: 0, y: 16, scale: 0.98 }}
+          transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+          className="fixed bottom-20 sm:bottom-6 right-4 sm:right-5 z-[60] w-[calc(100%-2rem)] max-w-sm sm:w-[22rem]"
         >
-          <div className="rounded-2xl border border-border/60 bg-card shadow-xl p-4">
+          <div ref={cardRef} className="rounded-2xl border border-border/60 bg-card shadow-xl p-4">
             {showIOSGuide ? (
               /* iOS Instructions */
               <>

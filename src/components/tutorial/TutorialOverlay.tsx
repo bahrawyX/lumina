@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useBottomRightStack } from '@/store/useBottomRightStack';
 import { useTutorialStore } from '@/store/useTutorialStore';
 
 /* ── Step definitions ─────────────────────────────────────────────── */
@@ -436,13 +437,32 @@ const FloatingTourButton = ({
 }: {
   onClick: () => void;
   onDismiss: () => void;
-}) => (
+}) => {
+  /**
+   * The install card now shares this corner, so the button rides above it and
+   * settles back down when the card is dismissed.
+   *
+   * `y` rather than `bottom`: transforms are composited, so this animates on
+   * the GPU and cannot cause layout. The offset is the card's MEASURED height —
+   * see `useBottomRightStack` — because the iOS variant of the card is taller
+   * than the standard one.
+   */
+  const installVisible = useBottomRightStack((s) => s.installVisible);
+  const installHeight = useBottomRightStack((s) => s.installHeight);
+  const lift = installVisible ? -installHeight : 0;
+
+  return (
   <motion.div
     className="fixed bottom-24 right-5 z-[9980] pointer-events-auto"
-    initial={{ opacity: 0, scale: 0.8 }}
-    animate={{ opacity: 1, scale: 1 }}
+    initial={{ opacity: 0, scale: 0.8, y: lift }}
+    animate={{ opacity: 1, scale: 1, y: lift }}
     exit={{ opacity: 0, scale: 0.8 }}
-    transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+    transition={{
+      // The lift is spring-driven so it tracks the card's own spring, while
+      // opacity/scale keep the original quick fade for mount and unmount.
+      y: { type: 'spring', damping: 26, stiffness: 280 },
+      default: { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
+    }}
   >
     <div className="relative group">
       <motion.button
@@ -472,7 +492,8 @@ const FloatingTourButton = ({
       </button>
     </div>
   </motion.div>
-);
+  );
+};
 
 /* ── Main overlay ────────────────────────────────────────────────── */
 
