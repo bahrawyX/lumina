@@ -230,6 +230,7 @@ const PROTECTED_PREFIXES = [
   '/performance',
   '/pomodoro',
   '/shop',
+  '/board',
 ] as const;
 
 function isProtectedPath(pathname: string): boolean {
@@ -321,5 +322,6 @@ export const config = {
     '/performance/:path*',
     '/pomodoro/:path*',
     '/shop/:path*',
+    '/board/:path*',
   ],
 };

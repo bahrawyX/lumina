@@ -35,6 +35,7 @@ const PROTECTED = [
   '/performance',
   '/pomodoro',
   '/shop',
+  '/board',
 ];
 
 describe('F5.1 — app routes require a session cookie', () => {

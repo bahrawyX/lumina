@@ -59,3 +59,8 @@ next-env.d.ts
 # repo. Committing them would nest repositories inside this one, and they were
 # already polluting `eslint .` with 53,743 problems before the eslint ignore.
 .claude/worktrees/
+
+# Excalidraw fonts, copied out of node_modules by scripts/copy-excalidraw-assets.mjs
+# on postinstall. Generated, 14MB, and reproducible — committing it would put a
+# vendored copy of a dependency in the repo that silently goes stale.
+/public/excalidraw/

@@ -148,6 +148,14 @@ const PomodoroIcon: React.FC<{ size?: number; strokeWidth?: number; className?: 
   </svg>
 );
 
+const BoardIcon: React.FC<{ size?: number; strokeWidth?: number; className?: string }> = ({ size = 16, strokeWidth = 1.5, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect x="3" y="3" width="18" height="14" rx="2" />
+    <path d="M8 21h8" /><path d="M12 17v4" />
+    <path d="M7 11l3-3 2.5 2.5L17 6" />
+  </svg>
+);
+
 const DocsIcon: React.FC<{ size?: number; strokeWidth?: number; className?: string }> = ({ size = 16, strokeWidth = 1.5, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -850,6 +858,16 @@ const AppSidebar: React.FC = () => {
                   onClick={() => router.push('/shop')}
                   dataTutorial="nav-shop"
                   badge={coinBalance}
+                />
+                <WorkspaceItem
+                  icon={BoardIcon}
+                  label="Board"
+                  isActive={pathname === '/board'}
+                  collapsed={isSidebarCollapsed}
+                  showTooltip={tooltipsReady}
+                  href="/board"
+                  onClick={() => router.push('/board')}
+                  dataTutorial="nav-board"
                 />
                 {/* Docs — with inline collapsible tree */}
                 <SidebarMenuItem>
