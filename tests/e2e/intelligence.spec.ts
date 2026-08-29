@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Intelligence (/intelligence)', () => {
-  test('renders intelligence header', async ({ guestPage: page }) => {
+  test('renders intelligence header', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/intelligence', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);

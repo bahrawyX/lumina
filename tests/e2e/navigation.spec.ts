@@ -2,7 +2,7 @@
  * Cross-cutting navigation + SPA-routing smoke tests.
  * Verifies sidebar navigation works between every app route without reloading.
  */
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { waitForAppReady } from './fixtures/helpers';
 
 const ROUTES: Array<{ path: string; heading?: RegExp }> = [
@@ -20,7 +20,7 @@ const ROUTES: Array<{ path: string; heading?: RegExp }> = [
 
 test.describe('Cross-route navigation', () => {
   for (const { path } of ROUTES) {
-    test(`navigates to ${path} and stays`, async ({ guestPage: page }) => {
+    test(`navigates to ${path} and stays`, async ({ appPage: page }) => {
       await page.goto(path, { waitUntil: 'domcontentloaded' });
       await waitForAppReady(page);
       await expect(page).toHaveURL(new RegExp(path.replace(/\//g, '\\/')));
@@ -30,7 +30,7 @@ test.describe('Cross-route navigation', () => {
     });
   }
 
-  test('sidebar link clicks route without full reload', async ({ guestPage: page }) => {
+  test('sidebar link clicks route without full reload', async ({ appPage: page }) => {
     await page.goto('/calendar', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 

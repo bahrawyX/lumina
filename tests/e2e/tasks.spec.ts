@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Tasks (/tasks)', () => {
-  test('renders task board header and view toggles', async ({ guestPage: page }) => {
+  test('renders task board header and view toggles', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
@@ -17,7 +17,7 @@ test.describe('Tasks (/tasks)', () => {
     expect(errs, `Tasks console errors:\n${errs.join('\n')}`).toEqual([]);
   });
 
-  test('toggling between Kanban and List view stays on /tasks', async ({ guestPage: page }) => {
+  test('toggling between Kanban and List view stays on /tasks', async ({ appPage: page }) => {
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 
@@ -31,7 +31,7 @@ test.describe('Tasks (/tasks)', () => {
     await expect(page).toHaveURL(/\/tasks/);
   });
 
-  test('clicking "Create new task" opens the task creation surface', async ({ guestPage: page }) => {
+  test('clicking "Create new task" opens the task creation surface', async ({ appPage: page }) => {
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 

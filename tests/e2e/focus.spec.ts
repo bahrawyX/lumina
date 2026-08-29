@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Focus timer (/focus)', () => {
-  test('renders focus timer heading', async ({ guestPage: page }) => {
+  test('renders focus timer heading', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/focus', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
@@ -16,7 +16,7 @@ test.describe('Focus timer (/focus)', () => {
 });
 
 test.describe('Focus done (/focus/done)', () => {
-  test('session-complete screen renders', async ({ guestPage: page }) => {
+  test('session-complete screen renders', async ({ appPage: page }) => {
     const response = await page.goto('/focus/done', { waitUntil: 'domcontentloaded' });
     // Should not 404.
     expect(response?.status() ?? 0).toBeLessThan(400);
@@ -26,7 +26,7 @@ test.describe('Focus done (/focus/done)', () => {
 });
 
 test.describe('Pomodoro (/pomodoro)', () => {
-  test('renders pomodoro view', async ({ guestPage: page }) => {
+  test('renders pomodoro view', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/pomodoro', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);

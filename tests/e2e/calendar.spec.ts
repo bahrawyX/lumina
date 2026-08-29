@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Calendar (/calendar)', () => {
-  test('renders calendar shell with header controls', async ({ guestPage: page }) => {
+  test('renders calendar shell with header controls', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/calendar', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
@@ -21,7 +21,7 @@ test.describe('Calendar (/calendar)', () => {
     expect(errs, `Calendar console errors:\n${errs.join('\n')}`).toEqual([]);
   });
 
-  test('Prev/Next buttons advance calendar without crashing', async ({ guestPage: page }) => {
+  test('Prev/Next buttons advance calendar without crashing', async ({ appPage: page }) => {
     await page.goto('/calendar', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 
@@ -37,7 +37,7 @@ test.describe('Calendar (/calendar)', () => {
     await expect(page).toHaveURL(/\/calendar/);
   });
 
-  test('keyboard shortcut "c" toggles focus mode without error', async ({ guestPage: page }) => {
+  test('keyboard shortcut "c" toggles focus mode without error', async ({ appPage: page }) => {
     await page.goto('/calendar', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
 

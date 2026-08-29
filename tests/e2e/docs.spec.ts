@@ -1,8 +1,8 @@
-import { test, expect } from './fixtures/guest';
+import { test, expect } from './fixtures/app';
 import { collectConsole, waitForAppReady } from './fixtures/helpers';
 
 test.describe('Docs (/docs)', () => {
-  test('renders docs home with "New document" CTA', async ({ guestPage: page }) => {
+  test('renders docs home with "New document" CTA', async ({ appPage: page }) => {
     const con = collectConsole(page);
     await page.goto('/docs', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
@@ -20,7 +20,7 @@ test.describe('Docs (/docs)', () => {
     expect(errs, `Docs console errors:\n${errs.join('\n')}`).toEqual([]);
   });
 
-  test('invalid doc id redirects or shows 404/error state, not crash', async ({ guestPage: page }) => {
+  test('invalid doc id redirects or shows 404/error state, not crash', async ({ appPage: page }) => {
     const response = await page.goto('/docs/this-doc-definitely-does-not-exist', {
       waitUntil: 'domcontentloaded',
     });
