@@ -7,8 +7,9 @@ import { awardCoins } from '@/lib/coins/awardCoins';
 import { scopeAward, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { computeWordCount } from '@/lib/docs/wordCount';
 import { apiError, logger } from '@/lib/logger';
-import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
 import { checkLinkedOwnership, wouldCreateDocCycle } from '@/lib/ownership';
+import { parseBody } from '@/lib/api/parseBody';
+import { updateDocSchema } from '@/lib/api/schemas';
 import { docStaleGuard, nextDocUpdatedAt } from '@/lib/docs/staleWrite';
 import { invalidIdResponse, parseRouteId } from '@/lib/routeParams';
 
@@ -77,12 +78,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  // `icon` (varchar 64), `coverGradient` and `position` (both `integer`) were
+  // unbounded here — only `title` was checked. The schema covers every column
+  // that has a width, and `updatedAt` now has to parse: it feeds the
+  // stale-write guard, and `new Date(junk)` produced an Invalid Date that
+  // quietly disabled it.
+  const parsed = await parseBody(req, updateDocSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   try {
     const db = getDatabase();
@@ -97,7 +100,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // client's copy), which Postgres evaluates against the row it is about to
     // lock. Whoever commits second matches zero rows and gets the 409.
     const clientUpdatedAt =
-      typeof body.updatedAt === 'string' && body.content !== undefined
+      body.updatedAt !== undefined && body.content !== undefined
         ? new Date(body.updatedAt)
         : null;
     const staleGuard = docStaleGuard(clientUpdatedAt);
@@ -107,30 +110,25 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // depend on clock skew between serverless instances.
     const patch: Record<string, unknown> = { updatedAt: nextDocUpdatedAt() };
 
-    // P3-2: `docs.title` is varchar(512). The doc BODY is bounded at the edge
-    // (the proxy allows /api/docs a larger Content-Length than other routes);
-    // the title is bounded here because the column is.
-    const tooLong = checkFieldLengths({
-      title: { value: body.title, max: FIELD_LIMITS.title },
-    });
-    if (tooLong) return tooLong;
-
-    if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim();
+    // The doc BODY is bounded at the edge — the proxy allows /api/docs a larger
+    // Content-Length than other routes — so `content` is not capped again.
+    // Everything with a column width is, in `updateDocSchema`.
+    if (body.title !== undefined) patch.title = body.title;
     if (body.content !== undefined) patch.content = body.content;
     // H3: word count is recomputed server-side from contentText — never trust the
     // client value (a `{wordCount:500}` PATCH on an empty doc must not earn coins).
     let computedWordCount: number | undefined;
-    if (typeof body.contentText === 'string') {
+    if (body.contentText !== undefined) {
       patch.contentText = body.contentText;
       computedWordCount = computeWordCount(body.contentText);
       patch.wordCount = computedWordCount;
     }
-    if (typeof body.icon === 'string' || body.icon === null) patch.icon = body.icon;
-    if (typeof body.coverImage === 'string' || body.coverImage === null) patch.coverImage = body.coverImage;
-    if (typeof body.coverGradient === 'number' || body.coverGradient === null) patch.coverGradient = body.coverGradient;
-    if (typeof body.isArchived === 'boolean') patch.isArchived = body.isArchived;
-    if (typeof body.isPinned === 'boolean') patch.isPinned = body.isPinned;
-    if (typeof body.position === 'number') patch.position = body.position;
+    if (body.icon !== undefined) patch.icon = body.icon;
+    if (body.coverImage !== undefined) patch.coverImage = body.coverImage;
+    if (body.coverGradient !== undefined) patch.coverGradient = body.coverGradient;
+    if (body.isArchived !== undefined) patch.isArchived = body.isArchived;
+    if (body.isPinned !== undefined) patch.isPinned = body.isPinned;
+    if (body.position !== undefined) patch.position = body.position;
 
     // P1-4: none of these three were ownership-checked on PATCH.
     const ownershipFailure = await checkLinkedOwnership(db, userId, {
@@ -146,11 +144,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     if (body.parentId === null) patch.parentId = null;
-    else if (typeof body.parentId === 'string' && body.parentId.trim()) {
+    else if (body.parentId) {
       // `docs.parentId` could additionally be set to the doc itself or one of
       // its own descendants, producing a CYCLE — after which any recursive walk
       // of the docs tree loops forever.
-      if (await wouldCreateDocCycle(db, userId, id, body.parentId.trim())) {
+      if (await wouldCreateDocCycle(db, userId, id, body.parentId)) {
         return NextResponse.json(
           { error: 'parentId would create a cycle' },
           { status: 400 },
@@ -159,15 +157,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       patch.parentId = body.parentId;
     }
 
-    if (body.linkedTaskId === null) patch.linkedTaskId = null;
-    else if (typeof body.linkedTaskId === 'string' && body.linkedTaskId.trim()) {
-      patch.linkedTaskId = body.linkedTaskId;
-    }
-
-    if (body.linkedEventId === null) patch.linkedEventId = null;
-    else if (typeof body.linkedEventId === 'string' && body.linkedEventId.trim()) {
-      patch.linkedEventId = body.linkedEventId;
-    }
+    if (body.linkedTaskId !== undefined) patch.linkedTaskId = body.linkedTaskId;
+    if (body.linkedEventId !== undefined) patch.linkedEventId = body.linkedEventId;
 
     const [updated] = await db
       .update(docs)

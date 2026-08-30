@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
+import { parseBody } from '@/lib/api/parseBody';
+import { createDocSchema } from '@/lib/api/schemas';
 import { docs, tasks, events } from '@/db/schema';
 import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import { awardCoins } from '@/lib/coins/awardCoins';
@@ -67,13 +69,13 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
-
+  // `parentId` in particular: the ancestor walk below does
+  // `eq(docs.id, currentParent)` with this value, so a non-uuid string raised
+  // Postgres 22P02 and surfaced as a 500 — the P2-1 defect, fixed for route
+  // params and missed for this body field. `title` (varchar 512) and `icon`
+  // (varchar 64) were unbounded for the same reason.
+  const parsed = await parseBody(req, createDocSchema);
+  if (!parsed.ok) return parsed.response;
   const {
     title,
     parentId,
@@ -82,15 +84,7 @@ export async function POST(req: NextRequest) {
     contentText,
     linkedTaskId,
     linkedEventId,
-  } = body as {
-    title?: string;
-    parentId?: string | null;
-    icon?: string;
-    content?: Record<string, unknown>;
-    contentText?: string;
-    linkedTaskId?: string | null;
-    linkedEventId?: string | null;
-  };
+  } = parsed.data;
 
   try {
     const db = getDatabase();
@@ -150,14 +144,14 @@ export async function POST(req: NextRequest) {
       .values({
         userId,
         parentId: parentId ?? null,
-        title: typeof title === 'string' && title.trim() ? title.trim() : 'Untitled',
-        icon: typeof icon === 'string' ? icon : null,
-        content: content ?? null,
+        title: title || 'Untitled',
+        icon: icon ?? null,
+        content: (content as Record<string, unknown> | undefined) ?? null,
         contentText: contentText ?? '',
         wordCount,
         position: nextPosition,
-        linkedTaskId: typeof linkedTaskId === 'string' && linkedTaskId.trim() ? linkedTaskId : null,
-        linkedEventId: typeof linkedEventId === 'string' && linkedEventId.trim() ? linkedEventId : null,
+        linkedTaskId: linkedTaskId ?? null,
+        linkedEventId: linkedEventId ?? null,
       })
       .returning();
 

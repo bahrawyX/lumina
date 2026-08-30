@@ -484,3 +484,80 @@ describe('the whole client CalendarEvent still posts', () => {
     }
   });
 });
+
+// ── Docs ─────────────────────────────────────────────────────────────────────
+
+describe('an id that arrives in the BODY is uuid-checked too', () => {
+  it('rejects a non-uuid parentId instead of handing it to Postgres', async () => {
+    // `POST /api/docs` walks the ancestor chain with
+    // `eq(docs.id, currentParent)` straight from the body, so `"abc"` raised
+    // 22P02 and came back a 500. P2-1 was fixed for route params — where
+    // `parseRouteId` now guards every `[id]` — and left in place for the ids
+    // that arrive in a request body.
+    const { createDocSchema } = await import('@/lib/api/schemas');
+    expect(createDocSchema.safeParse({ parentId: 'abc' }).success).toBe(false);
+    expect(
+      createDocSchema.safeParse({ parentId: '3f56d1f6-507c-4e92-898c-d72c22bd26c3' }).success,
+    ).toBe(true);
+  });
+
+  it('is the same story for the linked ids', async () => {
+    const { updateDocSchema } = await import('@/lib/api/schemas');
+    expect(updateDocSchema.safeParse({ linkedTaskId: 'nope' }).success).toBe(false);
+    expect(updateDocSchema.safeParse({ linkedEventId: 'nope' }).success).toBe(false);
+    // null is how a link is removed, and stays valid.
+    expect(updateDocSchema.safeParse({ linkedTaskId: null }).success).toBe(true);
+  });
+
+  it('guards the focus-session body ids the same way', async () => {
+    // That route validated `body.taskId` as a string only, then used it in
+    // `eq(tasks.id, …)`. It uses `parseRouteId` now, which treats a non-uuid
+    // as absent rather than letting it reach the driver.
+    const { parseRouteId } = await import('@/lib/routeParams');
+    expect(parseRouteId('abc')).toBeNull();
+    expect(parseRouteId('3f56d1f6-507c-4e92-898c-d72c22bd26c3'))
+      .toBe('3f56d1f6-507c-4e92-898c-d72c22bd26c3');
+
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(
+      join(process.cwd(), 'src', 'app', 'api', 'focus-sessions', 'route.ts'), 'utf8',
+    );
+    expect(src).toContain('parseRouteId');
+  });
+});
+
+describe('the doc columns that had a width and no check', () => {
+  it('bounds the icon at varchar(64)', async () => {
+    const { updateDocSchema } = await import('@/lib/api/schemas');
+    expect(updateDocSchema.safeParse({ icon: 'x'.repeat(65) }).success).toBe(false);
+    expect(updateDocSchema.safeParse({ icon: '📄' }).success).toBe(true);
+  });
+
+  it('stops an integer column being overflowed', async () => {
+    // `typeof x === 'number'` was the whole check on `coverGradient` and
+    // `position`, so 1e12 and 2.5 both reached an `integer` column.
+    const { updateDocSchema } = await import('@/lib/api/schemas');
+    expect(updateDocSchema.safeParse({ coverGradient: 1e12 }).success).toBe(false);
+    expect(updateDocSchema.safeParse({ position: 2.5 }).success).toBe(false);
+    expect(updateDocSchema.safeParse({ position: -1 }).success).toBe(false);
+    expect(updateDocSchema.safeParse({ coverGradient: 3 }).success).toBe(true);
+  });
+
+  it('requires updatedAt to parse, because the stale-write guard depends on it', async () => {
+    // `new Date(junk)` is an Invalid Date, and comparing against one is always
+    // false — so a malformed timestamp silently disabled the guard that stops
+    // two concurrent saves overwriting each other.
+    const { updateDocSchema } = await import('@/lib/api/schemas');
+    expect(updateDocSchema.safeParse({ updatedAt: 'yesterday' }).success).toBe(false);
+    expect(updateDocSchema.safeParse({ updatedAt: '2026-08-30T12:00:00.000Z' }).success).toBe(true);
+  });
+
+  it('leaves the doc body itself uncapped, because the edge caps it', async () => {
+    // `proxy.ts` allows /api/docs a larger Content-Length than other routes;
+    // capping `content` again here would impose a second, different limit.
+    const { updateDocSchema } = await import('@/lib/api/schemas');
+    const big = 'x'.repeat(50_000);
+    expect(updateDocSchema.safeParse({ contentText: big }).success).toBe(true);
+  });
+});

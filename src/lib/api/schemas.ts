@@ -247,3 +247,55 @@ export const updateEventSchema = z.object({
   editScope: eventEditScope.optional(),
   originalStartTime: isoDate.nullable().optional(),
 });
+
+// ── Docs ─────────────────────────────────────────────────────────────────────
+
+/**
+ * `integer` columns. `typeof x === 'number'` was the whole check, so a
+ * fractional or out-of-range value reached the driver — the same overflow this
+ * file already closes for task durations.
+ */
+const pgInt = z.number().int().min(-2_147_483_648).max(2_147_483_647);
+
+/**
+ * The doc BODY is bounded at the edge — `proxy.ts` allows `/api/docs` a larger
+ * Content-Length than other routes — so `content` and `contentText` are not
+ * capped again here. Everything with a column width is.
+ */
+const docFields = {
+  /**
+   * A uuid, and it matters: `POST /api/docs` walks the ancestor chain with
+   * `eq(docs.id, currentParent)` straight from the body. A non-uuid string
+   * raised Postgres 22P02 and surfaced as a 500 — the P2-1 defect that was
+   * fixed for route params and missed for this body field.
+   */
+  parentId: z.string().uuid().nullable().optional(),
+  icon: z.string().max(64).nullable().optional(),
+  coverImage: z.string().max(2048).nullable().optional(),
+  coverGradient: pgInt.nullable().optional(),
+  isArchived: z.boolean().optional(),
+  isPinned: z.boolean().optional(),
+  position: pgInt.min(0).optional(),
+  linkedTaskId: z.string().uuid().nullable().optional(),
+  linkedEventId: z.string().uuid().nullable().optional(),
+  content: z.unknown().optional(),
+  contentText: z.string().optional(),
+};
+
+export const createDocSchema = z.object({
+  // Optional: the handler defaults to 'Untitled', which is how a new empty doc
+  // is created from the sidebar.
+  title: title.optional(),
+  ...docFields,
+});
+
+export const updateDocSchema = z.object({
+  title: title.optional(),
+  ...docFields,
+  /**
+   * The client's copy of `updated_at`, used by the stale-write guard. It is
+   * only consulted when `content` is also present, but it must still parse —
+   * `new Date(junk)` gave an Invalid Date that silently disabled the guard.
+   */
+  updatedAt: isoDate.optional(),
+});

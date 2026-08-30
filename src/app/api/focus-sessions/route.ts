@@ -15,6 +15,7 @@ import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
 import { apiError, logger } from '@/lib/logger';
+import { parseRouteId } from '@/lib/routeParams';
 import { getUserTimeZone } from '@/lib/time/eventTimeZone';
 import { parseRange } from '@/lib/dateRange';
 import { listHeaders, parseLimit } from '@/lib/listLimits';
@@ -173,8 +174,21 @@ export async function POST(req: NextRequest) {
     // Batch 5 (FK ownership on create): a session may only link the caller's own
     // task / goal. A foreign goalId would otherwise pollute that user's
     // goal-progress aggregation. Checked early — before any streak/coin work.
-    const bodyTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
-    const bodyGoalId = typeof body.goalId === 'string' && body.goalId ? body.goalId : null;
+    /**
+     * Uuid-checked, not merely string-checked.
+     *
+     * These go straight into `eq(tasks.id, …)` / `eq(goals.id, …)` below, so
+     * `{"taskId": "abc"}` made Postgres raise 22P02 and the client got a
+     * generic 500. That is the P2-1 defect one layer over: it was fixed for
+     * route params, where `parseRouteId` now guards every `[id]`, and left in
+     * place for the ids that arrive in a request BODY.
+     *
+     * A non-uuid is treated as absent rather than as an error, matching what
+     * the old string check did with a junk value — the difference is that it
+     * no longer reaches the driver.
+     */
+    const bodyTaskId = parseRouteId(typeof body.taskId === 'string' ? body.taskId : null);
+    const bodyGoalId = parseRouteId(typeof body.goalId === 'string' ? body.goalId : null);
     if (bodyTaskId) {
       const [t] = await db.select({ id: tasks.id }).from(tasks)
         .where(and(eq(tasks.id, bodyTaskId), eq(tasks.userId, userId))).limit(1);
@@ -187,7 +201,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolve task title before the transaction (read-only lookup)
-    const rawTaskId = typeof body.taskId === 'string' && body.taskId ? body.taskId : null;
+    // Same value as `bodyTaskId` above, and guarded the same way — it also
+    // reaches `eq(tasks.id, …)` twice further down.
+    const rawTaskId = bodyTaskId;
     // Prefer client-sent taskTitle, but validate/fallback to DB lookup
     const rawTaskTitle = typeof body.taskTitle === 'string' && body.taskTitle.trim() ? body.taskTitle.trim() : null;
     let taskTitle: string | null = rawTaskTitle;
