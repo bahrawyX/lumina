@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import type { CalendarEvent } from '../../types';
 import type { Task, TaskPriority, TaskDifficulty } from '../../types/task';
-import { useDailyPlanStore } from '../../store/useDailyPlanStore';
+import { useDailyPlanStore, todayKey } from '../../store/useDailyPlanStore';
 import { useTaskBoardStore } from '../../store/useTaskBoardStore';
 import { highlightText } from '../../utils/highlightText';
 import {
@@ -246,11 +246,30 @@ const InlineAddSubtask: React.FC<{ onAdd: (title: string) => void }> = ({ onAdd 
 export const TaskCard = React.memo<TaskCardProps>(({ task, linkedEvent, onPriorityChange, onDifficultyChange, onEdit, onSchedule, onAutoSchedule, onDelete, onFocus, isDragOverlay = false, subtasks = [], allTasks = [], onAddSubtask, onToggleSubtaskDone, onMarkParentDone }) => {
   const repeatLabel = repeatBadgeLabel(task.recurrenceRule);
   const getPlanItemsForDate = useDailyPlanStore(s => s.getPlanItemsForDate);
-  // Stable today string — changes only when the calendar day rolls over (memoised once per mount)
-  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  /**
+   * The SHARED `todayKey()`, which is `format(new Date(), 'yyyy-MM-dd')` — the
+   * viewer's local day.
+   *
+   * This was `new Date().toISOString().slice(0, 10)`, i.e. UTC, while every
+   * plan item is keyed by local date: the store defaults to
+   * `format(new Date(), …)`, navigation writes `format(next, …)`, and the four
+   * other modules that need "today" all call the same `todayKey()`. So for
+   * every hour where the viewer's local date and the UTC date disagree, this
+   * looked up a day the planner had never written to and the "Scheduled …"
+   * badge below simply disappeared from every card. The width of that window
+   * is the viewer's offset — a couple of hours after midnight in Berlin, the
+   * whole evening in New York, most of a working day in Sydney.
+   *
+   * Read on every render rather than memoised. The old comment claimed it
+   * "changes only when the calendar day rolls over", which `useMemo(…, [])`
+   * does not do — a board left open past midnight kept yesterday's key until
+   * the tab was reloaded. It is a `format` call on one Date; cheaper than the
+   * bug.
+   */
+  const currentDayKey = todayKey();
   const plannedTask = useMemo(
-    () => getPlanItemsForDate(todayKey).find(p => p.taskId === task.id) ?? null,
-    [todayKey, task.id, getPlanItemsForDate]
+    () => getPlanItemsForDate(currentDayKey).find(p => p.taskId === task.id) ?? null,
+    [currentDayKey, task.id, getPlanItemsForDate]
   );
 
   const searchQuery = useTaskBoardStore(s => s.searchQuery);

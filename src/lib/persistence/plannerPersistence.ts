@@ -9,6 +9,7 @@
  */
 
 import type { PlannedTaskItem } from '@/store/useDailyPlanStore';
+import { formatDateISO } from '@/utils/dateUtils';
 import { useCoinsStore } from '@/store/useCoinsStore';
 import { apiFetch, apiGetList, ok, type FetchResult } from './apiClient';
 import {
@@ -24,7 +25,7 @@ import {
  * Convert a PlannedTaskItem (planDate YYYY-MM-DD + HH:mm times) to ISO
  * timestamps that the API/DB expects.
  */
-function toISOTimestamps(item: PlannedTaskItem): { startTime: string; endTime: string } {
+export function toISOTimestamps(item: PlannedTaskItem): { startTime: string; endTime: string } {
   const startTime = new Date(`${item.planDate}T${item.startTime}:00`).toISOString();
   const endTime = new Date(`${item.planDate}T${item.endTime}:00`).toISOString();
   return { startTime, endTime };
@@ -41,10 +42,25 @@ interface ApiPlannerItem {
   updatedAt: string;
 }
 
-function fromApiRow(row: ApiPlannerItem): PlannedTaskItem {
+export function fromApiRow(row: ApiPlannerItem): PlannedTaskItem {
   const start = new Date(row.startTime);
   const end = new Date(row.endTime);
-  const planDate = start.toISOString().slice(0, 10);
+  /**
+   * All three read in the SAME zone — the viewer's.
+   *
+   * `planDate` was `start.toISOString().slice(0, 10)`, i.e. UTC, while the two
+   * lines under it used `getHours()`, i.e. local. Same `Date`, two different
+   * zones, four lines apart. The write side parses
+   * `new Date(`${planDate}T${startTime}:00`)` with no timezone suffix, so it
+   * is local too — meaning an item whose local time falls on the far side of
+   * UTC midnight came back with the right clock time on the WRONG DAY, and
+   * moved again every time the planner hydrated.
+   *
+   * East of UTC that is the small hours: 01:00 in Cairo is 22:00 UTC the day
+   * before, so a 1am task planned for Tuesday reappeared on Monday. West of
+   * UTC it is the late evening, in the other direction.
+   */
+  const planDate = formatDateISO(start);
   const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
   const endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
 

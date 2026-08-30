@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
+import { formatDateISO } from '@/utils/dateUtils';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useCalendarEventsStore } from '../store/useCalendarEventsStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -111,7 +112,12 @@ const Profile: React.FC = () => {
         body: JSON.stringify({
           input: raw,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          referenceDate: new Date().toISOString().slice(0, 10),
+          // The viewer's day, not UTC. This is the anchor the parser resolves
+          // "tomorrow" and "next Friday" against, and the request already
+          // carries their zone on the line above — sending a UTC day with it
+          // was self-contradictory, and put the anchor a day out for anyone
+          // east of UTC in the evening.
+          referenceDate: formatDateISO(new Date()),
         }),
       });
       if (!res.ok) {

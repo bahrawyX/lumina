@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { formatDateISO } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePlannerStore } from '../store/usePlannerStore';
@@ -47,8 +48,12 @@ export function createContextDemoEvents(): CalendarEvent[] {
   const today = new Date();
   const dayOffset = (n: number): string => {
     const d = new Date(today);
+    // `setDate` shifts in local time, so the day has to be read back in local
+    // time too. It was `toISOString().split('T')[0]`, which mixed the two and
+    // landed the examples a day off for viewers whose offset pushes local
+    // midnight across the UTC boundary.
     d.setDate(today.getDate() + n);
-    return d.toISOString().split('T')[0];
+    return formatDateISO(d);
   };
 
   const contexts: Array<{

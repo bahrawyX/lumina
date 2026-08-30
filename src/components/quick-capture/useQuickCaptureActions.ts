@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { formatDateISO } from '@/utils/dateUtils';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
@@ -33,7 +34,16 @@ export function useQuickCaptureActions() {
       const trimmed = title.trim();
       if (!trimmed) return;
       close();
-      const dueIso = dueDate ? dueDate.toISOString().slice(0, 10) : null;
+      /**
+       * Local, because the Date it receives is local midnight —
+       * `QuickCaptureContext` builds it with `d.setHours(0, 0, 0, 0)`.
+       *
+       * This was `toISOString().slice(0, 10)`, which reads that instant back
+       * in UTC. East of UTC local midnight is still the previous day there, so
+       * picking "Today" in Cairo produced a task due YESTERDAY — overdue the
+       * moment it was created — and "Tomorrow" produced one due today.
+       */
+      const dueIso = dueDate ? formatDateISO(dueDate) : null;
       const task = useTaskBoardStore.getState().addTask({
         title: trimmed,
         status: 'todo',
