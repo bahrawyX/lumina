@@ -96,12 +96,10 @@ describe('P3-9(f) — one definition per check glyph', () => {
   });
 
   it('the components that used the other two glyphs now say so', () => {
-    for (const f of [
-      'src/components/dashboard/DailyBriefStrip.tsx',
-      'src/components/dashboard/TodaySummaryWidget.tsx',
-    ]) {
-      expect(read(f), f).toContain('ClipboardCheckIcon');
-    }
+    // `TodaySummaryWidget.tsx` was the second entry here. It was deleted as
+    // dead code — nothing imported it — so the only surviving consumer of the
+    // clipboard glyph is the brief strip.
+    expect(read('src/components/dashboard/DailyBriefStrip.tsx')).toContain('ClipboardCheckIcon');
     expect(read('src/components/GoogleCalendarSync.tsx')).toContain('CheckCircleIcon');
   });
 
