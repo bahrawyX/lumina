@@ -5,7 +5,8 @@ import { getDatabase } from '@/lib/db';
 import { calendars, events, eventRecurrence, tasks } from '@/db/schema';
 import { validateRRule } from '@/lib/recurrence/rruleEngine';
 import { apiError, logger } from '@/lib/logger';
-import { checkFieldLengths, FIELD_LIMITS } from '@/lib/fieldLimits';
+import { parseBody } from '@/lib/api/parseBody';
+import { createEventSchema } from '@/lib/api/schemas';
 import {
   isValidTimeZone,
   utcToZonedWallClock,
@@ -198,15 +199,16 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
-
+  // `createEventSchema` replaces the destructure-and-check block, and widens
+  // the bounds to every column that has one. `checkFieldLengths` here covered
+  // title, description and location; `category` (varchar 64), `color`
+  // (varchar 32) and `externalId` (varchar 255) were left unbounded, so an
+  // over-long value reached the driver as a 22001 and came back a 500.
+  const parsed = await parseBody(req, createEventSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   const {
-    title: rawTitle,
+    title,
     date,
     endDate,
     startTime,
@@ -230,19 +232,6 @@ export async function POST(req: NextRequest) {
     createdViaNL: rawCreatedViaNL,
   } = body;
 
-  const title = typeof rawTitle === 'string' ? rawTitle.trim() : '';
-  if (!title) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 });
-  }
-
-  // P3-2: `events.title` is varchar(512); nothing bounded it.
-  const tooLong = checkFieldLengths({
-    title: { value: title, max: FIELD_LIMITS.title },
-    description: { value: description, max: FIELD_LIMITS.description },
-    location: { value: location, max: FIELD_LIMITS.location },
-  });
-  if (tooLong) return tooLong;
-
   const provider: EventProvider = 'local';
   const syncStatus: EventSyncStatus = 'local_only';
   const source: EventSource = 'manual';
@@ -250,10 +239,10 @@ export async function POST(req: NextRequest) {
   const directStartAt = parseIso(startAt);
   const directEndAt = parseIso(endAt);
 
-  const fallbackDate = typeof date === 'string' ? date : undefined;
+  const fallbackDate = date;
   // An event may end on a later day than it starts. Fall back to the start
   // date only when no endDate was supplied (single-day event).
-  const fallbackEndDate = typeof endDate === 'string' ? endDate : fallbackDate;
+  const fallbackEndDate = endDate ?? fallbackDate;
   // The zone the wall-clock fields are expressed in. Falls back to the user's
   // stored timezone, then UTC — never to the server's, which on Vercel is UTC
   // and was the source of the original defect.
@@ -269,14 +258,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'endAt must be after startAt' }, { status: 400 });
   }
 
-  const linkedTaskId = typeof rawLinkedTaskId === 'string' && rawLinkedTaskId.trim() ? rawLinkedTaskId : null;
-  const category = typeof rawCategory === 'string' && rawCategory.trim() ? rawCategory.trim() : null;
-  const color = typeof rawColor === 'string' && rawColor.trim() ? rawColor.trim() : null;
-  const normalizedExternalEventId = typeof externalEventId === 'string' && externalEventId.trim()
-    ? externalEventId
-    : typeof externalId === 'string' && externalId.trim()
-      ? externalId
-      : null;
+  const linkedTaskId = rawLinkedTaskId || null;
+  const category = rawCategory?.trim() || null;
+  const color = rawColor?.trim() || null;
+  const normalizedExternalEventId = externalEventId?.trim() || externalId?.trim() || null;
   const sourceUpdatedAt = parseIso(rawSourceUpdatedAt);
 
   try {
@@ -313,11 +298,8 @@ export async function POST(req: NextRequest) {
     // Pre-validation also protects against DoS via pathological rules
     // (sub-daily frequencies, enormous COUNT/INTERVAL) that would blow up CPU
     // every time the engine later expands them.
-    const recurrenceRule = body.recurrence as { rrule?: string; exdates?: string[]; until?: string } | undefined;
-    const trimmedRrule =
-      recurrenceRule && typeof recurrenceRule.rrule === 'string' && recurrenceRule.rrule.trim()
-        ? recurrenceRule.rrule.trim()
-        : null;
+    const recurrenceRule = body.recurrence;
+    const trimmedRrule = recurrenceRule?.rrule?.trim() || null;
 
     if (trimmedRrule) {
       const validation = validateRRule(trimmedRrule, startTs);
@@ -336,8 +318,8 @@ export async function POST(req: NextRequest) {
           userId,
           calendarId,
           title,
-          description: typeof description === 'string' ? description : null,
-          location: typeof location === 'string' ? location : null,
+          description: description ?? null,
+          location: location ?? null,
           startTime: startTs,
           endTime: endTs,
           isAllDay: isAllDay === true,
@@ -348,11 +330,11 @@ export async function POST(req: NextRequest) {
           linkedTaskId,
           provider,
           externalEventId: normalizedExternalEventId,
-          externalEtag: typeof externalEtag === 'string' ? externalEtag : null,
+          externalEtag: externalEtag ?? null,
           sourceUpdatedAt,
           syncStatus,
-          meetingUrl: typeof meetingUrl === 'string' ? meetingUrl : null,
-          organizerEmail: typeof organizerEmail === 'string' ? organizerEmail : null,
+          meetingUrl: meetingUrl ?? null,
+          organizerEmail: organizerEmail ?? null,
           source,
           externalId: normalizedExternalEventId,
           lastSyncedAt: sourceUpdatedAt,
@@ -368,7 +350,9 @@ export async function POST(req: NextRequest) {
             eventId: inserted.id,
             userId,
             rrule: trimmedRrule,
-            exdates: Array.isArray(recurrenceRule?.exdates) ? recurrenceRule.exdates : [],
+            // Every entry is a parseable date now; this was `Array.isArray(...)`,
+            // which let an array of anything through to the expansion engine.
+            exdates: recurrenceRule?.exdates ?? [],
             // `new Date(recurrenceRule.until)` was unguarded: a junk `until`
             // produced an Invalid Date and the driver raised a type error
             // AFTER the event row was already committed.

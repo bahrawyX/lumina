@@ -159,3 +159,91 @@ export const createMoodLogSchema = z.object({
   note: z.string().max(200, 'Note cannot exceed 200 characters').nullable().optional(),
   focusSessionId: z.string().uuid().nullable().optional(),
 });
+
+// ── Events ───────────────────────────────────────────────────────────────────
+
+/** `YYYY-MM-DD`. `zonedWallClockToUtc` rejects anything else outright. */
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
+
+/**
+ * Bounds taken from `events` in the schema, because three of these columns had
+ * none and Postgres was doing the enforcing:
+ *
+ *     category     varchar(64)
+ *     color        varchar(32)
+ *     external_id  varchar(255)
+ *
+ * `checkFieldLengths` in the events routes covered `title`, `description` and
+ * `location` and stopped there, so an over-long category or colour reached the
+ * driver as a 22001 and came back a 500 — the exact P3-2 defect that was fixed
+ * for the other three fields and missed for these.
+ *
+ * `meetingUrl` and `organizerEmail` are `text`, so there is no truncation risk;
+ * they are bounded here only to stop the column becoming a free blob store, and
+ * deliberately NOT format-validated. Nothing in the app posts them today, and
+ * rejecting an unusual join link or a mailing-list sender address would be a
+ * behaviour change with no defect behind it.
+ */
+export const eventRecurrenceSchema = z.object({
+  rrule: z.string().max(500).nullable().optional(),
+  /**
+   * Was `Array.isArray(exdates) ? exdates : []` — so any array at all was
+   * written, including one of numbers or junk strings, and the recurrence
+   * engine met them later at expansion time.
+   */
+  exdates: z.array(isoDate).max(500).optional(),
+  until: isoDate.nullable().optional(),
+});
+
+const eventFields = {
+  description: description.nullable().optional(),
+  location: z.string().max(FIELD_LIMITS.location).nullable().optional(),
+  date: dateOnly.optional(),
+  endDate: dateOnly.optional(),
+  startTime: clockTime.optional(),
+  endTime: clockTime.optional(),
+  startAt: isoDate.nullable().optional(),
+  endAt: isoDate.nullable().optional(),
+  isAllDay: z.boolean().optional(),
+  timezone: z.string().max(64).optional(),
+  category: z.string().max(64).nullable().optional(),
+  color: z.string().max(32).nullable().optional(),
+  completed: z.boolean().optional(),
+  linkedTaskId: z.string().uuid().nullable().optional(),
+  /** `events.linked_doc_id`. Read directly off the body by the PATCH handler. */
+  linkedDocId: z.string().uuid().nullable().optional(),
+  externalEventId: z.string().max(255).nullable().optional(),
+  externalId: z.string().max(255).nullable().optional(),
+  externalEtag: z.string().max(512).nullable().optional(),
+  sourceUpdatedAt: isoDate.nullable().optional(),
+  meetingUrl: z.string().max(2048).nullable().optional(),
+  organizerEmail: z.string().max(320).nullable().optional(),
+  createdViaNL: z.boolean().optional(),
+  recurrence: eventRecurrenceSchema.nullable().optional(),
+};
+
+export const createEventSchema = z.object({
+  title,
+  ...eventFields,
+});
+
+export const eventSyncStatus = z.enum([
+  'local_only', 'synced', 'pending_update', 'pending_delete',
+]);
+
+/** Which occurrences of a recurring series an edit applies to. */
+export const eventEditScope = z.enum(['this', 'this_and_following', 'all']);
+
+/**
+ * The PATCH bounded NOTHING before this — no `checkFieldLengths`, no length
+ * caps of any kind — so where `POST /api/events` answered 400 for an over-long
+ * title, the edit path handed it to the driver and returned 500. The P3-2 work
+ * reached the create route and stopped there.
+ */
+export const updateEventSchema = z.object({
+  title: title.optional(),
+  ...eventFields,
+  syncStatus: eventSyncStatus.optional(),
+  editScope: eventEditScope.optional(),
+  originalStartTime: isoDate.nullable().optional(),
+});

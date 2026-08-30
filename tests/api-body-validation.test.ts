@@ -341,3 +341,146 @@ describe('unknown keys are stripped, never rejected', () => {
     expect(updateTaskSchema.safeParse(fullClientTask).success).toBe(true);
   });
 });
+
+// ── Events ───────────────────────────────────────────────────────────────────
+
+/**
+ * Events were the largest remaining hand-rolled surface: 52 `typeof` checks in
+ * the PATCH handler and 18 in the POST. Converting them turned up two real
+ * defects rather than just tidying.
+ */
+describe('the event columns that nobody was bounding', () => {
+  const base = {
+    title: 'Standup',
+    date: '2026-09-01',
+    startTime: '09:00',
+    endTime: '09:30',
+  };
+
+  it('rejects a category longer than varchar(64)', async () => {
+    // `checkFieldLengths` in `POST /api/events` covered title, description and
+    // location and stopped. `category` went to the driver as a 22001 and came
+    // back a 500 — the P3-2 defect, fixed for three fields and missed for this.
+    const { createEventSchema } = await import('@/lib/api/schemas');
+    expect(createEventSchema.safeParse({ ...base, category: 'x'.repeat(65) }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...base, category: 'Work' }).success).toBe(true);
+  });
+
+  it('rejects a colour longer than varchar(32)', async () => {
+    const { createEventSchema } = await import('@/lib/api/schemas');
+    expect(createEventSchema.safeParse({ ...base, color: 'x'.repeat(33) }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...base, color: '#6D59E0' }).success).toBe(true);
+  });
+
+  it('rejects an externalId longer than varchar(255)', async () => {
+    const { createEventSchema } = await import('@/lib/api/schemas');
+    expect(createEventSchema.safeParse({ ...base, externalId: 'x'.repeat(256) }).success).toBe(false);
+  });
+});
+
+describe('the events PATCH, which bounded nothing at all', () => {
+  it('now rejects an over-long title instead of handing it to the driver', async () => {
+    // There was no `checkFieldLengths` in this handler — none, for any field.
+    // So `POST /api/events` answered 400 for a 100,000-character title while
+    // the edit path answered 500 for the same value.
+    const { updateEventSchema } = await import('@/lib/api/schemas');
+    expect(updateEventSchema.safeParse({ title: 'x'.repeat(513) }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ title: 'Renamed' }).success).toBe(true);
+  });
+
+  it('bounds description and location on the edit path too', async () => {
+    const { updateEventSchema } = await import('@/lib/api/schemas');
+    expect(updateEventSchema.safeParse({ location: 'x'.repeat(501) }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ description: 'x'.repeat(10_001) }).success).toBe(false);
+  });
+
+  it('rejects an unknown syncStatus rather than dropping it', async () => {
+    // Was an `includes()` check with no else — an unrecognised value left the
+    // field unassigned and the request still answered 200.
+    const { updateEventSchema } = await import('@/lib/api/schemas');
+    expect(updateEventSchema.safeParse({ syncStatus: 'probably_synced' }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ syncStatus: 'pending_update' }).success).toBe(true);
+  });
+
+  it('rejects an unknown editScope rather than silently editing the whole series', async () => {
+    // `editScope` decides whether an edit hits one occurrence or the whole
+    // series. Only `'this'` and `'this_and_following'` take a branch of their
+    // own; the old code resolved anything unrecognised to `undefined`, which
+    // falls straight through to the UPDATE on the master row — so a typo here
+    // edited every occurrence instead of the one that was open. (The rrule
+    // itself is separately gated on `=== 'all'`, so that part was unaffected.)
+    const { updateEventSchema } = await import('@/lib/api/schemas');
+    expect(updateEventSchema.safeParse({ editScope: 'this_one' }).success).toBe(false);
+    for (const scope of ['this', 'this_and_following', 'all']) {
+      expect(updateEventSchema.safeParse({ editScope: scope }).success).toBe(true);
+    }
+  });
+});
+
+describe('recurrence exdates reach the expansion engine intact', () => {
+  it('rejects entries that are not dates', async () => {
+    // Was `Array.isArray(exdates) ? exdates : []` — any array at all was
+    // written, and the recurrence engine met the contents later.
+    const { eventRecurrenceSchema } = await import('@/lib/api/schemas');
+    expect(eventRecurrenceSchema.safeParse({ exdates: ['not-a-date'] }).success).toBe(false);
+    expect(eventRecurrenceSchema.safeParse({ exdates: [12345] }).success).toBe(false);
+  });
+
+  it('accepts real ones', async () => {
+    const { eventRecurrenceSchema } = await import('@/lib/api/schemas');
+    expect(
+      eventRecurrenceSchema.safeParse({
+        rrule: 'FREQ=WEEKLY;BYDAY=MO',
+        exdates: ['2026-09-07T09:00:00.000Z'],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('event date fields keep the format the time helpers require', () => {
+  it('rejects a date that zonedWallClockToUtc would reject anyway', async () => {
+    // It enforces `YYYY-MM-DD` and returns null otherwise, which surfaced as
+    // "Valid start and end timestamps are required" — true, but it never said
+    // which field was wrong.
+    const { createEventSchema } = await import('@/lib/api/schemas');
+    const base = { title: 'x', startTime: '09:00', endTime: '10:00' };
+    expect(createEventSchema.safeParse({ ...base, date: '01/09/2026' }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...base, date: '2026-09-01' }).success).toBe(true);
+  });
+
+  it('rejects a malformed clock time', async () => {
+    const { createEventSchema } = await import('@/lib/api/schemas');
+    expect(
+      createEventSchema.safeParse({ title: 'x', date: '2026-09-01', startTime: '25:00' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('the whole client CalendarEvent still posts', () => {
+  it('strips the keys the server has no column for', async () => {
+    // `eventsPersistence.createOne` spreads the entire client event, and
+    // `guestMigration` posts every field but `id`. Same load-bearing stripping
+    // as tasks: `.strict()` here would break event creation everywhere.
+    const { createEventSchema } = await import('@/lib/api/schemas');
+    const result = createEventSchema.safeParse({
+      id: 'client-nanoid',
+      title: 'Spread me',
+      date: '2026-09-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      provider: 'local',
+      source: 'manual',
+      outlookId: undefined,
+      editable: true,
+      readOnly: false,
+      draggable: true,
+      organizer: 'someone@example.com',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect('id' in result.data).toBe(false);
+      expect('editable' in result.data).toBe(false);
+      expect(result.data.title).toBe('Spread me');
+    }
+  });
+});

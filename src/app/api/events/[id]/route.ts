@@ -11,6 +11,8 @@ import { resolveEventTimeZone } from '@/lib/time/eventTimeZone';
 import { checkLinkedOwnership } from '@/lib/ownership';
 import { invalidIdResponse, parseEventRouteId } from '@/lib/routeParams';
 import { appendExdate } from '@/lib/recurrence/exdates';
+import { parseBody } from '@/lib/api/parseBody';
+import { updateEventSchema } from '@/lib/api/schemas';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -33,12 +35,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
   const userId = session.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  // This handler bounded nothing at all — no `checkFieldLengths`, no length
+  // caps — so an over-long title that `POST /api/events` answers with a 400
+  // reached the driver here as a 22001 and came back a 500. The schema closes
+  // that, and gives `editScope` and `syncStatus` real enum membership instead
+  // of an `includes()` check that silently dropped anything unrecognised.
+  const parsed = await parseBody(req, updateEventSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const {
     title,
@@ -67,9 +71,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     originalStartTime: rawOriginalStartTime,
   } = body;
 
-  const editScope = (typeof rawEditScope === 'string' && ['this', 'this_and_following', 'all'].includes(rawEditScope))
-    ? rawEditScope as EditScope
-    : undefined;
+  const editScope: EditScope | undefined = rawEditScope;
 
   try {
     const db = getDatabase();
@@ -86,7 +88,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
      * editing a single occurrence of a recurring one. The check is hoisted
      * here, before the branch, so every write in this handler goes through it.
      */
-    if (typeof linkedTaskId === 'string' && linkedTaskId.trim()) {
+    if (linkedTaskId) {
       const owned = await db
         .select({ id: tasks.id })
         .from(tasks)
@@ -272,46 +274,39 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     // Build a safe update payload — only allow known mutable fields
     const patch: Record<string, unknown> = { updatedAt: new Date() };
 
-    if (typeof title === 'string' && title.trim()) {
-      patch.title = title.trim();
-    }
-    if (typeof description === 'string') patch.description = description;
-    if (typeof location === 'string') patch.location = location;
-    if (typeof isAllDay === 'boolean') patch.isAllDay = isAllDay;
-    if (typeof timezone === 'string' && timezone.trim()) patch.timezone = timezone;
-    if (category === null) patch.category = null;
-    else if (typeof category === 'string' && category.trim()) patch.category = category.trim();
-    if (color === null) patch.color = null;
-    else if (typeof color === 'string' && color.trim()) patch.color = color.trim();
-    if (typeof completed === 'boolean') patch.completed = completed;
-    if (typeof syncStatus === 'string' && ['local_only', 'synced', 'pending_update', 'pending_delete'].includes(syncStatus)) {
-      patch.syncStatus = syncStatus;
-    }
-    if (typeof externalEtag === 'string') patch.externalEtag = externalEtag;
-    if (typeof meetingUrl === 'string') patch.meetingUrl = meetingUrl;
-    if (typeof organizerEmail === 'string') patch.organizerEmail = organizerEmail;
+    // `undefined` leaves the column alone; `null` clears it where the column
+    // is nullable. The schema has already established that anything present is
+    // the right type and within the column's width, so none of these branches
+    // has to re-check either — and, unlike before, a value that fails those
+    // checks is a 400 rather than a field silently skipped.
+    if (title !== undefined) patch.title = title;
+    if (description !== undefined) patch.description = description;
+    if (location !== undefined) patch.location = location;
+    if (isAllDay !== undefined) patch.isAllDay = isAllDay;
+    if (timezone !== undefined && timezone.trim()) patch.timezone = timezone;
+    if (category !== undefined) patch.category = category?.trim() || null;
+    if (color !== undefined) patch.color = color?.trim() || null;
+    if (completed !== undefined) patch.completed = completed;
+    if (syncStatus !== undefined) patch.syncStatus = syncStatus;
+    if (externalEtag !== undefined) patch.externalEtag = externalEtag;
+    if (meetingUrl !== undefined) patch.meetingUrl = meetingUrl;
+    if (organizerEmail !== undefined) patch.organizerEmail = organizerEmail;
 
-    if (sourceUpdatedAt === null) {
-      patch.sourceUpdatedAt = null;
-      patch.lastSyncedAt = null;
-    } else if (typeof sourceUpdatedAt === 'string') {
-      const parsed = new Date(sourceUpdatedAt);
-      if (!isNaN(parsed.getTime())) {
-        patch.sourceUpdatedAt = parsed;
-        patch.lastSyncedAt = parsed;
-      }
+    // These two move together: a sync timestamp and the record of when we last
+    // heard from the provider are the same fact.
+    if (sourceUpdatedAt !== undefined) {
+      const next = sourceUpdatedAt === null ? null : new Date(sourceUpdatedAt);
+      patch.sourceUpdatedAt = next;
+      patch.lastSyncedAt = next;
     }
 
+    // `externalEventId` and `externalId` are two columns holding one value.
     if (externalEventId === null || externalId === null) {
       patch.externalEventId = null;
       patch.externalId = null;
     } else {
-      const nextExternal = typeof externalEventId === 'string'
-        ? externalEventId
-        : typeof externalId === 'string'
-          ? externalId
-          : undefined;
-      if (typeof nextExternal === 'string') {
+      const nextExternal = externalEventId ?? externalId;
+      if (nextExternal !== undefined) {
         patch.externalEventId = nextExternal;
         patch.externalId = nextExternal;
       }
