@@ -147,6 +147,12 @@ jobs:
       BETTER_AUTH_URL: http://localhost:3000
       NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
       E2E_BASE_URL: http://localhost:3000
+      # `next start` sets NODE_ENV=production, which used to 404 the editor QA
+      # harness at /dev-editor-test and fail all 29 specs in editor.spec.ts on
+      # every run. The harness is opt-in now rather than NODE_ENV-gated; this
+      # is the opt-in. A real deployment never sets it, so the route stays
+      # unreachable there.
+      NEXT_PUBLIC_E2E_EDITOR_HARNESS: '1'
       NEXT_TELEMETRY_DISABLED: '1'
 
     steps:

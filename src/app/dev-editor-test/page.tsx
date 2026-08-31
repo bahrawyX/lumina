@@ -1,8 +1,27 @@
 'use client';
-// QA harness — mounts the Tiptap editor outside the auth-gated /docs/[id]
-// route so the e2e suite (tests/e2e/editor.spec.ts) can exercise editor
-// behavior without a real session. NODE_ENV-gated so production builds
-// 404 instead of exposing a public unauthenticated editor surface.
+/**
+ * QA harness — mounts the Tiptap editor outside the auth-gated `/docs/[id]`
+ * route so `tests/e2e/editor.spec.ts` can exercise editor behaviour without a
+ * real session.
+ *
+ * The gate is an explicit opt-in, not `NODE_ENV`.
+ *
+ * It used to be `if (process.env.NODE_ENV === 'production') notFound()`, which
+ * reads correctly and broke CI. The e2e job builds the app and runs
+ * `next start` — deliberately, because e2e should exercise the bundle that
+ * ships — and `next start` sets `NODE_ENV=production`. So this route 404d on
+ * every CI run and all twenty-nine editor specs failed with
+ * `waiting for locator('.ProseMirror')`. A permanently red job is worse than
+ * no job; it gets ignored, and then it hides a real failure.
+ *
+ * `E2E_EDITOR_HARNESS` says what is actually meant: this page exists for the
+ * test runner. CI sets it, a real deployment does not, and the route stays
+ * unreachable in production — which was the point of the original gate.
+ *
+ * `NEXT_PUBLIC_` prefix because the check runs in a client component; without
+ * it the variable is not inlined into the bundle and the value is always
+ * `undefined` here.
+ */
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { notFound } from 'next/navigation';
@@ -10,7 +29,11 @@ import { notFound } from 'next/navigation';
 const DocEditor = dynamic(() => import('@/components/docs/DocEditor'), { ssr: false });
 
 export default function DevEditorTest() {
-  if (process.env.NODE_ENV === 'production') notFound();
+  // Dev always; a built bundle only when the runner explicitly asks for it.
+  const enabled =
+    process.env.NODE_ENV !== 'production' ||
+    process.env.NEXT_PUBLIC_E2E_EDITOR_HARNESS === '1';
+  if (!enabled) notFound();
 
   const [words, setWords] = useState(0);
   const [lastSave, setLastSave] = useState<string>('—');
