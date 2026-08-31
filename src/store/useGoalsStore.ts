@@ -276,17 +276,31 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
 
   updateGoal: (id, patch) => {
     const localId = syncResolveGoal(id);
+    // Kept for the rollback below. The optimistic patch is applied first so
+    // the UI stays responsive; if the server refuses it, this is what goes back.
+    const previous = get().goals.find(g => g.id === localId);
     set(s => ({
       goals: s.goals.map(g =>
         g.id === localId ? { ...g, ...patch, updatedAt: new Date().toISOString() } : g
       ),
     }));
-    void resolveGoalDbId(id).then(realId => {
+    void resolveGoalDbId(id).then(async realId => {
       if (!realId) {
         toast.error('Could not save goal — please retry');
         return;
       }
-      goalsPersistence.updateOne(realId, patch);
+      /**
+       * The store already surfaced the "couldn't resolve the id" failure and
+       * then ignored the one that actually happens more often — the server
+       * rejecting the PATCH. `updateOne` has returned a boolean since P1-17
+       * and this call site dropped it, so an edit the API refused stayed on
+       * screen until the next hydration quietly undid it.
+       */
+      const saved = await goalsPersistence.updateOne(realId, patch);
+      if (!saved && previous) {
+        set(s => ({ goals: s.goals.map(g => (g.id === localId ? previous : g)) }));
+        toast.error('Could not save goal — please retry');
+      }
     });
   },
 
@@ -296,9 +310,23 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
 
   deleteGoal: (id) => {
     const localId = syncResolveGoal(id);
+    const removed = get().goals.find(g => g.id === localId);
+    const index = get().goals.findIndex(g => g.id === localId);
     set(s => ({ goals: s.goals.filter(g => g.id !== localId) }));
-    void resolveGoalDbId(id).then(realId => {
-      if (realId) goalsPersistence.deleteOne(realId, true);
+    void resolveGoalDbId(id).then(async realId => {
+      // No server id means nothing to delete there; the local removal stands.
+      if (!realId) return;
+      const gone = await goalsPersistence.deleteOne(realId, true);
+      if (!gone && removed) {
+        // Put it back where it was rather than at the end, so a failed delete
+        // does not silently reorder the list as well.
+        set(s => {
+          const goals = [...s.goals];
+          goals.splice(Math.max(0, Math.min(index, goals.length)), 0, removed);
+          return { goals };
+        });
+        toast.error('Could not delete goal — please retry');
+      }
     });
   },
 
