@@ -90,6 +90,13 @@ interface UserStreakFields {
   coins: number;
 }
 
+/**
+ * No `coins` field: the ledger owns the balance, and this function cannot
+ * predict what it will award. See the note in `computeStreakUpdate`.
+ *
+ * `UserStreakFields` above still carries `coins`, because the caller reads the
+ * row's current balance for its own use — it is an input, not an output.
+ */
 interface StreakUpdate {
   dailyStreak: number;
   bestDailyStreak: number;
@@ -97,7 +104,6 @@ interface StreakUpdate {
   bestSessionStreak: number;
   lastFocusDate: string;
   lastSessionAt: Date;
-  coins: number;
 }
 
 /**
@@ -146,10 +152,20 @@ export function computeStreakUpdate(
   }
   const bestSessionStreak = Math.max(user.bestSessionStreak, sessionStreak);
 
-  // ─── Coins ─────────────────────────────────────────────────────────────────
-  const coinsEarned = Math.max(1, durationMinutes); // 1 coin per minute, minimum 1
-  const coins = user.coins + coinsEarned;
-
+  /**
+   * No coins here.
+   *
+   * This used to return `user.coins + Math.max(1, durationMinutes)` — one coin
+   * per minute — and the value was never written to `users.coins`; the ledger
+   * in `lib/coins` owns the balance and has since the economy-integrity work.
+   * Its one consumer was the achievement check, which therefore judged
+   * `coins_100` and `coins_500` against a number no part of the app agreed
+   * with: a 25-minute session really earns `5 + floor(25/10)*2` = 9, not 25.
+   *
+   * Removed rather than corrected, because this function cannot know what the
+   * ledger will award — daily caps, focus boosts and task priority all move it,
+   * and the answer only exists after `awardFocusCoins` has run.
+   */
   return {
     dailyStreak,
     bestDailyStreak,
@@ -157,7 +173,6 @@ export function computeStreakUpdate(
     bestSessionStreak,
     lastFocusDate: todayStr,
     lastSessionAt: now,
-    coins,
   };
 }
 
