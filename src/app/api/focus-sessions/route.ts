@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lt } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { getDatabase } from '@/lib/db';
 import { focusSessions, users, achievements, tasks, goals } from '@/db/schema';
@@ -12,6 +12,7 @@ import {
 } from '@/utils/streaks/streakUtils';
 import { checkNewAchievements } from '@/utils/streaks/achievementUtils';
 import { awardCoins, awardFocusCoins } from '@/lib/coins/awardCoins';
+import { spendFocusBoost, refundFocusBoost } from '@/lib/coins/spendFocusBoost';
 import { scopeAwards, utcDateKey } from '@/lib/coins/dedupeKeys';
 import { focusSessionAwards, streakMilestoneAwards } from '@/lib/coins/earnRules';
 import { apiError, logger } from '@/lib/logger';
@@ -316,14 +317,31 @@ export async function POST(req: NextRequest) {
         .where(eq(achievements.userId, userId));
 
       const existingTypes = new Set(existingAchievements.map((a) => a.type));
+      /**
+       * Streak achievements only. The coin ones are judged after the ledger
+       * has settled — see the second pass below the transaction.
+       *
+       * This used to judge both, and fed the coin rules
+       * `streakUpdate.coins`, which was `userRow.coins + max(1, minutes)` —
+       * the pre-ledger "1 coin per minute" formula. A 25-minute session really
+       * earns `5 + floor(25/10)*2` = 9 coins, so that number ran roughly 3x
+       * high and `coins_100` unlocked at a true balance around 89. Since an
+       * unlocked achievement is never revisited, it also never fired at the
+       * right moment.
+       *
+       * `previousCoins` is passed for both readings here so that even if a
+       * coin rule slipped into this phase it could not fire on a fabricated
+       * delta.
+       */
       const newTypes = checkNewAchievements(
         {
           sessionStreak: streakUpdate.sessionStreak,
           dailyStreak: streakUpdate.dailyStreak,
-          coins: streakUpdate.coins,
+          coins: previousCoins,
         },
         previousCoins,
         existingTypes,
+        'streak',
       );
 
       const newAchievements: { type: string; unlockedAt: string }[] = [];
@@ -342,7 +360,16 @@ export async function POST(req: NextRequest) {
         if (ach) newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
       }
 
-      return { kind: 'ok' as const, sessionId: row.id, newAchievements, userRow, streakUpdate, previousCoins };
+      return {
+        kind: 'ok' as const,
+        sessionId: row.id,
+        newAchievements,
+        userRow,
+        streakUpdate,
+        previousCoins,
+        // Includes the ones just inserted, so the coin pass cannot re-grant.
+        existingTypes: new Set([...existingTypes, ...newTypes]),
+      };
     });
 
     // A string discriminant, not a boolean: `strict: false` means boolean
@@ -368,8 +395,13 @@ export async function POST(req: NextRequest) {
           .where(and(eq(tasks.id, rawTaskId), eq(tasks.userId, userId))).limit(1);
         taskPriority = t?.priority;
       }
-      const [uc] = await db.select({ consumables: users.consumables }).from(users).where(eq(users.id, userId));
-      const hasFocusBoost = ((uc?.consumables as Record<string, number>)?.focusBoost ?? 0) > 0;
+      /**
+       * Claimed atomically BEFORE the award, not read and hoped to still be
+       * true afterwards. See `spendFocusBoost` — two sessions finishing
+       * together both read `focusBoost: 1`, both doubled their reward, and
+       * both decremented into `greatest(0, …)`, so one boost paid for two.
+       */
+      const hasFocusBoost = await spendFocusBoost(userId);
       const utcDate = utcDateKey(new Date());
 
       // The full focus reward as a function of granted (post-cap) minutes: the
@@ -389,12 +421,11 @@ export async function POST(req: NextRequest) {
       });
       finalCoins = focusRes.newBalance;
 
-      // Consume one focus boost only if the focus reward was actually granted —
-      // atomic decrement on the live JSON column (no stale-snapshot overwrite).
-      if (hasFocusBoost && focusRes.awarded) {
-        await db.update(users).set({
-          consumables: sql`jsonb_set(coalesce(${users.consumables}, '{}'::jsonb), '{focusBoost}', to_jsonb(greatest(0, coalesce((${users.consumables}->>'focusBoost')::int, 0) - 1)))`,
-        }).where(eq(users.id, userId));
+      // The claim above already spent it. Give it back when the daily cap meant
+      // nothing was granted — burning a consumable for a reward of zero would
+      // be a worse trade than the race the claim closes.
+      if (hasFocusBoost && !focusRes.awarded) {
+        await refundFocusBoost(userId);
       }
 
       // Streak milestones are event-based (once per user), not minute-capped.
@@ -406,6 +437,35 @@ export async function POST(req: NextRequest) {
       coinsEarned = finalCoins - previousCoins;
       if (coinsEarned !== 0) {
         await db.update(focusSessions).set({ coinsEarned }).where(eq(focusSessions.id, result.sessionId));
+      }
+
+      /**
+       * Coin achievements, now that `finalCoins` is the balance the ledger
+       * actually wrote. This is the only point in the request where that is
+       * true — inside the transaction above, the awards had not been applied.
+       */
+      const coinTypes = checkNewAchievements(
+        {
+          sessionStreak: streakUpdate.sessionStreak,
+          dailyStreak: streakUpdate.dailyStreak,
+          coins: finalCoins,
+        },
+        previousCoins,
+        result.existingTypes,
+        'coins',
+      );
+
+      for (const type of coinTypes) {
+        // Same bare `onConflictDoNothing` as the in-transaction insert, and for
+        // the same reason (M6): order-independent against migration 0019.
+        const [ach] = await db
+          .insert(achievements)
+          .values({ userId, type })
+          .onConflictDoNothing()
+          .returning({ unlockedAt: achievements.unlockedAt });
+        if (ach) {
+          result.newAchievements.push({ type, unlockedAt: ach.unlockedAt.toISOString() });
+        }
       }
     }
 

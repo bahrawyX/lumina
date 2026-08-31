@@ -147,7 +147,10 @@ export async function GET(req: Request) {
 
       sentCount++;
     } catch (err) {
-      logger.error('Error for event ${event.id}', { route: `Cron:event-reminders` }, err);
+      // Single quotes meant `${event.id}` was never interpolated — every one of
+      // these logged the placeholder verbatim, so the one thing the line
+      // existed to tell you (which event failed) was the one thing it did not.
+      logger.error('reminder send failed', { route: 'Cron:event-reminders', eventId: event.id }, err);
       // Release the claim so a genuine send failure is retried next run (mirrors
       // the pre-fix behavior, where a failed send was never marked as sent).
       await db
