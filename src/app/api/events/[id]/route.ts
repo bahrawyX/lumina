@@ -104,8 +104,22 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     // For 'this' scope on a virtual recurring instance, the ID is "masterEventId:isoDate"
     // We need to create an exception event instead of updating
-    if (editScope === 'this' && typeof id === 'string' && id.includes(':')) {
-      const [masterEventId, instanceStartIso] = id.split(':');
+    if (editScope === 'this' && parsedId.occurrenceDate) {
+      /**
+       * From `parsedId`, NOT `id.split(':')`.
+       *
+       * The composite form is `masterId:isoInstant`, and an ISO instant
+       * contains colons of its own — so `split(':')` on
+       * `<uuid>:2026-09-07T09:00:00.000Z` yields four parts and hands back
+       * `"2026-09-07T09"`. `new Date("2026-09-07T09")` is an Invalid Date.
+       *
+       * `parseEventRouteId` splits on the FIRST colon and validates the
+       * remainder parses; it was already being called at the top of this
+       * handler and its result thrown away. The check passed on the full
+       * string while the handler used the truncated one.
+       */
+      const masterEventId = parsedId.masterId;
+      const instanceStartIso = parsedId.occurrenceDate;
       const masterRows = await db
         .select()
         .from(events)
@@ -164,8 +178,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         return NextResponse.json({ error: 'originalStartTime required for this_and_following' }, { status: 400 });
       }
 
-      // Resolve the real master ID (composite or plain)
-      const masterEventId = id.includes(':') ? id.split(':')[0] : id;
+      // `parsedId.masterId` handles both the composite and plain forms. This
+      // read the first segment itself, which happens to be correct — the
+      // master id is before the first colon — but it is the same hand-rolled
+      // split that truncates the instant two branches up. One parser.
+      const masterEventId = parsedId.masterId;
 
       const masterRows = await db
         .select()
@@ -459,8 +476,19 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     const db = getDatabase();
 
     // Handle deletion of a single virtual recurring instance
-    if (editScope === 'this' && id.includes(':')) {
-      const [masterEventId, instanceStartIso] = id.split(':');
+    if (editScope === 'this' && parsedId.occurrenceDate) {
+      /**
+       * Same truncation as the PATCH path, and this is where it did the most
+       * damage: the exdate written here is the record of "this occurrence is
+       * deleted". Stored as `"2026-09-07T09"`, `rruleEngine` turns it into
+       * `ruleSet.exdate(new Date(...))` — an Invalid Date, which excludes
+       * nothing — so the occurrence came back on the next expand.
+       *
+       * Which is exactly the symptom the P2-2 note below describes. That fix
+       * addressed the ownership half; the id parsing was still wrong.
+       */
+      const masterEventId = parsedId.masterId;
+      const instanceStartIso = parsedId.occurrenceDate;
       const touched = await appendExdate(db, masterEventId, userId, instanceStartIso);
       // P2-2: this answered 200 for a master event the user does not own (or
       // that has no recurrence rule), so "delete this occurrence" silently
