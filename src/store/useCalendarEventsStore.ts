@@ -234,17 +234,38 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
-    // Fire-and-forget DB persistence
+
+    /**
+     * The boolean `updateOne` returns is the entire point of P1-17 — it exists
+     * so a caller can tell a saved edit from a rejected one. This call site
+     * discarded it and announced "Event updated" either way, so a PATCH that
+     * 400d or never left the device looked identical to one that succeeded,
+     * and the edit silently disappeared on the next hydration.
+     *
+     * The recurring-occurrence branch a few lines above already did this
+     * properly; only the ordinary path did not.
+     */
     const body = editScope ? { ...event, editScope } : event;
-    eventsPersistence.updateOne(event.id, body);
-    notify(`Event updated: ${event.title}`);
-    // Prompt task completion when event marked complete
-    if (event.completed && !oldEvent?.completed && event.linkedTaskId) {
-      const task = useTaskBoardStore.getState().tasks.find((t) => t.id === event.linkedTaskId);
-      if (task && task.status !== 'done') {
-        useLinkStore.getState().promptTaskCompletion(task.id, task.title);
+    void eventsPersistence.updateOne(event.id, body).then((saved) => {
+      if (!saved) {
+        // Put the events, the undo history and the local cache back where they
+        // were. Leaving the optimistic value on screen is what made the UI lie.
+        saveState(events, userId);
+        set({ events, history, historyIndex });
+        triggerIntelligence();
+        notify(`Couldn't save "${event.title}" — check your connection and try again.`);
+        return;
       }
-    }
+      notify(`Event updated: ${event.title}`);
+      // Only prompt once the completion is actually stored — prompting for a
+      // completion the server rejected asks about something that did not happen.
+      if (event.completed && !oldEvent?.completed && event.linkedTaskId) {
+        const task = useTaskBoardStore.getState().tasks.find((t) => t.id === event.linkedTaskId);
+        if (task && task.status !== 'done') {
+          useLinkStore.getState().promptTaskCompletion(task.id, task.title);
+        }
+      }
+    });
   },
 
   toggleEventCompletion: (id) => {
@@ -289,23 +310,45 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     const newHistory = [...history.slice(0, historyIndex + 1), { events: newEvents }].slice(-50);
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
-    // Fire-and-forget DB persistence
+    /**
+     * Same as `updateEvent`: `deleteOne` reports whether the server actually
+     * removed the row, and that answer was being thrown away. A delete that
+     * failed took the event off screen, unlinked its task, and reported
+     * "Event deleted" — and the event came back on the next hydration with
+     * the link gone.
+     *
+     * The task is unlinked only after the delete is confirmed, so a failure
+     * cannot orphan a link to an event that still exists.
+     */
     const scopeParam = editScope ? `?editScope=${editScope}` : '';
-    eventsPersistence.deleteOne(id, scopeParam);
-    if (deleted?.linkedTaskId) {
-      useTaskBoardStore.getState().unlinkEvent(id);
-    }
-    triggerIntelligence();
-    const label = deleted ? `Event deleted: ${deleted.title}` : 'Event deleted.';
-    notify(
-      label,
-      deleted?.linkedTaskId
-        ? () => {
-            get().undo();
-            useTaskBoardStore.getState().updateTask(deleted.linkedTaskId!, { linkedEventId: id });
-          }
-        : () => get().undo()
-    );
+    void eventsPersistence.deleteOne(id, scopeParam).then((removed) => {
+      if (!removed) {
+        saveState(events, userId);
+        set({ events, history, historyIndex });
+        triggerIntelligence();
+        notify(
+          deleted
+            ? `Couldn't delete "${deleted.title}" — check your connection and try again.`
+            : `Couldn't delete that event — check your connection and try again.`,
+        );
+        return;
+      }
+
+      if (deleted?.linkedTaskId) {
+        useTaskBoardStore.getState().unlinkEvent(id);
+      }
+      triggerIntelligence();
+      const label = deleted ? `Event deleted: ${deleted.title}` : 'Event deleted.';
+      notify(
+        label,
+        deleted?.linkedTaskId
+          ? () => {
+              get().undo();
+              useTaskBoardStore.getState().updateTask(deleted.linkedTaskId!, { linkedEventId: id });
+            }
+          : () => get().undo()
+      );
+    });
   },
 
   moveEvent: (id, newDate, startTime, endTime) => {
@@ -324,9 +367,24 @@ export const useCalendarEventsStore = create<CalendarEventsState>((set, get) => 
     saveState(newEvents, userId);
     set({ events: newEvents, history: newHistory, historyIndex: newHistory.length - 1 });
     triggerIntelligence();
-    // Fire-and-forget DB persistence — only on commit (moveEvent = drag end)
-    if (moved) eventsPersistence.updateOne(id, { date: newDate, endDate: newEndDate, startTime, endTime });
-    if (moved) notify(`Event moved: ${moved.title}`, () => get().undo());
+    // Only on commit (moveEvent = drag end). Same as `updateEvent`: the result
+    // decides whether the drag is announced or undone. A drop the server
+    // rejected used to stay where it was dropped until the next reload, then
+    // snap back with no explanation.
+    if (moved) {
+      void eventsPersistence
+        .updateOne(id, { date: newDate, endDate: newEndDate, startTime, endTime })
+        .then((saved) => {
+          if (!saved) {
+            saveState(events, userId);
+            set({ events, history, historyIndex });
+            triggerIntelligence();
+            notify(`Couldn't move "${moved.title}" — check your connection and try again.`);
+            return;
+          }
+          notify(`Event moved: ${moved.title}`, () => get().undo());
+        });
+    }
   },
 
   fetchRecurringInstances: async (start, end) => {

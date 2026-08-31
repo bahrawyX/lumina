@@ -135,15 +135,26 @@ export async function updateOne(id: string, patch: Partial<Goal>): Promise<boole
   }
 }
 
-export async function deleteOne(id: string, hard = false): Promise<void> {
+/**
+ * Returns whether the goal is actually gone.
+ *
+ * This awaited the fetch and then discarded the response entirely — no
+ * `res.ok`, no return value — so a 404 or a 500 was indistinguishable from a
+ * successful delete, and the caller had nothing to check even if it wanted to.
+ * The equivalents in `eventsPersistence` and `docsPersistence` both report,
+ * which is what P1-17 established; this one was missed.
+ */
+export async function deleteOne(id: string, hard = false): Promise<boolean> {
   if (isGuestUser()) {
     writeGuestGoals(readGuestGoals().filter((g) => g.id !== id));
-    return;
+    return true;
   }
   try {
-    await apiFetch(`/api/goals/${id}${hard ? '?hard=true' : ''}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/goals/${id}${hard ? '?hard=true' : ''}`, { method: 'DELETE' });
+    return res.ok;
   } catch (err) {
     if (isDev) console.error('[goalsPersistence.deleteOne]', err);
+    return false;
   }
 }
 
