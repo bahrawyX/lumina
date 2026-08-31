@@ -8,6 +8,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './users';
+import { encryptedText } from './encryptedText';
 
 export const integrationProviderEnum = pgEnum('integration_provider', [
   'google',
@@ -29,8 +30,10 @@ export const integrations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     provider: integrationProviderEnum('provider').notNull(),
-    accessToken: text('access_token').notNull(),
-    refreshToken: text('refresh_token').notNull(),
+    // Encrypted at rest — plaintext in TypeScript, ciphertext in Postgres.
+    // Still `text` in SQL, so this needed no migration. See ./encryptedText.
+    accessToken: encryptedText('access_token').notNull(),
+    refreshToken: encryptedText('refresh_token').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     scope: text('scope'),
     tokenType: text('token_type'),
