@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -16,19 +16,11 @@ import StopwatchView from '@/components/focus/StopwatchView';
 import PomodoroFeedbackModal from '@/components/focus/PomodoroFeedbackModal';
 import AchievementModal from '@/components/focus/AchievementModal';
 import MoodAnalysisCard from '@/components/focus/MoodAnalysisCard';
-import { useStreakStore } from '@/store/useStreakStore';
-import { useFocusStore } from '@/store/useFocusStore';
-import { useLinkStore } from '@/store/useLinkStore';
-import { useOnboardingStore } from '@/store/useOnboardingStore';
 import * as moodPersistence from '@/lib/persistence/moodPersistence';
 import { toast } from 'sonner';
-import type { MoodValue, MoodLog, FocusSessionResult } from '@/types';
-import { showCoinToast } from '@/lib/coins/showCoinToast';
-import { useCoinsStore } from '@/store/useCoinsStore';
+import type { MoodValue, MoodLog } from '@/types';
+import { useFocusSessionComplete } from '@/hooks/useFocusSessionComplete';
 import { LottieOverlay } from '@/components/ui/LottieOverlay';
-
-const STREAK_MILESTONES = new Set([3, 7, 14, 30]);
-const SESSION_MILESTONES = new Set([5, 10]);
 
 export interface PomodoroSessionData {
   startTime: string;
@@ -43,17 +35,22 @@ export interface PomodoroSessionData {
 
 const FocusPage: React.FC = () => {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
   const [moodLogsLoaded, setMoodLogsLoaded] = useState(false);
-  const [achievementOpen, setAchievementOpen] = useState(false);
-  const [showStreakFire, setShowStreakFire] = useState(false);
-  const [currentAchievement, setCurrentAchievement] = useState<string | null>(null);
-  const achievementQueueRef = useRef<string[]>([]);
 
-  const applySessionResult = useStreakStore((s) => s.applySessionResult);
-  const promptTaskCompletion = useLinkStore((s) => s.promptTaskCompletion);
-  const userTimezone = useOnboardingStore((s) => s.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  /**
+   * Shared with `/pomodoro`, which used to carry its own copy of this and had
+   * quietly lost the coin toast and the streak-milestone overlay from it.
+   */
+  const {
+    handleSessionComplete,
+    lastSessionId,
+    showStreakFire,
+    setShowStreakFire,
+    achievementOpen,
+    currentAchievement,
+    handleAchievementDismiss,
+  } = useFocusSessionComplete();
 
   // Load mood logs once
   React.useEffect(() => {
@@ -63,113 +60,6 @@ const FocusPage: React.FC = () => {
       setMoodLogsLoaded(true);
     });
   }, [moodLogsLoaded]);
-
-  const handleSessionComplete = useCallback(async (data: PomodoroSessionData) => {
-    try {
-      const res = await fetch('/api/focus-sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          startTime: data.startTime,
-          endTime: data.endTime,
-          duration: data.duration,
-          plannedDurationSecs: data.plannedDurationSecs,
-          taskId: data.taskId ?? null,
-          taskTitle: data.taskTitle ?? null,
-          timezone: userTimezone,
-        }),
-      });
-
-      if (!res.ok) {
-        // Surface the failure instead of silently swallowing it — the user
-        // otherwise sees confetti with no balance change and no explanation.
-        toast.error('Couldn\u2019t save this focus session. Your coins and streak are unchanged — please try again.');
-        return;
-      }
-
-      const result: FocusSessionResult = await res.json();
-      setLastSessionId(result.id);
-
-      // Under-threshold sessions are saved for history only. No coins, no
-      // streak bump, no confetti overlay — a neutral toast explains it.
-      if (result.underThreshold) {
-        toast('Session ended early \u2014 no coins earned this time.', { duration: 3500 });
-        return;
-      }
-
-      applySessionResult(result);
-
-      // Show coin earn toast
-      if (result.coinsEarned > 0) {
-        showCoinToast(result.coinsEarned, 'Focus session completed');
-      }
-
-      // The focus endpoint now awaits all coin awards and returns the
-      // authoritative balance (applied above via setBalance in applySessionResult).
-      // This refetch is a belt-and-braces reconcile against GET /api/coins — do
-      // NOT optimistically add here or the balance diverges from the server.
-      void useCoinsStore.getState().refetchBalance();
-
-      // Streak milestone celebration overlay
-      if (STREAK_MILESTONES.has(result.dailyStreak) || SESSION_MILESTONES.has(result.sessionStreak)) {
-        setShowStreakFire(true);
-      }
-
-      // Queue achievement modals
-      if (result.newAchievements.length > 0) {
-        achievementQueueRef.current = result.newAchievements.map((a) => a.type);
-        setCurrentAchievement(achievementQueueRef.current[0]);
-        setAchievementOpen(true);
-      }
-
-      // Add to focus store session history (with task info)
-      const session = {
-        id: result.id,
-        taskId: data.taskId ?? '',
-        taskTitle: data.taskTitle ?? '',
-        startTime: data.startTime,
-        endTime: data.endTime,
-        duration: data.duration,
-        completed: true,
-      };
-      useFocusStore.getState().sessionHistory.unshift(session);
-
-      // Send push notification if tab is in background
-      if (document.hidden) {
-        const mins = Math.round(data.duration / 60);
-        fetch('/api/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: 'Focus session complete',
-            body: `${mins} min session${data.taskTitle ? ` · ${data.taskTitle}` : ''} finished`,
-            tag: 'focus-complete',
-            url: '/focus',
-            notificationType: 'focus_complete',
-          }),
-        }).catch(() => { /* fire-and-forget */ });
-      }
-
-      // Prompt task completion if a task was linked
-      if (data.taskId && data.taskTitle) {
-        promptTaskCompletion(data.taskId, data.taskTitle);
-      }
-    } catch {
-      toast.error('Couldn\u2019t save this focus session. Check your connection and try again.');
-    }
-  }, [applySessionResult, promptTaskCompletion, userTimezone]);
-
-  const handleAchievementDismiss = useCallback((open: boolean) => {
-    if (!open) {
-      achievementQueueRef.current.shift();
-      if (achievementQueueRef.current.length > 0) {
-        setCurrentAchievement(achievementQueueRef.current[0]);
-      } else {
-        setAchievementOpen(false);
-        setCurrentAchievement(null);
-      }
-    }
-  }, []);
 
   const handleRequestFeedback = useCallback(() => {
     setFeedbackOpen(true);
