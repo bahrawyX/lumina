@@ -247,6 +247,43 @@ describe('the column encrypts on the way to Postgres', () => {
   });
 });
 
+describe('the backfill script writes the format the app reads', () => {
+  it('uses the same algorithm, IV size and version as tokenCrypto', async () => {
+    /**
+     * `scripts/encrypt-integration-tokens.mjs` reimplements `encryptToken`
+     * rather than importing it — the script is plain `.mjs` run by node with no
+     * bundler, and the module lives behind the `@/` alias.
+     *
+     * That duplication is the risk this covers. Changing the format in
+     * tokenCrypto (a v2, a different cipher, a 16-byte IV) without changing the
+     * script would leave the script writing tokens that look perfectly fine in
+     * the database and throw at runtime — and only for the rows the backfill
+     * touched, so it would surface as a handful of users mysteriously losing
+     * their calendar rather than as an obvious break.
+     *
+     * Verified end to end against a disposable Postgres: the script encrypted
+     * two seeded rows and the app's real `decryptToken` read back the exact
+     * originals. This guard is what keeps that true.
+     */
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const script = readFileSync(join(process.cwd(), 'scripts/encrypt-integration-tokens.mjs'), 'utf8');
+    const lib = readFileSync(join(process.cwd(), 'src/lib/integrations/tokenCrypto.ts'), 'utf8');
+
+    // The cipher, the 12-byte IV, and the version prefix all have to agree.
+    expect(script).toContain("'aes-256-gcm'");
+    expect(lib).toContain("'aes-256-gcm'");
+    expect(script).toContain('randomBytes(12)');
+    expect(lib).toContain('IV_BYTES = 12');
+    expect(script).toContain("'v1',");
+    expect(lib).toContain("VERSION = 'v1'");
+
+    // And the segment order, which a round-trip against one implementation
+    // alone would never catch.
+    expect(script).toMatch(/iv\.toString\('base64url'\),\s*tag\.toString\('base64url'\),\s*ciphertext\.toString\('base64url'\)/);
+  });
+});
+
 describe('the schema wires both token columns through the encrypted type', () => {
   it('uses encryptedText, not text', async () => {
     // A structural guard: reverting either column to `text()` would silently
