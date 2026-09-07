@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useDocsStore } from '@/store/useDocsStore';
 import { useTaskBoardStore } from '@/store/useTaskBoardStore';
 import { useCalendarEventsStore } from '@/store/useCalendarEventsStore';
@@ -13,7 +13,6 @@ interface DocRightSidebarProps {
 }
 
 export default function DocRightSidebar({ docId, onClose }: DocRightSidebarProps) {
-  const openDocContent = useDocsStore((s) => s.openDocContent);
   const docs = useDocsStore((s) => s.docs);
   const tasks = useTaskBoardStore((s) => s.tasks);
   const events = useCalendarEventsStore((s) => s.events);
@@ -32,13 +31,26 @@ export default function DocRightSidebar({ docId, onClose }: DocRightSidebarProps
     ? events.find((e) => e.id === doc.linkedEventId)
     : null;
 
-  // Focus time on linked task
-  const focusTime = useMemo(() => {
-    if (!doc.linkedTaskId) return 0;
-    return sessionHistory
-      .filter((s) => s.taskId === doc.linkedTaskId)
-      .reduce((sum, s) => sum + (s.duration ?? 0), 0);
-  }, [doc.linkedTaskId, sessionHistory]);
+  /**
+   * Plain computation, deliberately not a `useMemo`.
+   *
+   * It used to be one, sitting BELOW the `if (!doc) return null` above. While
+   * the doc existed React counted N hooks; the moment it did not — deleting the
+   * doc with this sidebar open, or a sync dropping it — the component returned
+   * early and React saw N-1. That throws "Rendered fewer hooks than expected"
+   * and takes down the tree, from an ordinary user action.
+   *
+   * Hoisting it above the early return fixes the crash but makes the component
+   * un-optimizable (`react-hooks/preserve-manual-memoization`), trading one
+   * error for two. Removing the hook fixes both: no conditional hook can exist
+   * if there is no hook, and a filter-and-reduce over the session list is far
+   * cheaper than the render it was guarding against.
+   */
+  const focusTime = doc.linkedTaskId
+    ? sessionHistory
+        .filter((s) => s.taskId === doc.linkedTaskId)
+        .reduce((sum, s) => sum + (s.duration ?? 0), 0)
+    : 0;
 
   const focusHours = Math.floor(focusTime / 3600);
   const focusMinutes = Math.floor((focusTime % 3600) / 60);
