@@ -1,0 +1,108 @@
+# Scheduled jobs — replaces Vercel Cron.
+#
+# WHY THIS EXISTS
+#
+# `vercel.json` used to declare these three as Vercel Cron jobs. Commit 989f4ce
+# moved them from once-daily to hourly, because each one now selects the users
+# for whom it is currently the right LOCAL hour (08:00 for the brief, 20:00 for
+# the streak nudge) rather than firing at a fixed UTC time.
+#
+# This account is on Vercel's Hobby plan, where cron jobs may only run once per
+# day. Vercel rejects such a deployment at CREATION time, so no deployment
+# record is written and there is no failed build to look at — production silently
+# stayed on the last commit that predated the change, and 87 pushes after it were
+# refused without a trace.
+#
+# Reverting to daily was not an option. The routes now filter by local hour, so
+# a single daily run would serve exactly one timezone band and silently notify
+# nobody else. `event-reminders` is worse still: it is not "notify at hour X" but
+# "claim everything starting in the next 25 hours", so running it daily
+# reintroduces the permanent one-hour blind spot that 989f4ce fixed.
+#
+# So the schedule moved here and `vercel.json` was deleted. The endpoints are
+# unchanged and still authenticate with `Authorization: Bearer $CRON_SECRET`
+# (see src/lib/cronAuth.ts), so nothing about the application had to change.
+#
+# SETUP: add a repository secret named CRON_SECRET matching the value in the
+# Vercel environment. Optionally set a repository variable PRODUCTION_URL to
+# override the default below.
+
+name: Scheduled jobs
+
+on:
+  schedule:
+    # Twice an hour, not once. GitHub's scheduled runs drift under load, and a
+    # run that slips past the hour boundary would skip a timezone band for that
+    # day. Overlap is free: `daily-brief` and `streak-reminder` claim through the
+    # unique index on notification_sends(user_id, kind, local_date), and
+    # `event-reminders` claims through an atomic reminder_sent_at UPDATE — so a
+    # second run in the same hour sends nothing.
+    - cron: '0,30 * * * *'
+  # Lets you run it by hand from the Actions tab, which is also how to verify
+  # setup without waiting for the next tick.
+  workflow_dispatch:
+
+# Never let a slow run overlap its own next tick.
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    name: Trigger cron endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Call each endpoint
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_URL || 'https://lumina-six-bay.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET repository secret is not set — no notifications will be sent."
+            echo "Add it under Settings → Secrets and variables → Actions, matching the Vercel value."
+            exit 1
+          fi
+
+          failed=0
+
+          for endpoint in daily-brief event-reminders streak-reminder; do
+            url="$BASE_URL/api/cron/$endpoint"
+            body="$(mktemp)"
+
+            # --retry covers a cold Vercel lambda or a transient 5xx. The secret
+            # travels in a header, never the URL, so it cannot land in an access
+            # log. GitHub masks the value in these logs regardless.
+            status="$(curl -sS -o "$body" -w '%{http_code}' \
+              --max-time 120 --retry 2 --retry-delay 5 --retry-connrefused \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "$url")" || true
+
+            # curl writes %{http_code} once PER ATTEMPT, so a retried failure
+            # concatenates them ("000000") and the message becomes nonsense.
+            # Keep the final attempt's code; empty means curl never got a
+            # response at all.
+            status="${status: -3}"
+            [ -n "$status" ] || status='000'
+
+            # Responses are pure counts — sent, considered, truncated — with no
+            # addresses, ids or titles, which is what makes them safe to print in
+            # the public log of a public repository.
+            payload="$(head -c 400 "$body")"
+            rm -f "$body"
+
+            if [ "$status" = "200" ]; then
+              echo "OK   $endpoint  $payload"
+            else
+              echo "::error::$endpoint failed with HTTP $status — $payload"
+              failed=1
+            fi
+          done
+
+          # A non-zero exit marks the run red and emails the repository owner,
+          # so a silently broken schedule is visible. Reported after all three
+          # have run, so one bad endpoint does not hide the other two.
+          exit "$failed"

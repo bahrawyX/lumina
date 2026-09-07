@@ -240,14 +240,21 @@ describe('F5.9 — expired sessions are swept', () => {
     expect(block).toContain('catch (err)');
   });
 
-  it('stays within the three-cron plan limit', () => {
-    // A fourth vercel.json entry would silently never run on Hobby, which is
-    // worse than no sweep because the schedule would claim otherwise.
-    const vercel = JSON.parse(
-      readFileSync(join(process.cwd(), 'vercel.json'), 'utf8'),
-    ) as { crons: unknown[] };
-    expect(vercel.crons).toHaveLength(3);
-  });
+  /**
+   * The "stays within the three-cron plan limit" test that stood here read
+   * `vercel.json` and asserted exactly three entries, guarding Hobby's cron
+   * COUNT limit.
+   *
+   * That constraint no longer binds: the schedule moved to GitHub Actions and
+   * `vercel.json` was deleted, because Hobby also caps FREQUENCY at once daily
+   * and these routes must run hourly to pick each user up in their own local
+   * hour. Vercel rejected those deployments at creation time, silently.
+   *
+   * The intent — every cron route is actually scheduled somewhere — is covered
+   * better in `tests/cron-scheduling.test.ts`, which enumerates the route
+   * directories rather than counting entries, so a new route that nobody
+   * scheduled fails by name.
+   */
 });
 
 describe('F5.11 — the dead auth rewrite is gone', () => {
