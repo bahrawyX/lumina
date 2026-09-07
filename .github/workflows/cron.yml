@@ -31,13 +31,10 @@ name: Scheduled jobs
 
 on:
   schedule:
-    # Twice an hour, not once. GitHub's scheduled runs drift under load, and a
-    # run that slips past the hour boundary would skip a timezone band for that
-    # day. Overlap is free: `daily-brief` and `streak-reminder` claim through the
-    # unique index on notification_sends(user_id, kind, local_date), and
-    # `event-reminders` claims through an atomic reminder_sent_at UPDATE — so a
-    # second run in the same hour sends nothing.
-    - cron: '0,30 * * * *'
+    # BEFORE-LAUNCH: restore '0,30 * * * *' (twice an hour) before real users
+    # arrive. See the note at the bottom of this file for why it was reduced and
+    # what the trade is.
+    - cron: '0 * * * *'
   # Lets you run it by hand from the Actions tab, which is also how to verify
   # setup without waiting for the next tick.
   workflow_dispatch:
@@ -106,3 +103,41 @@ jobs:
           # so a silently broken schedule is visible. Reported after all three
           # have run, so one bad endpoint does not hide the other two.
           exit "$failed"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BEFORE-LAUNCH — revisit this schedule before real users arrive
+#
+# Currently hourly ('0 * * * *'). It was written as '0,30 * * * *' — twice an
+# hour — and should go back to that.
+#
+# WHY TWICE: GitHub's scheduled runs are best-effort and drift under load. A run
+# that slips past the hour boundary skips a whole timezone band for that day:
+# the users whose local 08:00 fell in the missed hour get no brief, silently.
+# The second run covers that. Overlap costs nothing, because 989f4ce made all
+# three endpoints idempotent — `daily-brief` and `streak-reminder` claim through
+# the unique index on notification_sends(user_id, kind, local_date), and
+# `event-reminders` through the atomic reminder_sent_at UPDATE. A second run in
+# the same hour therefore sends nothing.
+#
+# WHY IT WAS HALVED: the plan is to make this repository private. Public repos
+# get unlimited Actions minutes; private repos on the Free plan get 2,000/month,
+# and GitHub bills a MINIMUM OF ONE MINUTE PER JOB however short the work is.
+#
+#     twice-hourly   1,461 runs/month  ->  1,461 min  ->    539 left for CI
+#     hourly           731 runs/month  ->    731 min  ->  1,269 left for CI
+#
+# ci.yml runs typecheck, tests, lint, build and Playwright e2e on every push and
+# PR — call it 8-15 minutes a run. With only 539 minutes left that is roughly
+# 35-65 pushes before the quota is gone, and when it goes, Actions stops
+# starting jobs at all: notifications AND CI die together.
+#
+# THE REAL FIX, when it matters: move the schedule off Actions to an external
+# pinger (cron-job.org, Upstash QStash, or any host with cron). The endpoints
+# only need `Authorization: Bearer $CRON_SECRET`, so nothing in the app changes,
+# it consumes no Actions minutes, CI keeps the full 2,000, and a dedicated cron
+# service does not drift the way Actions does. Then this file can go back to
+# twice-hourly or be deleted entirely.
+#
+# Until then, hourly is a deliberate, acceptable compromise for a pre-launch app
+# with no real users to miss a notification.
+# ─────────────────────────────────────────────────────────────────────────────
