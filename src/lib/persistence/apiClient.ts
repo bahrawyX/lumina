@@ -98,6 +98,25 @@ function notifyUnauthorized(): void {
  * 409 conflict on doc save, a 429 on an AI route) read it directly. Callers
  * that just want a parsed body should use `apiGetJson` / `apiGetList`.
  */
+/**
+ * How long a request may run before it counts as failed.
+ *
+ * `apiFetch` was previously unbounded, which is why `AppShell` carried a
+ * 3-second wall-clock timer and treated its expiry as a hydration FAILURE. A
+ * stopwatch cannot tell a slow request from a dead one, and on Neon's free tier
+ * — which suspends the database after ~5 minutes idle and pays a multi-second
+ * cold start on the next request — the common case was a perfectly healthy load
+ * being reported to the user as "we couldn't load your data".
+ *
+ * Bounding the fetch itself is what makes failure a fact instead of a guess: a
+ * request that will never answer aborts, throws, and is caught as
+ * `fail('network')` by `apiGetJson`, while a merely slow one is simply awaited.
+ *
+ * Deliberately generous. This exists to catch a request that will NEVER answer,
+ * not a slow one.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   // F5.2: `isSessionExpired()` documented itself as the guard write paths call
   // before issuing a mutation — and had ZERO callers anywhere in the codebase.
@@ -125,6 +144,9 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     // preserves the explicit `include` that docsPersistence carried.
     credentials: 'include',
     ...init,
+    // AFTER the spread, so an explicit `init.signal` still wins but an absent
+    // one gets a bound rather than nothing.
+    signal: init?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (res.status === 401) notifyUnauthorized();

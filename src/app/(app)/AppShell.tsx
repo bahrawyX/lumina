@@ -255,15 +255,53 @@ export function AppShell({
   const eventsHydrated = useCalendarEventsStore((s) => s.dbHydrated);
   const tasksHydrated = useTaskBoardStore((s) => s.dbHydrated);
   const focusHydrated = useFocusStore((s) => s.dbHydrated);
-  // Safety-net: even if a hydration fetch hangs (slow network, never-resolving
-  // promise), the global z-9999 overlay must dismiss within 3 seconds so the
-  // user can interact with whatever has hydrated. Hard cap on UX wait time.
-  const [hydrationTimeoutFired, setHydrationTimeoutFired] = useState(false);
+
+  // Declared here rather than below, because the two timers underneath depend
+  // on it and a dependency array is evaluated immediately.
+  const storesHydrated = eventsHydrated && tasksHydrated && focusHydrated;
+  /**
+   * Two timers, and neither of them decides whether anything FAILED.
+   *
+   * The previous single 3-second timer did: on expiry it marked events, tasks
+   * and focus as network failures and put the retry banner on screen. That is
+   * using a stopwatch to infer an outcome, and it is wrong — elapsed time says
+   * nothing about whether a request will succeed. On Neon's free tier, which
+   * suspends the database after ~5 minutes idle, a cold start routinely takes
+   * longer than 3 seconds, so the FIRST visit of most sessions showed "we
+   * couldn't load your data" and then loaded the data a moment later.
+   *
+   * Failure is now reported only by requests that actually fail. `apiFetch`
+   * carries a 30s AbortSignal, so a request that will never answer aborts,
+   * throws, and reaches `hydrateDomain`'s `onFailure` — which both flips
+   * `dbHydrated` (dismissing this overlay) and records the reason (raising the
+   * banner). Both of those are outcomes, not guesses.
+   *
+   * `slowHydration` only changes the WORDING, so a cold start reads as waiting
+   * rather than breaking.
+   */
+  const [slowHydration, setSlowHydration] = useState(false);
   useEffect(() => {
-    if (hydrationTimeoutFired) return;
-    const t = setTimeout(() => setHydrationTimeoutFired(true), 3000);
+    if (storesHydrated) return;
+    const t = setTimeout(() => setSlowHydration(true), 4000);
     return () => clearTimeout(t);
-  }, [hydrationTimeoutFired]);
+  }, [storesHydrated]);
+
+  /**
+   * Last-resort dismissal, kept because the overlay is `fixed inset-0
+   * z-[9999]`: if `PersistenceBootstrap` never mounts or a store never calls
+   * back, nothing else would ever unblock the UI.
+   *
+   * Set past the 30s request bound, so by the time it can fire every real
+   * failure has already been recorded by the fetch that failed. It therefore
+   * dismisses WITHOUT claiming anything failed — which is the part the old
+   * 3-second version got wrong.
+   */
+  const [hydrationEscapeHatch, setHydrationEscapeHatch] = useState(false);
+  useEffect(() => {
+    if (storesHydrated) return;
+    const t = setTimeout(() => setHydrationEscapeHatch(true), 35_000);
+    return () => clearTimeout(t);
+  }, [storesHydrated]);
 
   /**
    * F5.6: whether there is anyone to load data FOR.
@@ -281,28 +319,37 @@ export function AppShell({
   const { data: shellSession, isPending: shellSessionPending } = authClient.useSession();
   const hasSession = shellSessionPending ? initialHasSession : Boolean(shellSession?.user);
 
-  const storesHydrated = eventsHydrated && tasksHydrated && focusHydrated;
-  const allHydrated = storesHydrated || hydrationTimeoutFired;
+  const allHydrated = storesHydrated || hydrationEscapeHatch;
 
   /**
-   * F5.6: the 3-second escape hatch is correct — it is scheduled once, guarded
-   * against rescheduling, and ORs into `allHydrated`, so a hung fetch can never
-   * pin the overlay. What was wrong is what it dismissed INTO.
+   * F5.6's property, kept: the overlay must never dismiss into a board that is
+   * empty for an unknown reason. An empty board that means "you have no data"
+   * and one that means "we could not load it" look identical, and any edit made
+   * in that window is written against empty state.
    *
-   * `dbHydrated` is still false at that point, so an empty board is
-   * indistinguishable from "you have no data", and any edit made in that window
-   * is written against empty state. Recording it as a hydration failure is what
-   * puts the retry banner on screen instead of a confident blank workspace.
+   * What changed is the trigger. This used to fire on a 3-second timer, so a
+   * free-tier cold start — routinely longer than that — was reported as a
+   * network failure while the data was still on its way. Genuine failures are
+   * now recorded by `hydrateDomain`'s `onFailure`, raised by the request that
+   * actually failed.
+   *
+   * It still fires here, but only from the 35s escape hatch, which sits past
+   * `apiFetch`'s 30s bound. Reaching it means the bounded requests never
+   * reported at all — `PersistenceBootstrap` never mounted, or a store never
+   * called back. That is a real anomaly rather than a slow database, and
+   * dismissing it silently would reintroduce exactly the blank workspace F5.6
+   * was written to prevent.
    */
   const markHydrationFailed = useHydrationStatusStore((s) => s.markFailed);
   useEffect(() => {
-    if (!hydrationTimeoutFired) return;
-    // Only the domains that are actually still missing — marking all three
-    // would name domains that had loaded fine and make the banner lie.
+    if (!hydrationEscapeHatch) return;
+    // Only the domains actually still missing — marking all three would name
+    // domains that had loaded fine and make the banner lie.
     if (!eventsHydrated) markHydrationFailed('events', 'network');
     if (!tasksHydrated) markHydrationFailed('tasks', 'network');
     if (!focusHydrated) markHydrationFailed('focus', 'network');
-  }, [hydrationTimeoutFired, eventsHydrated, tasksHydrated, focusHydrated, markHydrationFailed]);
+  }, [hydrationEscapeHatch, eventsHydrated, tasksHydrated, focusHydrated, markHydrationFailed]);
+
   const router = useRouter();
   const pathname = usePathname();
 
@@ -567,14 +614,22 @@ export function AppShell({
                 />
               </div>
               {/* This was an empty <motion.p>, so at any duration the user
-                  stared at an unlabelled spinner. */}
+                  stared at an unlabelled spinner.
+
+                  After 4s the wording changes rather than the state: on the
+                  free tier the database suspends when idle, so the first load
+                  of a session waits on a cold start. Saying so turns a stall
+                  into information — and it is still the same wait, not an
+                  error. */}
               <motion.p
                 className="text-xs text-muted-foreground font-medium tracking-wide"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.3 }}
               >
-                Loading your workspace…
+                {slowHydration
+                  ? 'Still loading — waking things up…'
+                  : 'Loading your workspace…'}
               </motion.p>
             </div>
           </motion.div>
